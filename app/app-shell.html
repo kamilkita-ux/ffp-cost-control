@@ -1,0 +1,1175 @@
+<title>FFP Cost Control</title>
+<style>
+:root{
+  --bg:#f4f6f8; --panel:#ffffff; --border:#dde3e8; --text:#1a2733; --muted:#6b7a87;
+  --accent:#0f6e4f; --accent-dark:#0a4f38; --accent-bg:#e6f4ee;
+  --danger:#c0392b; --danger-bg:#fdeceb; --warn:#b7791f; --warn-bg:#fdf3e0;
+  --ok:#1e8e5a; --shadow:0 1px 3px rgba(20,30,40,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12181d; --panel:#1a2229; --border:#2a343c; --text:#e6edf3; --muted:#93a1ac;
+    --accent:#2fae7f; --accent-dark:#2fae7f; --accent-bg:#123a2c;
+    --danger:#e5766a; --danger-bg:#3a1f1c; --warn:#e0b463; --warn-bg:#3a2f14; --ok:#4fce9a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12181d; --panel:#1a2229; --border:#2a343c; --text:#e6edf3; --muted:#93a1ac;
+  --accent:#2fae7f; --accent-dark:#2fae7f; --accent-bg:#123a2c;
+  --danger:#e5766a; --danger-bg:#3a1f1c; --warn:#e0b463; --warn-bg:#3a2f14; --ok:#4fce9a;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;}
+a{color:var(--accent);}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 9px;width:100%;}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;}
+label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin:8px 0 3px;}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap;}
+.btn:hover{border-color:var(--accent);}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent-dark);}
+.btn-danger{color:var(--danger);}
+.btn-sm{padding:4px 9px;font-size:12px;border-radius:6px;}
+.btn-icon{padding:6px 9px;}
+#app{display:flex;min-height:100vh;}
+#sidebar{width:220px;flex:none;background:var(--panel);border-right:1px solid var(--border);padding:14px 10px;position:sticky;top:0;height:100vh;overflow-y:auto;}
+#sidebar h1{font-size:15px;margin:4px 8px 2px;color:var(--accent);}
+#sidebar .sub{font-size:11px;color:var(--muted);margin:0 8px 14px;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-size:13.5px;font-weight:500;margin-bottom:2px;cursor:pointer;}
+.nav-item:hover{background:var(--accent-bg);}
+.nav-item.active{background:var(--accent);color:#fff;}
+.nav-icon{width:18px;text-align:center;}
+#main{flex:1;min-width:0;}
+#topbar{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;gap:10px;align-items:center;}
+#topbar input[type=search]{max-width:340px;}
+#topbar .spacer{flex:1;}
+#content{padding:18px;max-width:1400px;}
+.hide-mobile{display:inline-flex;}
+h2.page-title{margin:0 0 4px;font-size:20px;}
+.page-sub{color:var(--muted);font-size:12.5px;margin-bottom:16px;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow);}
+.kpi .label{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+.kpi .value{font-size:22px;font-weight:700;margin-top:6px;}
+.kpi .value.small{font-size:17px;}
+.kpi.accent .value{color:var(--accent);}
+.kpi.warn .value{color:var(--warn);}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow);}
+.panel h3{margin:0 0 12px;font-size:14.5px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr;}}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-size:11px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);padding:7px 8px;white-space:nowrap;}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr:hover td{background:var(--accent-bg);}
+.table-wrap{overflow-x:auto;}
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
+.pill-ok{background:var(--accent-bg);color:var(--accent);}
+.pill-warn{background:var(--warn-bg);color:var(--warn);}
+.pill-danger{background:var(--danger-bg);color:var(--danger);}
+.pill-muted{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.filters select,.filters input{width:auto;min-width:130px;}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.muted{color:var(--muted);}
+.right{text-align:right;}
+#modal-overlay{position:fixed;inset:0;background:rgba(10,15,20,.5);display:none;align-items:flex-start;justify-content:center;z-index:100;overflow-y:auto;padding:30px 12px;}
+#modal-overlay.open{display:flex;}
+#modal{background:var(--panel);border-radius:12px;max-width:640px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+#modal h3{margin-top:0;}
+.form-row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;border-top:1px solid var(--border);padding-top:14px;}
+.close-x{float:right;background:none;border:none;font-size:20px;color:var(--muted);}
+.alloc-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+.alloc-row select{flex:2;}
+.alloc-row input{flex:1;}
+.link{color:var(--accent);cursor:pointer;text-decoration:underline;font-weight:600;}
+.demo-tag{background:var(--warn-bg);color:var(--warn);font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;margin-left:6px;}
+.empty{color:var(--muted);font-style:italic;padding:14px 0;}
+.badge-count{background:var(--accent);color:#fff;border-radius:10px;font-size:10px;padding:0 6px;margin-left:auto;}
+.progress-bar{height:8px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--border);}
+.progress-bar>div{height:100%;background:var(--accent);}
+#mobile-menu-btn{display:none;}
+.textarea-lg{min-height:70px;}
+.section-title{font-weight:700;font-size:12.5px;text-transform:uppercase;color:var(--muted);margin:16px 0 8px;letter-spacing:.03em;}
+.tab-bar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap;}
+.tab-btn{background:none;border:none;padding:9px 14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;font-size:13px;}
+.tab-btn.active{color:var(--accent);border-color:var(--accent);}
+@media(max-width:820px){
+  #sidebar{position:fixed;left:-240px;top:0;height:100vh;z-index:50;transition:left .2s;box-shadow:0 0 20px rgba(0,0,0,.2);}
+  #sidebar.open{left:0;}
+  #mobile-menu-btn{display:inline-flex;}
+  .hide-mobile{display:none;}
+  #content{padding:12px;}
+  .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .kpi .value{font-size:18px;}
+  #topbar input[type=search]{max-width:none;flex:1;}
+  #sidebar-overlay.open{display:block;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;}
+}
+#sidebar-overlay{display:none;}
+#save-status-mobile{display:none;padding:6px 12px;}
+#save-status-mobile .pill{display:block;text-align:center;}
+@media(max-width:820px){
+  #save-status-mobile{display:block;}
+}
+</style>
+<div id="app">
+  <div id="sidebar-overlay" onclick="closeMobileNav()"></div>
+  <div id="sidebar">
+    <h1>FFP Cost Control</h1>
+    <div class="sub">Farmy Fotowoltaiki Polska S.A.</div>
+    <div id="nav-list"></div>
+  </div>
+  <div id="main">
+    <div id="topbar">
+      <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
+      <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
+      <div class="spacer"></div>
+      <div id="save-status" class="hide-mobile"></div>
+      <button class="btn btn-primary hide-mobile" onclick="openForm('costs')">+ Koszt</button>
+      <button class="btn hide-mobile" onclick="openForm('employees')">+ Pracownik</button>
+      <button class="btn hide-mobile" onclick="openForm('projects')">+ Projekt</button>
+      <button class="btn btn-icon" onclick="openForm('costs')" title="Dodaj koszt" style="display:none" id="mobile-add-btn">+</button>
+    </div>
+    <div id="save-status-mobile"></div>
+    <div id="content"><div class="empty" style="padding:40px;text-align:center">Ładowanie danych z bazy PostgreSQL…</div></div>
+  </div>
+</div>
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal"></div>
+</div>
+<div id="search-overlay"></div>
+
+<script>
+/* =============================================================================
+   FFP Cost Control — warstwa danych.
+   Jedyne źródło prawdy: PostgreSQL, przez API Next.js (app/api/**).
+   STATE poniżej to WYŁĄCZNIE lokalna kopia w pamięci przeglądarki, hydratowana
+   z /api/bootstrap przy starcie i po każdym zapisie — nigdy nie jest zapisywana
+   bezpośrednio do żadnego trwałego magazynu przeglądarki (localStorage служy
+   tu tylko do zapamiętania OSTATNIO OTWARTEJ ZAKŁADKI, co jest czystą wygodą
+   nawigacyjną i nie ma nic wspólnego z przechowywaniem danych firmowych).
+   ========================================================================== */
+var STATE = { departments:[], projects:[], employees:[], vendors:[], costs:[], contracts:[], financings:[], documents:[], costCategories:[], costCenters:[], currency:'PLN' };
+var BOOTED = false;
+
+var currentTab = (function(){ try{ return localStorage.getItem('ffp_tab')||'dashboard'; }catch(e){ return 'dashboard'; } })();
+var searchQuery = '';
+var pendingModalSave = null;
+
+/* ============================= HELPERS ============================= */
+function uid(prefix){ return (prefix||'id')+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function fmtMoney(n){
+  n = Number(n)||0;
+  var s = n.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return s+' zł';
+}
+function fmtMoney0(n){
+  n = Number(n)||0;
+  return n.toLocaleString('pl-PL',{maximumFractionDigits:0})+' zł';
+}
+function fmtDate(iso){
+  if(!iso) return '—';
+  var p = iso.split('-'); if(p.length!==3) return iso;
+  return p[2]+'.'+p[1]+'.'+p[0];
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
+function deptName(id){ var d=byId(STATE.departments,id); return d?d.name:'—'; }
+function projectName(id){ if(id==='ADMIN') return 'Administracja / Centrala'; var p=byId(STATE.projects,id); return p?p.name:'—'; }
+function vendorName(id){ var v=byId(STATE.vendors,id); return v?v.name:'—'; }
+function empName(e){ return e.firstName+' '+e.lastName; }
+
+function monthlyEquivalent(cost){
+  var g = Number(cost.grossAmount)||Number(cost.netAmount)||0;
+  switch(cost.recurrence){
+    case 'miesięczny': return g;
+    case 'kwartalny': return g/3;
+    case 'półroczny': return g/6;
+    case 'roczny': return g/12;
+    default: return 0; // jednorazowy / nieregularny - not part of recurring run-rate
+  }
+}
+function annualEquivalent(cost){ return monthlyEquivalent(cost)*12; }
+
+function totalMonthlyCostEmployee(e){
+  if(e.status==='zakończona współpraca') return 0;
+  var base = Number(e.employerCost)||Number(e.grossSalary)||0;
+  var extra = (Number(e.otherMonthlyCost)||0)+(Number(e.bonus)||0)+(Number(e.car)||0)+(Number(e.phoneCost)||0)+(Number(e.computer)||0)+(Number(e.otherBenefits)||0);
+  return base+extra;
+}
+
+function empAllocPct(e,projectId){
+  if(!e.allocations||!e.allocations.length) return projectId==='ADMIN'?100:0;
+  var a = e.allocations.find(function(x){return x.projectId===projectId;});
+  return a?Number(a.pct)||0:0;
+}
+
+function metrics(){
+  var activeEmployees = STATE.employees.filter(function(e){return e.status!=='zakończona współpraca';});
+  var monthlyPayroll = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
+  var monthlyExternal = STATE.costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyFinancing = STATE.financings.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+  var monthlyFixedNonPayroll = STATE.costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyFixed = monthlyPayroll+monthlyFixedNonPayroll+monthlyFinancing;
+  var totalBurn = monthlyPayroll+monthlyExternal+monthlyFinancing;
+  var annualRunRate = totalBurn*12;
+
+  var monthlyProjectCost = STATE.projects.reduce(function(sum,p){
+    var c = STATE.costs.filter(function(x){return x.projectId===p.id;}).reduce(function(s,x){return s+monthlyEquivalent(x);},0);
+    var emp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
+    sum[p.id] = c+emp; return sum;
+  },{});
+  var totalProjectCost = Object.keys(monthlyProjectCost).reduce(function(s,k){return s+monthlyProjectCost[k];},0);
+
+  var unassignedCosts = STATE.costs.filter(function(c){return !c.projectId;});
+  var monthlyAdminFromCosts = unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyAdminFromEmp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,'ADMIN')/100);},0);
+  var monthlyAdmin = monthlyAdminFromCosts+monthlyAdminFromEmp;
+
+  var deptCost = {};
+  STATE.departments.forEach(function(d){
+    var empC = activeEmployees.filter(function(e){return e.departmentId===d.id;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
+    var costC = STATE.costs.filter(function(c){return c.departmentId===d.id;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    deptCost[d.id] = {employees:activeEmployees.filter(function(e){return e.departmentId===d.id;}).length, empCost:empC, otherCost:costC, total:empC+costC};
+  });
+
+  function upcomingIn(days){
+    return STATE.costs.filter(function(c){
+      if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
+      var d = daysUntil(c.dueDate); return d!==null && d>=0 && d<=days;
+    });
+  }
+  var overdue = STATE.costs.filter(function(c){
+    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
+    var d = daysUntil(c.dueDate); return d!==null && d<0;
+  });
+
+  var potentialSavingsMonthly =
+    STATE.costs.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0) +
+    STATE.employees.filter(function(e){return e.excludeFromSimulation;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0) +
+    STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0) +
+    STATE.financings.filter(function(f){return f.excludeFromSimulation;}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+
+  return {
+    monthlyPayroll:monthlyPayroll, monthlyExternal:monthlyExternal, monthlyFinancing:monthlyFinancing,
+    monthlyFixed:monthlyFixed, totalBurn:totalBurn, annualRunRate:annualRunRate,
+    monthlyProjectCost:monthlyProjectCost, totalProjectCost:totalProjectCost,
+    monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
+    upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
+    potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
+    activeEmployees:activeEmployees
+  };
+}
+function monthlyEquivalentGeneric(amount,freq){
+  amount = Number(amount)||0;
+  switch(freq){
+    case 'miesięczny': return amount;
+    case 'kwartalny': return amount/3;
+    case 'półroczny': return amount/6;
+    case 'roczny': return amount/12;
+    default: return amount; // contracts default treat as monthly unless specified
+  }
+}
+
+/* ============================= WARSTWA DANYCH (API -> PostgreSQL) ============================= */
+function setSaveStatus(status,message){
+  window.__saveStatus = status;
+  var map = {
+    idle: {text:'✓ Zapisano w PostgreSQL — widoczne na wszystkich urządzeniach', cls:'pill-ok', action:''},
+    saving: {text:'Zapisywanie do bazy…', cls:'pill-muted', action:''},
+    error: {text:'⚠ '+(message||'Błąd zapisu do bazy danych')+' — kliknij, aby odświeżyć', cls:'pill-danger', action:' onclick="location.reload()" style="cursor:pointer"'},
+    loading: {text:'Wczytywanie danych…', cls:'pill-muted', action:''}
+  };
+  var m = map[status]||map.idle;
+  var html = '<span class="pill '+m.cls+'"'+m.action+'>'+m.text+'</span>';
+  ['save-status','save-status-mobile'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.innerHTML = html;
+  });
+}
+window.addEventListener('beforeunload', function(ev){
+  if(window.__saveStatus==='saving'){
+    ev.preventDefault(); ev.returnValue = 'Trwa zapisywanie do bazy danych. Czy na pewno chcesz opuścić stronę?'; return ev.returnValue;
+  }
+});
+
+// Generyczne wywołanie API (fetch -> Next.js Route Handler -> Prisma -> PostgreSQL).
+async function apiCall(method, url, body){
+  setSaveStatus('saving');
+  try{
+    var res = await fetch(url, {
+      method: method,
+      headers: body!==undefined ? {'Content-Type':'application/json'} : undefined,
+      body: body!==undefined ? JSON.stringify(body) : undefined
+    });
+    if(!res.ok){
+      var errBody = null; try{ errBody = await res.json(); }catch(e){}
+      throw new Error((errBody && errBody.message) || ('Błąd serwera (HTTP '+res.status+')'));
+    }
+    setSaveStatus('idle');
+    if(res.status===204) return null;
+    var text = await res.text();
+    return text? JSON.parse(text) : null;
+  }catch(e){
+    setSaveStatus('error', e.message);
+    throw e;
+  }
+}
+async function refreshState(){
+  var res = await fetch('/api/bootstrap', {cache:'no-store'});
+  if(!res.ok) throw new Error('Nie udało się pobrać danych z serwera.');
+  STATE = await res.json();
+}
+function afterMutation(promise){
+  return promise.then(function(){ return refreshState(); }).then(render);
+}
+
+/* ============================= NAV ============================= */
+var NAV = [
+  {key:'dashboard',label:'Dashboard',icon:'📊'},
+  {key:'employees',label:'Pracownicy',icon:'👤'},
+  {key:'projects',label:'Projekty',icon:'🏗️'},
+  {key:'costs',label:'Koszty',icon:'💰'},
+  {key:'fixedcosts',label:'Koszty stałe',icon:'📌'},
+  {key:'contracts',label:'Umowy i abonamenty',icon:'📄'},
+  {key:'financing',label:'Leasingi / kredyty',icon:'🏦'},
+  {key:'vendors',label:'Dostawcy',icon:'🏢'},
+  {key:'payments',label:'Płatności',icon:'📅'},
+  {key:'departments',label:'Działy / centra kosztów',icon:'🗂️'},
+  {key:'analysis',label:'Analiza kosztów',icon:'📈'},
+  {key:'simulator',label:'Symulator oszczędności',icon:'✂️'},
+  {key:'documents',label:'Dokumenty',icon:'📎'},
+  {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
+];
+function renderNav(){
+  var html = NAV.map(function(n){
+    return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
+  }).join('');
+  document.getElementById('nav-list').innerHTML = html;
+}
+function goTab(key){
+  currentTab = key;
+  try{ localStorage.setItem('ffp_tab',key); }catch(e){}
+  closeMobileNav();
+  clearGlobalSearch();
+  render();
+}
+function clearGlobalSearch(){
+  var input = document.getElementById('global-search');
+  if(input) input.value='';
+  searchQuery='';
+  var box = document.getElementById('search-overlay');
+  if(box){ box.innerHTML=''; box.style.display='none'; }
+}
+document.addEventListener('click',function(ev){
+  var box = document.getElementById('search-overlay');
+  var input = document.getElementById('global-search');
+  if(!box||!input) return;
+  if(box.style.display==='block' && ev.target!==input && !box.contains(ev.target)){ clearGlobalSearch(); }
+});
+function openMobileNav(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebar-overlay').classList.add('open'); }
+function closeMobileNav(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-overlay').classList.remove('open'); }
+
+/* ============================= GLOBAL SEARCH ============================= */
+function onGlobalSearch(v){
+  searchQuery = v.trim().toLowerCase();
+  var box = document.getElementById('search-overlay');
+  if(!searchQuery){ box.innerHTML=''; box.style.display='none'; return; }
+  var results = [];
+  STATE.employees.forEach(function(e){ if((empName(e)+e.position+e.email).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Pracownik',label:empName(e)+' — '+e.position,action:"openDetail('employees','"+e.id+"')"}); });
+  STATE.projects.forEach(function(p){ if((p.name+p.code).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Projekt',label:p.name+' ('+p.code+')',action:"openDetail('projects','"+p.id+"')"}); });
+  STATE.vendors.forEach(function(v2){ if((v2.name+v2.serviceType).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Dostawca',label:v2.name,action:"openForm('vendors','"+v2.id+"')"}); });
+  STATE.costs.forEach(function(c){ if((c.name+c.category+c.description).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Koszt',label:c.name+' — '+fmtMoney(c.grossAmount),action:"openForm('costs','"+c.id+"')"}); });
+  STATE.contracts.forEach(function(c){ if((c.name).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Umowa',label:c.name,action:"openForm('contracts','"+c.id+"')"}); });
+  results = results.slice(0,20);
+  box.style.cssText='position:fixed;top:52px;left:50%;transform:translateX(-50%);width:min(500px,92vw);background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.2);z-index:60;max-height:60vh;overflow-y:auto;display:block;';
+  box.innerHTML = results.length ? results.map(function(r){
+    return '<div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="'+r.action+';document.getElementById(\'global-search\').value=\'\';onGlobalSearch(\'\');"><span class="pill pill-muted">'+r.type+'</span> '+esc(r.label)+'</div>';
+  }).join('') : '<div style="padding:14px;color:var(--muted)">Brak wyników</div>';
+}
+
+/* ============================= MODAL ============================= */
+function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal').innerHTML=''; pendingModalSave=null; }
+function openModalHtml(html){ document.getElementById('modal').innerHTML = html; document.getElementById('modal-overlay').classList.add('open'); }
+
+/* ============================= FIELD SCHEMAS ============================= */
+var STATUS_OPTS_EMP = ['aktywny','urlop','zawieszony','zakończona współpraca'];
+var CONTRACT_TYPE_OPTS = ['umowa o pracę','B2B','zlecenie','dzieło','kontrakt managerski','inne'];
+var CRIT_OPTS = ['krytyczne','ważne','możliwe do zastąpienia','możliwe do outsourcingu','możliwe do redukcji'];
+var PROJECT_STATUS_OPTS = ['development','pozwolenia','RTB','budowa','operacyjny','zawieszony','sprzedany','zamknięty'];
+var RECURRENCE_OPTS = ['jednorazowy','miesięczny','kwartalny','półroczny','roczny','nieregularny'];
+var PAYMENT_STATUS_OPTS = ['planowany','zatwierdzony','do zapłaty','zapłacony','anulowany'];
+var NECESSITY_OPTS = ['niezbędny','ważny','opcjonalny','do analizy','do redukcji'];
+var FINANCING_TYPE_OPTS = ['leasing operacyjny','leasing finansowy','kredyt inwestycyjny','kredyt obrotowy','pożyczka','inne'];
+
+function projectOptions(includeAdmin){
+  var opts = STATE.projects.map(function(p){return {v:p.id,l:p.name};});
+  if(includeAdmin) opts.unshift({v:'ADMIN',l:'Administracja / Centrala'});
+  return opts;
+}
+function selectHtml(name,options,value,placeholder){
+  var o = (placeholder?'<option value="">'+placeholder+'</option>':'') + options.map(function(op){
+    var v = typeof op==='string'?op:op.v, l = typeof op==='string'?op:op.l;
+    return '<option value="'+esc(v)+'"'+(String(value)===String(v)?' selected':'')+'>'+esc(l)+'</option>';
+  }).join('');
+  return '<select name="'+name+'">'+o+'</select>';
+}
+
+/* ============================= RENDER ROOT ============================= */
+function render(){
+  renderNav();
+  var c = document.getElementById('content');
+  switch(currentTab){
+    case 'dashboard': c.innerHTML = viewDashboard(); break;
+    case 'employees': c.innerHTML = viewEmployees(); break;
+    case 'projects': c.innerHTML = viewProjects(); break;
+    case 'costs': c.innerHTML = viewCosts(false); break;
+    case 'fixedcosts': c.innerHTML = viewCosts(true); break;
+    case 'contracts': c.innerHTML = viewContracts(); break;
+    case 'financing': c.innerHTML = viewFinancing(); break;
+    case 'vendors': c.innerHTML = viewVendors(); break;
+    case 'payments': c.innerHTML = viewPayments(); break;
+    case 'departments': c.innerHTML = viewDepartments(); break;
+    case 'analysis': c.innerHTML = viewAnalysis(); break;
+    case 'simulator': c.innerHTML = viewSimulator(); break;
+    case 'documents': c.innerHTML = viewDocuments(); break;
+    case 'settings': c.innerHTML = viewSettings(); break;
+    default:
+      if(currentTab.indexOf('detail:')===0){
+        var parts = currentTab.split(':'); c.innerHTML = viewDetail(parts[1],parts[2]);
+      } else c.innerHTML = viewDashboard();
+  }
+}
+function openDetail(type,id){ currentTab='detail:'+type+':'+id; render(); }
+
+/* ============================= DASHBOARD ============================= */
+function viewDashboard(){
+  var m = metrics();
+  var topCosts = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,10);
+  var byCategory = {};
+  STATE.costs.forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
+  var byDept = m.deptCost;
+  var terminable = STATE.contracts.filter(function(c){ var d=daysUntil(c.earliestTerminationDate); return d!==null && d>=0 && d<=90; });
+  var unassignedEmp = STATE.employees.filter(function(e){ return !e.allocations || e.allocations.length===0; });
+
+  function barRows(obj,total,labelFn){
+    var keys = Object.keys(obj);
+    return keys.map(function(k){
+      var v = typeof obj[k]==='object'?obj[k].total:obj[k];
+      var pct = total>0? Math.round(v/total*100):0;
+      return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>'+esc(labelFn(k))+'</span><span class="muted">'+fmtMoney0(v)+' ('+pct+'%)</span></div><div class="progress-bar"><div style="width:'+pct+'%"></div></div></div>';
+    }).join('') || '<div class="empty">Brak danych</div>';
+  }
+
+  return ''+
+  '<h2 class="page-title">Dashboard Prezesa</h2>'+
+  '<div class="page-sub">Stan na '+fmtDate(todayISO())+' • dane aktualizowane na bieżąco</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
+    kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
+    kpi('Koszty stałe / mies.', fmtMoney0(m.monthlyFixed))+
+    kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll))+
+    kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
+    kpi('Koszty administracyjne / mies.', fmtMoney0(m.monthlyAdmin))+
+    kpi('Płatności w 7 dni', fmtMoney0(m.upcoming7.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming7.length+' szt.', false, m.upcoming7.length>0)+
+    kpi('Płatności w 30 dni', fmtMoney0(m.upcoming30.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming30.length+' szt.')+
+    kpi('Liczba pracowników', String(m.activeEmployees.length))+
+    kpi('Aktywne projekty', String(STATE.projects.filter(function(p){return ['budowa','operacyjny','pozwolenia','RTB','development'].indexOf(p.status)>=0;}).length))+
+    kpi('Potencjalne oszczędności / mies.', fmtMoney0(m.potentialSavingsMonthly), false, m.potentialSavingsMonthly>0)+
+    kpi('Potencjalne oszczędności / rok', fmtMoney0(m.potentialSavingsAnnual))+
+  '</div>'+
+  (m.overdue.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Zaległe płatności ('+m.overdue.length+')</h3>'+costsTable(m.overdue,false)+'</div>':'')+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Struktura kosztów według kategorii (miesięcznie)</h3>'+barRows(byCategory, m.monthlyExternal, function(k){return k;})+'</div>'+
+    '<div class="panel"><h3>Struktura kosztów według działów (miesięcznie)</h3>'+barRows(byDept, Object.keys(byDept).reduce(function(s,k){return s+byDept[k].total;},0), function(k){return deptName(k);})+'</div>'+
+  '</div>'+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Struktura kosztów według projektów (miesięcznie)</h3>'+barRows(m.monthlyProjectCost, m.totalProjectCost, function(k){return projectName(k);})+'</div>'+
+    '<div class="panel"><h3>TOP 10 największych kosztów</h3>'+costsTable(topCosts,false)+'</div>'+
+  '</div>'+
+  '<div class="grid3">'+
+    '<div class="panel"><h3>Najbliższe płatności (30 dni)</h3>'+costsTable(m.upcoming30.slice(0,8),false)+'</div>'+
+    '<div class="panel"><h3>Umowy możliwe do wypowiedzenia (90 dni)</h3>'+(terminable.length? terminable.map(function(c){return '<div style="margin-bottom:8px"><b>'+esc(c.name)+'</b><br><span class="muted">termin: '+fmtDate(c.earliestTerminationDate)+' • '+fmtMoney0(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.</span></div>';}).join(''):'<div class="empty">Brak</div>')+'</div>'+
+    '<div class="panel"><h3>Nieprzypisane</h3><div class="section-title" style="margin-top:0">Koszty bez projektu ('+m.unassignedCosts.length+')</div>'+(m.unassignedCosts.length?fmtMoney0(m.unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0))+'/mies.':'<span class="muted">Brak</span>')+
+    '<div class="section-title">Osoby bez projektu ('+unassignedEmp.length+')</div>'+(unassignedEmp.length? unassignedEmp.map(function(e){return '<div>'+esc(empName(e))+'</div>';}).join(''):'<span class="muted">Brak</span>')+'</div>'+
+  '</div>';
+}
+function kpi(label,value,accent,warn){
+  return '<div class="kpi'+(accent?' accent':'')+(warn?' warn':'')+'"><div class="label">'+esc(label)+'</div><div class="value'+(String(value).length>10?' small':'')+'">'+value+'</div></div>';
+}
+
+/* ============================= COSTS TABLE (shared) ============================= */
+function costsTable(list,showActions){
+  if(!list.length) return '<div class="empty">Brak pozycji</div>';
+  return '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kategoria</th><th>Projekt</th><th>Kwota brutto</th><th>Termin płatności</th><th>Status</th>'+(showActions!==false?'<th></th>':'')+'</tr></thead><tbody>'+
+    list.map(function(c){
+      return '<tr><td>'+esc(c.name)+(c.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(c.category||'—')+'</td><td>'+esc(projectName(c.projectId))+'</td><td class="right">'+fmtMoney(c.grossAmount)+'</td><td>'+fmtDate(c.dueDate)+'</td><td>'+paymentPill(c.paymentStatus)+'</td>'+
+      (showActions!==false?'<td><span class="link" onclick="openForm(\'costs\',\''+c.id+'\')">edytuj</span></td>':'')+
+      '</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+function paymentPill(status){
+  var cls = status==='zapłacony'?'pill-ok':(status==='do zapłaty'?'pill-warn':(status==='anulowany'?'pill-muted':'pill-muted'));
+  return '<span class="pill '+cls+'">'+esc(status||'—')+'</span>';
+}
+function necessityPill(n){
+  var map = {'niezbędny':'pill-ok','ważny':'pill-ok','opcjonalny':'pill-warn','do analizy':'pill-warn','do redukcji':'pill-danger'};
+  return '<span class="pill '+(map[n]||'pill-muted')+'">'+esc(n||'—')+'</span>';
+}
+
+/* ============================= GENERIC CRUD HELPERS ============================= */
+// coll = nazwa kolekcji STATE, identyczna z segmentem REST API (/api/<coll>/<id>).
+function deleteEntity(coll,id,label){
+  if(!confirm('Usunąć pozycję: '+label+'?')) return;
+  afterMutation(apiCall('DELETE','/api/'+coll+'/'+id)).catch(function(e){ alert('Nie udało się usunąć: '+e.message); });
+}
+function exportCsv(rows,headers,filename){
+  var lines = [headers.map(function(h){return h.label;}).join(';')];
+  rows.forEach(function(r){
+    lines.push(headers.map(function(h){ var v=r[h.key]; return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'));
+  });
+  var csv = lines.join('\n');
+  downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+}
+function downloadTextFile(filename, content, mime){
+  var blob = new Blob([content], {type: mime||'text/plain'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+}
+
+/* ============================= EMPLOYEES ============================= */
+function viewEmployees(){
+  var m = metrics();
+  var list = STATE.employees.filter(applySearchFilter);
+  return '<h2 class="page-title">Pracownicy</h2><div class="page-sub">Łączny koszt miesięczny: '+fmtMoney0(m.monthlyPayroll)+' • '+STATE.employees.length+' osób</div>'+
+  '<div class="toolbar"><div class="filters">'+
+    '<select onchange="empFilterDept(this.value)"><option value="">Wszystkie działy</option>'+STATE.departments.map(function(d){return '<option value="'+d.id+'">'+esc(d.name)+'</option>';}).join('')+'</select>'+
+    '<select onchange="empFilterStatus(this.value)"><option value="">Wszystkie statusy</option>'+STATUS_OPTS_EMP.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('')+'</select>'+
+  '</div><div><button class="btn btn-sm" onclick="exportEmployeesCsv()">Eksport CSV</button> <button class="btn btn-primary" onclick="openForm(\'employees\')">+ Dodaj pracownika</button></div></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Imię i nazwisko</th><th>Stanowisko</th><th>Dział</th><th>Forma</th><th>Status</th><th>Koszt / mies.</th><th>Ocena</th><th>Projekty</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(e){
+    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span>'+(e.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(e.position)+'</td><td>'+esc(deptName(e.departmentId))+'</td><td>'+esc(e.contractType)+'</td><td>'+empStatusPill(e.status)+'</td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'</td><td>'+necessityPill(e.criticalRating)+'</td><td>'+(e.allocations||[]).map(function(a){return esc(projectName(a.projectId))+' '+a.pct+'%';}).join(', ')+'</td><td><span class="link" onclick="openForm(\'employees\',\''+e.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="9" class="empty">Brak pracowników</td></tr>')+
+  '</tbody></table></div>';
+}
+function empStatusPill(s){
+  var map={'aktywny':'pill-ok','urlop':'pill-warn','zawieszony':'pill-warn','zakończona współpraca':'pill-muted'};
+  return '<span class="pill '+(map[s]||'pill-muted')+'">'+esc(s)+'</span>';
+}
+var empFilters = {dept:'',status:''};
+function empFilterDept(v){ empFilters.dept=v; render(); }
+function empFilterStatus(v){ empFilters.status=v; render(); }
+function applySearchFilter(){ return true; }
+function exportEmployeesCsv(){
+  exportCsv(STATE.employees.map(function(e){return {name:empName(e),position:e.position,dept:deptName(e.departmentId),status:e.status,contractType:e.contractType,cost:totalMonthlyCostEmployee(e)};}),
+    [{key:'name',label:'Imię i nazwisko'},{key:'position',label:'Stanowisko'},{key:'dept',label:'Dział'},{key:'status',label:'Status'},{key:'contractType',label:'Forma'},{key:'cost',label:'Koszt miesięczny'}],'pracownicy.csv');
+}
+
+function employeeForm(e){
+  e = e || {firstName:'',lastName:'',email:'',phone:'',position:'',departmentId:'',managerId:'',status:'aktywny',contractType:'umowa o pracę',
+    netSalary:'',grossSalary:'',employerCost:'',otherMonthlyCost:0,bonus:0,car:0,phoneCost:0,computer:0,otherBenefits:0,
+    responsibilities:'',justification:'',keyTasks:'',allocations:[],criticalRating:'ważne',presidentNotes:'',excludeFromSimulation:false};
+  var isNew = !e.id;
+  window.__allocDraft = (e.allocations||[]).slice();
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy pracownik':'Edytuj pracownika')+'</h3>'+
+  '<form id="entity-form" onsubmit="return saveEmployee(event,\''+(e.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Imię</label><input name="firstName" value="'+esc(e.firstName)+'" required></div><div><label>Nazwisko</label><input name="lastName" value="'+esc(e.lastName)+'" required></div></div>'+
+  '<div class="form-row2"><div><label>Służbowy e-mail</label><input type="email" name="email" value="'+esc(e.email)+'"></div><div><label>Telefon</label><input name="phone" value="'+esc(e.phone)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Stanowisko</label><input name="position" value="'+esc(e.position)+'" required></div><div><label>Dział</label>'+selectHtml('departmentId',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),e.departmentId,'—')+'</div></div>'+
+  '<div class="form-row2"><div><label>Status</label>'+selectHtml('status',STATUS_OPTS_EMP,e.status)+'</div><div><label>Forma współpracy</label>'+selectHtml('contractType',CONTRACT_TYPE_OPTS,e.contractType)+'</div></div>'+
+  '<div class="section-title">Koszt</div>'+
+  '<div class="form-row2"><div><label>Wynagrodzenie netto</label><input type="number" step="0.01" name="netSalary" value="'+e.netSalary+'"></div><div><label>Wynagrodzenie brutto</label><input type="number" step="0.01" name="grossSalary" value="'+e.grossSalary+'"></div></div>'+
+  '<div class="form-row2"><div><label>Pełny koszt pracodawcy</label><input type="number" step="0.01" name="employerCost" value="'+e.employerCost+'"></div><div><label>Premie / mies.</label><input type="number" step="0.01" name="bonus" value="'+e.bonus+'"></div></div>'+
+  '<div class="form-row2"><div><label>Samochód (ryczałt)</label><input type="number" step="0.01" name="car" value="'+e.car+'"></div><div><label>Telefon (koszt)</label><input type="number" step="0.01" name="phoneCost" value="'+e.phoneCost+'"></div></div>'+
+  '<div class="form-row2"><div><label>Komputer / sprzęt</label><input type="number" step="0.01" name="computer" value="'+e.computer+'"></div><div><label>Inne benefity / mies.</label><input type="number" step="0.01" name="otherBenefits" value="'+e.otherBenefits+'"></div></div>'+
+  '<label>Inne koszty miesięczne</label><input type="number" step="0.01" name="otherMonthlyCost" value="'+e.otherMonthlyCost+'">'+
+  '<div class="section-title">Odpowiedzialność</div>'+
+  '<label>Za co odpowiada?</label><textarea class="textarea-lg" name="responsibilities">'+esc(e.responsibilities)+'</textarea>'+
+  '<label>Dlaczego ta osoba jest potrzebna spółce?</label><textarea class="textarea-lg" name="justification">'+esc(e.justification)+'</textarea>'+
+  '<label>Kluczowe zadania (każde w nowej linii)</label><textarea class="textarea-lg" name="keyTasks">'+esc(e.keyTasks)+'</textarea>'+
+  '<div class="section-title">Przypisanie do projektów</div>'+
+  '<div id="alloc-list"></div>'+
+  '<button type="button" class="btn btn-sm" onclick="addAllocRow()">+ dodaj przypisanie</button>'+
+  '<div class="section-title">Ocena stanowiska</div>'+
+  '<div class="form-row2"><div><label>Ocena</label>'+selectHtml('criticalRating',CRIT_OPTS,e.criticalRating)+'</div><div><label style="margin-top:24px"><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(e.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze redukcji</label></div></div>'+
+  '<label>Uwagi Prezesa</label><textarea name="presidentNotes">'+esc(e.presidentNotes)+'</textarea>'+
+  '<div class="modal-actions">'+(e.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'employees\',\''+e.id+'\',\''+esc(empName(e))+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function renderAllocRows(){
+  var el = document.getElementById('alloc-list'); if(!el) return;
+  var opts = projectOptions(true);
+  el.innerHTML = window.__allocDraft.map(function(a,i){
+    return '<div class="alloc-row">'+selectHtml('alloc_p_'+i,opts,a.projectId)+'<input type="number" min="0" max="100" placeholder="%" value="'+a.pct+'" onchange="window.__allocDraft['+i+'].pct=this.value">'+
+    '<button type="button" class="btn btn-sm btn-icon" onclick="removeAllocRow('+i+')">✕</button></div>';
+  }).join('');
+  el.querySelectorAll('select').forEach(function(sel,i){ sel.onchange=function(){ window.__allocDraft[i].projectId=this.value; }; });
+}
+function addAllocRow(){ window.__allocDraft.push({projectId:'ADMIN',pct:0}); renderAllocRows(); }
+function removeAllocRow(i){ window.__allocDraft.splice(i,1); renderAllocRows(); }
+function saveEmployee(ev,id){
+  ev.preventDefault();
+  var f = new FormData(ev.target);
+  var obj = {firstName:f.get('firstName'),lastName:f.get('lastName'),email:f.get('email'),phone:f.get('phone'),
+    position:f.get('position'),departmentId:f.get('departmentId'),status:f.get('status'),contractType:f.get('contractType'),
+    netSalary:f.get('netSalary'),grossSalary:f.get('grossSalary'),employerCost:f.get('employerCost'),otherMonthlyCost:f.get('otherMonthlyCost'),
+    bonus:f.get('bonus'),car:f.get('car'),phoneCost:f.get('phoneCost'),computer:f.get('computer'),otherBenefits:f.get('otherBenefits'),
+    responsibilities:f.get('responsibilities'),justification:f.get('justification'),keyTasks:f.get('keyTasks'),
+    allocations:window.__allocDraft.filter(function(a){return a.projectId;}),
+    criticalRating:f.get('criticalRating'),presidentNotes:f.get('presidentNotes'),excludeFromSimulation:f.get('excludeFromSimulation')==='on'};
+  var url = id? '/api/employees/'+id : '/api/employees';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać pracownika: '+e.message); });
+  return false;
+}
+
+/* ============================= PROJECTS ============================= */
+function viewProjects(){
+  var m = metrics();
+  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies.</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th></th></tr></thead><tbody>'+
+  (STATE.projects.length?STATE.projects.map(function(p){
+    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(m.monthlyProjectCost[p.id]||0)+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="7" class="empty">Brak projektów</td></tr>')+
+  '</tbody></table></div>';
+}
+function projectStatusPill(s){
+  var map={'operacyjny':'pill-ok','budowa':'pill-ok','sprzedany':'pill-muted','zamknięty':'pill-muted','zawieszony':'pill-danger'};
+  return '<span class="pill '+(map[s]||'pill-warn')+'">'+esc(s||'—')+'</span>';
+}
+function projectForm(p){
+  p = p || {name:'',code:'',spv:'',location:'',mwPower:'',status:'development',owner:'',startDate:'',endDate:'',description:''};
+  var isNew = !p.id;
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy projekt':'Edytuj projekt')+'</h3>'+
+  '<form onsubmit="return saveProject(event,\''+(p.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Nazwa</label><input name="name" value="'+esc(p.name)+'" required></div><div><label>Kod projektu</label><input name="code" value="'+esc(p.code)+'"></div></div>'+
+  '<div class="form-row2"><div><label>SPV</label><input name="spv" value="'+esc(p.spv)+'"></div><div><label>Lokalizacja</label><input name="location" value="'+esc(p.location)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Moc (MW)</label><input type="number" step="0.01" name="mwPower" value="'+p.mwPower+'"></div><div><label>Status</label>'+selectHtml('status',PROJECT_STATUS_OPTS,p.status)+'</div></div>'+
+  '<div class="form-row2"><div><label>Osoba odpowiedzialna</label><input name="owner" value="'+esc(p.owner)+'"></div><div></div></div>'+
+  '<div class="form-row2"><div><label>Data rozpoczęcia</label><input type="date" name="startDate" value="'+esc(p.startDate)+'"></div><div><label>Planowana data zakończenia</label><input type="date" name="endDate" value="'+esc(p.endDate)+'"></div></div>'+
+  '<label>Opis</label><textarea class="textarea-lg" name="description">'+esc(p.description)+'</textarea>'+
+  '<div class="modal-actions">'+(p.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'projects\',\''+p.id+'\',\''+esc(p.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveProject(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {name:f.get('name'),code:f.get('code'),spv:f.get('spv'),location:f.get('location'),mwPower:f.get('mwPower'),status:f.get('status'),owner:f.get('owner'),startDate:f.get('startDate'),endDate:f.get('endDate'),description:f.get('description')};
+  var url = id? '/api/projects/'+id : '/api/projects';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać projektu: '+e.message); });
+  return false;
+}
+
+/* ============================= DETAIL VIEWS (project / employee) ============================= */
+function viewDetail(type,id){
+  if(type==='projects') return projectDetail(byId(STATE.projects,id));
+  if(type==='employees') return employeeDetail(byId(STATE.employees,id));
+  return '<div class="empty">Nie znaleziono</div>';
+}
+function projectDetail(p){
+  if(!p) return '<div class="empty">Nie znaleziono projektu</div>';
+  var m = metrics();
+  var costs = STATE.costs.filter(function(c){return c.projectId===p.id;});
+  var emps = STATE.employees.filter(function(e){return empAllocPct(e,p.id)>0;});
+  var extCost = costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var empCost = emps.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
+  var fixedCost = costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var oneTimeCost = costs.filter(function(c){return c.recurrence==='jednorazowy'||c.recurrence==='nieregularny';}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+  var sinceStart = costs.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0)+oneTimeCost*0; // sum of all recorded gross amounts as "since start"
+  return '<span class="link" onclick="goTab(\'projects\')">← Projekty</span>'+
+  '<h2 class="page-title">'+esc(p.name)+' <span class="pill pill-muted">'+esc(p.code||'')+'</span></h2>'+
+  '<div class="page-sub">SPV: '+esc(p.spv||'—')+' • '+esc(p.location||'—')+' • '+esc(p.mwPower||'—')+' MW • '+projectStatusPill(p.status)+'</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
+    kpi('Koszt od początku projektu',fmtMoney0(sinceStart))+
+    kpi('Koszt pracowników',fmtMoney0(empCost))+
+    kpi('Koszt zewnętrzny',fmtMoney0(extCost))+
+    kpi('Koszt stały',fmtMoney0(fixedCost))+
+    kpi('Koszt jednorazowy',fmtMoney0(oneTimeCost))+
+  '</div>'+
+  '<div class="panel"><h3>Opis</h3><div>'+esc(p.description||'—')+'</div></div>'+
+  '<div class="panel"><div class="toolbar"><h3 style="margin:0">Koszty projektu</h3><button class="btn btn-sm btn-primary" onclick="openForm(\'costs\',null,{projectId:\''+p.id+'\'})">+ dodaj koszt</button></div>'+costsTable(costs)+'</div>'+
+  '<div class="panel"><h3>Osoby pracujące przy projekcie</h3>'+(emps.length?'<div class="table-wrap"><table><thead><tr><th>Osoba</th><th>Stanowisko</th><th>% czasu</th><th>Koszt przypisany</th></tr></thead><tbody>'+emps.map(function(e){
+    var pct = empAllocPct(e,p.id);
+    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span></td><td>'+esc(e.position)+'</td><td>'+pct+'%</td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e)*pct/100)+'</td></tr>';
+  }).join('')+'</tbody></table></div>':'<div class="empty">Brak przypisanych osób</div>')+'</div>'+
+  '<button class="btn" onclick="openForm(\'projects\',\''+p.id+'\')">Edytuj projekt</button>';
+}
+function employeeDetail(e){
+  if(!e) return '<div class="empty">Nie znaleziono pracownika</div>';
+  return '<span class="link" onclick="goTab(\'employees\')">← Pracownicy</span>'+
+  '<h2 class="page-title">'+esc(empName(e))+'</h2>'+
+  '<div class="page-sub">'+esc(e.position)+' • '+esc(deptName(e.departmentId))+' • '+empStatusPill(e.status)+'</div>'+
+  '<div class="kpi-grid">'+kpi('Całkowity koszt miesięczny',fmtMoney0(totalMonthlyCostEmployee(e)),true)+kpi('Forma współpracy',e.contractType)+kpi('Ocena stanowiska',e.criticalRating)+'</div>'+
+  '<div class="grid2">'+
+  '<div class="panel"><h3>Za co odpowiada</h3><div>'+esc(e.responsibilities||'—')+'</div></div>'+
+  '<div class="panel"><h3>Dlaczego ta osoba jest potrzebna</h3><div>'+esc(e.justification||'—')+'</div></div>'+
+  '</div>'+
+  '<div class="panel"><h3>Kluczowe zadania</h3>'+(e.keyTasks?'<ul>'+e.keyTasks.split('\n').filter(Boolean).map(function(t){return '<li>'+esc(t)+'</li>';}).join('')+'</ul>':'<div class="empty">Brak</div>')+'</div>'+
+  '<div class="panel"><h3>Projekty</h3>'+((e.allocations||[]).length?'<ul>'+e.allocations.map(function(a){return '<li>'+esc(projectName(a.projectId))+' — '+a.pct+'%</li>';}).join('')+'</ul>':'<div class="empty">Brak przypisań</div>')+'</div>'+
+  (e.presidentNotes?'<div class="panel"><h3>Uwagi Prezesa</h3><div>'+esc(e.presidentNotes)+'</div></div>':'')+
+  '<button class="btn" onclick="openForm(\'employees\',\''+e.id+'\')">Edytuj</button>';
+}
+
+/* ============================= COSTS (register) ============================= */
+var costFilters = {project:'',dept:'',category:'',status:''};
+function viewCosts(fixedOnly){
+  var list = STATE.costs.filter(function(c){
+    if(fixedOnly && !c.isFixed) return false;
+    if(costFilters.project && c.projectId!==costFilters.project) return false;
+    if(costFilters.dept && c.departmentId!==costFilters.dept) return false;
+    if(costFilters.category && c.category!==costFilters.category) return false;
+    if(costFilters.status && c.paymentStatus!==costFilters.status) return false;
+    return true;
+  });
+  var total = list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+  var totalMonthly = list.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  return '<h2 class="page-title">'+(fixedOnly?'Koszty stałe':'Rejestr kosztów')+'</h2>'+
+  '<div class="page-sub">'+list.length+' pozycji • suma brutto: '+fmtMoney0(total)+' • ekwiwalent miesięczny (cykliczne): '+fmtMoney0(totalMonthly)+'</div>'+
+  '<div class="toolbar"><div class="filters">'+
+    selectFilter('project',projectOptions(true),'Wszystkie projekty','costFilterChange')+
+    selectFilter('dept',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),'Wszystkie działy','costFilterChange')+
+    selectFilter('category',STATE.costCategories,'Wszystkie kategorie','costFilterChange')+
+    selectFilter('status',PAYMENT_STATUS_OPTS,'Wszystkie statusy','costFilterChange')+
+  '</div><div><button class="btn btn-sm" onclick="exportCostsCsv('+(fixedOnly?'true':'false')+')">Eksport CSV</button> <button class="btn btn-primary" onclick="openForm(\'costs\''+(fixedOnly?',null,{isFixed:true}':'')+')">+ Dodaj koszt</button></div></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kategoria</th><th>Dostawca</th><th>Projekt / Dział</th><th>Netto</th><th>Brutto</th><th>Cykl</th><th>Termin</th><th>Status</th><th>Ocena</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(c){
+    return '<tr><td>'+esc(c.name)+(c.isDemo?'<span class="demo-tag">DEMO</span>':'')+'<div class="muted" style="font-size:11px">'+esc(c.docNumber||'')+'</div></td><td>'+esc(c.category||'—')+'</td><td>'+esc(vendorName(c.vendorId))+'</td><td>'+esc(c.projectId?projectName(c.projectId):deptName(c.departmentId))+'</td><td class="right">'+fmtMoney(c.netAmount)+'</td><td class="right">'+fmtMoney(c.grossAmount)+'</td><td>'+esc(c.recurrence)+'</td><td>'+fmtDate(c.dueDate)+'</td><td>'+paymentPill(c.paymentStatus)+'</td><td>'+necessityPill(c.necessity)+'</td><td><span class="link" onclick="openForm(\'costs\',\''+c.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="11" class="empty">Brak kosztów</td></tr>')+
+  '</tbody></table></div>';
+}
+function selectFilter(key,options,placeholder,fn){
+  var o = '<option value="">'+placeholder+'</option>'+options.map(function(op){
+    var v=typeof op==='string'?op:op.v, l=typeof op==='string'?op:op.l;
+    return '<option value="'+esc(v)+'"'+(costFilters[key]===v?' selected':'')+'>'+esc(l)+'</option>';
+  }).join('');
+  return '<select onchange="'+fn+'(\''+key+'\',this.value)">'+o+'</select>';
+}
+function costFilterChange(key,val){ costFilters[key]=val; render(); }
+function exportCostsCsv(fixedOnly){
+  var list = STATE.costs.filter(function(c){return !fixedOnly||c.isFixed;});
+  exportCsv(list.map(function(c){return {name:c.name,category:c.category,vendor:vendorName(c.vendorId),net:c.netAmount,gross:c.grossAmount,recurrence:c.recurrence,due:fmtDate(c.dueDate),status:c.paymentStatus};}),
+    [{key:'name',label:'Nazwa'},{key:'category',label:'Kategoria'},{key:'vendor',label:'Dostawca'},{key:'net',label:'Netto'},{key:'gross',label:'Brutto'},{key:'recurrence',label:'Cykliczność'},{key:'due',label:'Termin płatności'},{key:'status',label:'Status'}],
+    fixedOnly?'koszty_stale.csv':'koszty.csv');
+}
+function costForm(c,defaults){
+  c = c || Object.assign({name:'',description:'',vendorId:'',netAmount:'',vat:23,grossAmount:'',currency:'PLN',category:STATE.costCategories[0],subcategory:'',departmentId:'',projectId:'',costCenter:'',costDate:todayISO(),invoiceDate:'',dueDate:'',paymentStatus:'planowany',recurrence:'jednorazowy',docNumber:'',notes:'',necessity:'do analizy',isFixed:false,excludeFromSimulation:false,budgetMonthly:'',documentLink:''},defaults||{});
+  var isNew = !c.id;
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy koszt':'Edytuj koszt')+'</h3>'+
+  '<form onsubmit="return saveCost(event,\''+(c.id||'')+'\')">'+
+  '<label>Nazwa</label><input name="name" value="'+esc(c.name)+'" required>'+
+  '<label>Opis</label><input name="description" value="'+esc(c.description)+'">'+
+  '<div class="form-row2"><div><label>Dostawca</label>'+selectHtml('vendorId',STATE.vendors.map(function(v){return {v:v.id,l:v.name};}),c.vendorId,'—')+'</div><div><label>Numer dokumentu</label><input name="docNumber" value="'+esc(c.docNumber)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Kwota netto</label><input type="number" step="0.01" name="netAmount" value="'+c.netAmount+'" oninput="autoGross(this)"></div><div><label>VAT %</label><input type="number" step="1" name="vat" value="'+c.vat+'" oninput="autoGross(this)"></div></div>'+
+  '<div class="form-row2"><div><label>Kwota brutto</label><input type="number" step="0.01" name="grossAmount" value="'+c.grossAmount+'"></div><div><label>Waluta</label>'+selectHtml('currency',['PLN','EUR','USD'],c.currency)+'</div></div>'+
+  '<div class="form-row2"><div><label>Kategoria</label>'+selectHtml('category',STATE.costCategories,c.category)+'</div><div><label>Podkategoria</label><input name="subcategory" value="'+esc(c.subcategory)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Dział</label>'+selectHtml('departmentId',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),c.departmentId,'—')+'</div><div><label>Projekt</label>'+selectHtml('projectId',STATE.projects.map(function(p){return {v:p.id,l:p.name};}),c.projectId,'— (koszt centrali)')+'</div></div>'+
+  '<div class="form-row2"><div><label>Centrum kosztów</label>'+selectHtml('costCenter',STATE.costCenters,c.costCenter,'—')+'</div><div><label>Cykliczność</label>'+selectHtml('recurrence',RECURRENCE_OPTS,c.recurrence)+'</div></div>'+
+  '<div class="form-row2"><div><label>Data kosztu</label><input type="date" name="costDate" value="'+esc(c.costDate)+'"></div><div><label>Data faktury</label><input type="date" name="invoiceDate" value="'+esc(c.invoiceDate)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Termin płatności</label><input type="date" name="dueDate" value="'+esc(c.dueDate)+'"></div><div><label>Status płatności</label>'+selectHtml('paymentStatus',PAYMENT_STATUS_OPTS,c.paymentStatus)+'</div></div>'+
+  '<div class="form-row2"><div><label>Budżet miesięczny (plan)</label><input type="number" step="0.01" name="budgetMonthly" value="'+c.budgetMonthly+'"></div><div><label>Ocena konieczności</label>'+selectHtml('necessity',NECESSITY_OPTS,c.necessity)+'</div></div>'+
+  '<div class="form-row2"><div><label><input type="checkbox" style="width:auto" name="isFixed" '+(c.isFixed?'checked':'')+'> Koszt stały</label></div><div><label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(c.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze</label></div></div>'+
+  '<label>Link do dokumentu</label><input name="documentLink" value="'+esc(c.documentLink)+'">'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(c.notes)+'</textarea>'+
+  '<div class="modal-actions">'+(c.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'costs\',\''+c.id+'\',\''+esc(c.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function autoGross(el){
+  var form = el.closest('form');
+  var net = parseFloat(form.netAmount.value)||0, vat = parseFloat(form.vat.value)||0;
+  if(net>0) form.grossAmount.value = (net*(1+vat/100)).toFixed(2);
+}
+function saveCost(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {name:f.get('name'),description:f.get('description'),vendorId:f.get('vendorId'),netAmount:f.get('netAmount'),vat:f.get('vat'),grossAmount:f.get('grossAmount'),currency:f.get('currency'),
+    category:f.get('category'),subcategory:f.get('subcategory'),departmentId:f.get('departmentId'),projectId:f.get('projectId'),costCenter:f.get('costCenter'),
+    costDate:f.get('costDate'),invoiceDate:f.get('invoiceDate'),dueDate:f.get('dueDate'),paymentStatus:f.get('paymentStatus'),recurrence:f.get('recurrence'),
+    docNumber:f.get('docNumber'),notes:f.get('notes'),necessity:f.get('necessity'),isFixed:f.get('isFixed')==='on',excludeFromSimulation:f.get('excludeFromSimulation')==='on',
+    budgetMonthly:f.get('budgetMonthly'),documentLink:f.get('documentLink')};
+  var url = id? '/api/costs/'+id : '/api/costs';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać kosztu: '+e.message); });
+  return false;
+}
+
+/* ============================= CONTRACTS ============================= */
+function viewContracts(){
+  var list = STATE.contracts;
+  return '<h2 class="page-title">Umowy i abonamenty</h2><div class="page-sub">'+list.length+' umów • suma miesięcznie: '+fmtMoney0(list.reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0))+'</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'contracts\')">+ Dodaj umowę</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kontrahent</th><th>Koszt / mies.</th><th>Koszt / rok</th><th>Wypowiedzenie od</th><th>Auto-przedłużenie</th><th>Oszczędność po wypowiedzeniu</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(c){
+    var mo = monthlyEquivalentGeneric(c.amount,c.frequency);
+    return '<tr><td>'+esc(c.name)+'</td><td>'+esc(vendorName(c.vendorId))+'</td><td class="right">'+fmtMoney(mo)+'</td><td class="right">'+fmtMoney(mo*12)+'</td><td>'+fmtDate(c.earliestTerminationDate)+'</td><td>'+(c.autoRenew?'<span class="pill pill-warn">TAK</span>':'<span class="pill pill-muted">NIE</span>')+'</td><td class="right">'+fmtMoney(mo*12)+'/rok</td><td><span class="link" onclick="openForm(\'contracts\',\''+c.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="8" class="empty">Brak umów</td></tr>')+
+  '</tbody></table></div>';
+}
+function contractForm(c){
+  c = c || {vendorId:'',name:'',description:'',amount:'',netGross:'brutto',frequency:'miesięczny',startDate:'',endDate:'',noticePeriodDays:30,earliestTerminationDate:'',autoRenew:false,owner:'',projectId:'',documentLink:'',notes:'',excludeFromSimulation:false};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(c.id?'Edytuj umowę':'Nowa umowa')+'</h3>'+
+  '<form onsubmit="return saveContract(event,\''+(c.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Kontrahent</label>'+selectHtml('vendorId',STATE.vendors.map(function(v){return {v:v.id,l:v.name};}),c.vendorId,'—')+'</div><div><label>Nazwa umowy</label><input name="name" value="'+esc(c.name)+'" required></div></div>'+
+  '<label>Opis</label><input name="description" value="'+esc(c.description)+'">'+
+  '<div class="form-row2"><div><label>Koszt</label><input type="number" step="0.01" name="amount" value="'+c.amount+'"></div><div><label>Netto/Brutto</label>'+selectHtml('netGross',['netto','brutto'],c.netGross)+'</div></div>'+
+  '<div class="form-row2"><div><label>Częstotliwość</label>'+selectHtml('frequency',RECURRENCE_OPTS,c.frequency)+'</div><div><label>Projekt</label>'+selectHtml('projectId',STATE.projects.map(function(p){return {v:p.id,l:p.name};}),c.projectId,'—')+'</div></div>'+
+  '<div class="form-row2"><div><label>Data rozpoczęcia</label><input type="date" name="startDate" value="'+esc(c.startDate)+'"></div><div><label>Data zakończenia</label><input type="date" name="endDate" value="'+esc(c.endDate)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Okres wypowiedzenia (dni)</label><input type="number" name="noticePeriodDays" value="'+c.noticePeriodDays+'"></div><div><label>Najwcześniejsza data wypowiedzenia</label><input type="date" name="earliestTerminationDate" value="'+esc(c.earliestTerminationDate)+'"></div></div>'+
+  '<div class="form-row2"><div><label><input type="checkbox" style="width:auto" name="autoRenew" '+(c.autoRenew?'checked':'')+'> Automatyczne przedłużenie</label></div><div><label>Osoba odpowiedzialna</label><input name="owner" value="'+esc(c.owner)+'"></div></div>'+
+  '<label>Link do dokumentu</label><input name="documentLink" value="'+esc(c.documentLink)+'">'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(c.notes)+'</textarea>'+
+  '<label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(c.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze oszczędności</label>'+
+  '<div class="modal-actions">'+(c.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'contracts\',\''+c.id+'\',\''+esc(c.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveContract(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {vendorId:f.get('vendorId'),name:f.get('name'),description:f.get('description'),amount:f.get('amount'),netGross:f.get('netGross'),frequency:f.get('frequency'),
+    projectId:f.get('projectId'),startDate:f.get('startDate'),endDate:f.get('endDate'),noticePeriodDays:f.get('noticePeriodDays'),earliestTerminationDate:f.get('earliestTerminationDate'),
+    autoRenew:f.get('autoRenew')==='on',owner:f.get('owner'),documentLink:f.get('documentLink'),notes:f.get('notes'),excludeFromSimulation:f.get('excludeFromSimulation')==='on'};
+  var url = id? '/api/contracts/'+id : '/api/contracts';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać umowy: '+e.message); });
+  return false;
+}
+
+/* ============================= FINANCING ============================= */
+function viewFinancing(){
+  var list = STATE.financings;
+  var totalMo = list.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+  return '<h2 class="page-title">Leasingi / kredyty</h2><div class="page-sub">'+list.length+' pozycji • rata łącznie: '+fmtMoney0(totalMo)+'/mies.</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'financing\')">+ Dodaj finansowanie</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Bank / leasingodawca</th><th>Przedmiot</th><th>Rodzaj</th><th>Rata / mies.</th><th>Pozostałe raty</th><th>Saldo pozostałe</th><th>Następna rata</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(f){
+    return '<tr><td>'+esc(f.lender)+'</td><td>'+esc(f.subject)+'</td><td>'+esc(f.type)+'</td><td class="right">'+fmtMoney(f.monthlyPayment)+'</td><td>'+esc(f.remainingInstallments||'—')+' / '+esc(f.numInstallments||'—')+'</td><td class="right">'+fmtMoney(f.remainingBalance)+'</td><td>'+fmtDate(f.nextPaymentDate)+'</td><td><span class="link" onclick="openForm(\'financing\',\''+f.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="8" class="empty">Brak leasingów / kredytów</td></tr>')+
+  '</tbody></table></div>';
+}
+function financingForm(fi){
+  fi = fi || {lender:'',subject:'',type:'leasing operacyjny',initialAmount:'',remainingBalance:'',monthlyPayment:'',numInstallments:'',remainingInstallments:'',nextPaymentDate:'',endDate:'',interestRate:'',projectId:'',notes:'',excludeFromSimulation:false};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(fi.id?'Edytuj finansowanie':'Nowe finansowanie')+'</h3>'+
+  '<form onsubmit="return saveFinancing(event,\''+(fi.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Bank / leasingodawca</label><input name="lender" value="'+esc(fi.lender)+'" required></div><div><label>Przedmiot</label><input name="subject" value="'+esc(fi.subject)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Rodzaj</label>'+selectHtml('type',FINANCING_TYPE_OPTS,fi.type)+'</div><div><label>Projekt</label>'+selectHtml('projectId',STATE.projects.map(function(p){return {v:p.id,l:p.name};}),fi.projectId,'—')+'</div></div>'+
+  '<div class="form-row2"><div><label>Kwota początkowa</label><input type="number" step="0.01" name="initialAmount" value="'+fi.initialAmount+'"></div><div><label>Pozostałe saldo</label><input type="number" step="0.01" name="remainingBalance" value="'+fi.remainingBalance+'"></div></div>'+
+  '<div class="form-row2"><div><label>Rata miesięczna</label><input type="number" step="0.01" name="monthlyPayment" value="'+fi.monthlyPayment+'"></div><div><label>Oprocentowanie %</label><input type="number" step="0.01" name="interestRate" value="'+fi.interestRate+'"></div></div>'+
+  '<div class="form-row2"><div><label>Liczba rat</label><input type="number" name="numInstallments" value="'+fi.numInstallments+'"></div><div><label>Pozostałe raty</label><input type="number" name="remainingInstallments" value="'+fi.remainingInstallments+'"></div></div>'+
+  '<div class="form-row2"><div><label>Data następnej raty</label><input type="date" name="nextPaymentDate" value="'+esc(fi.nextPaymentDate)+'"></div><div><label>Data końca</label><input type="date" name="endDate" value="'+esc(fi.endDate)+'"></div></div>'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(fi.notes)+'</textarea>'+
+  '<label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(fi.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze oszczędności</label>'+
+  '<div class="modal-actions">'+(fi.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'financings\',\''+fi.id+'\',\''+esc(fi.lender)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveFinancing(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {lender:f.get('lender'),subject:f.get('subject'),type:f.get('type'),initialAmount:f.get('initialAmount'),remainingBalance:f.get('remainingBalance'),
+    monthlyPayment:f.get('monthlyPayment'),numInstallments:f.get('numInstallments'),remainingInstallments:f.get('remainingInstallments'),nextPaymentDate:f.get('nextPaymentDate'),
+    endDate:f.get('endDate'),interestRate:f.get('interestRate'),projectId:f.get('projectId'),notes:f.get('notes'),excludeFromSimulation:f.get('excludeFromSimulation')==='on'};
+  var url = id? '/api/financings/'+id : '/api/financings';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać finansowania: '+e.message); });
+  return false;
+}
+
+/* ============================= VENDORS ============================= */
+function viewVendors(){
+  return '<h2 class="page-title">Dostawcy</h2><div class="page-sub">'+STATE.vendors.length+' dostawców</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'vendors\')">+ Dodaj dostawcę</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Typ usług</th><th>Kontakt</th><th>Koszt / mies.</th><th>Koszt / rok</th><th></th></tr></thead><tbody>'+
+  (STATE.vendors.length?STATE.vendors.map(function(v){
+    var costsV = STATE.costs.filter(function(c){return c.vendorId===v.id;});
+    var mo = costsV.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    return '<tr><td><span class="link" onclick="openVendorDetail(\''+v.id+'\')">'+esc(v.name)+'</span>'+(v.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(v.serviceType||'—')+'</td><td>'+esc(v.contactPerson||v.email||'—')+'</td><td class="right">'+fmtMoney(mo)+'</td><td class="right">'+fmtMoney(mo*12)+'</td><td><span class="link" onclick="openForm(\'vendors\',\''+v.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="6" class="empty">Brak dostawców</td></tr>')+
+  '</tbody></table></div>';
+}
+function openVendorDetail(id){
+  var v = byId(STATE.vendors,id); if(!v) return;
+  var costsV = STATE.costs.filter(function(c){return c.vendorId===id;});
+  openModalHtml('<button class="close-x" onclick="closeModal()">✕</button><h3>'+esc(v.name)+'</h3><div class="muted">'+esc(v.serviceType||'')+'</div><div class="section-title">Historia kosztów</div>'+costsTable(costsV)+'<div class="modal-actions"><button class="btn" onclick="closeModal()">Zamknij</button><button class="btn btn-primary" onclick="openForm(\'vendors\',\''+v.id+'\')">Edytuj</button></div>');
+}
+function vendorForm(v){
+  v = v || {name:'',nip:'',contactPerson:'',phone:'',email:'',serviceType:'',notes:''};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(v.id?'Edytuj dostawcę':'Nowy dostawcę')+'</h3>'+
+  '<form onsubmit="return saveVendor(event,\''+(v.id||'')+'\')">'+
+  '<label>Nazwa</label><input name="name" value="'+esc(v.name)+'" required>'+
+  '<div class="form-row2"><div><label>NIP</label><input name="nip" value="'+esc(v.nip)+'"></div><div><label>Typ usług</label><input name="serviceType" value="'+esc(v.serviceType)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Osoba kontaktowa</label><input name="contactPerson" value="'+esc(v.contactPerson)+'"></div><div><label>Telefon</label><input name="phone" value="'+esc(v.phone)+'"></div></div>'+
+  '<label>E-mail</label><input type="email" name="email" value="'+esc(v.email)+'">'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(v.notes)+'</textarea>'+
+  '<div class="modal-actions">'+(v.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'vendors\',\''+v.id+'\',\''+esc(v.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveVendor(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {name:f.get('name'),nip:f.get('nip'),contactPerson:f.get('contactPerson'),phone:f.get('phone'),email:f.get('email'),serviceType:f.get('serviceType'),notes:f.get('notes')};
+  var url = id? '/api/vendors/'+id : '/api/vendors';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać dostawcy: '+e.message); });
+  return false;
+}
+
+/* ============================= PAYMENTS ============================= */
+function viewPayments(){
+  var groups = {zalegle:[],dzisiaj:[],d7:[],d14:[],d30:[],pozniej:[]};
+  STATE.costs.forEach(function(c){
+    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany'||!c.dueDate) return;
+    var d = daysUntil(c.dueDate);
+    if(d<0) groups.zalegle.push(c);
+    else if(d===0) groups.dzisiaj.push(c);
+    else if(d<=7) groups.d7.push(c);
+    else if(d<=14) groups.d14.push(c);
+    else if(d<=30) groups.d30.push(c);
+    else groups.pozniej.push(c);
+  });
+  function section(title,list,color){
+    return '<div class="panel"'+(color?' style="border-color:'+color+'"':'')+'><h3'+(color?' style="color:'+color+'"':'')+'>'+title+' ('+list.length+') — '+fmtMoney0(list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+'</h3>'+costsTable(list)+'</div>';
+  }
+  return '<h2 class="page-title">Płatności</h2><div class="page-sub">Terminarz zobowiązań spółki</div>'+
+  section('⚠ Zaległe',groups.zalegle,'var(--danger)')+
+  section('Dzisiaj',groups.dzisiaj,'var(--warn)')+
+  section('W 7 dni',groups.d7)+
+  section('W 14 dni',groups.d14)+
+  section('W 30 dni',groups.d30)+
+  section('Później',groups.pozniej);
+}
+
+/* ============================= DEPARTMENTS ============================= */
+function viewDepartments(){
+  var m = metrics();
+  return '<h2 class="page-title">Działy / centra kosztów</h2>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openDeptForm()">+ Dodaj dział</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Dział</th><th>Pracownicy</th><th>Koszt pracowników / mies.</th><th>Inne koszty / mies.</th><th>Koszt łączny / mies.</th><th>Koszt roczny</th><th></th></tr></thead><tbody>'+
+  STATE.departments.map(function(d){
+    var dc = m.deptCost[d.id]||{employees:0,empCost:0,otherCost:0,total:0};
+    return '<tr><td>'+esc(d.name)+'</td><td>'+dc.employees+'</td><td class="right">'+fmtMoney(dc.empCost)+'</td><td class="right">'+fmtMoney(dc.otherCost)+'</td><td class="right"><b>'+fmtMoney(dc.total)+'</b></td><td class="right">'+fmtMoney(dc.total*12)+'</td><td><span class="link" onclick="openDeptForm(\''+d.id+'\')">edytuj</span> <span class="link btn-danger" onclick="deleteDept(\''+d.id+'\')">usuń</span></td></tr>';
+  }).join('')+
+  '</tbody></table></div>';
+}
+function openDeptForm(id){
+  var d = id?byId(STATE.departments,id):{name:''};
+  openModalHtml('<button class="close-x" onclick="closeModal()">✕</button><h3>'+(id?'Edytuj dział':'Nowy dział')+'</h3><form onsubmit="return saveDept(event,\''+(id||'')+'\')"><label>Nazwa działu</label><input name="name" value="'+esc(d.name)+'" required><div class="modal-actions"><button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div></form>');
+}
+function saveDept(ev,id){
+  ev.preventDefault(); var f=new FormData(ev.target); var name=f.get('name');
+  var url = id? '/api/departments/'+id : '/api/departments';
+  afterMutation(apiCall(id?'PUT':'POST', url, {name:name})).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać działu: '+e.message); });
+  return false;
+}
+function deleteDept(id){
+  if(!confirm('Usunąć dział?')) return;
+  afterMutation(apiCall('DELETE','/api/departments/'+id)).catch(function(e){ alert('Nie udało się usunąć działu: '+e.message); });
+}
+
+/* ============================= ANALYSIS ============================= */
+function viewAnalysis(){
+  var m = metrics();
+  var top20 = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
+  var top20fixed = STATE.costs.filter(function(c){return c.isFixed;}).slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
+  function groupSum(keyFn,labelFn){
+    var g={};
+    STATE.costs.forEach(function(c){ var k=keyFn(c); g[k]=(g[k]||0)+monthlyEquivalent(c); });
+    return Object.keys(g).map(function(k){return {label:labelFn(k),value:g[k]};}).sort(function(a,b){return b.value-a.value;});
+  }
+  function table(rows){
+    var total = rows.reduce(function(s,r){return s+r.value;},0);
+    return '<table><thead><tr><th>Pozycja</th><th class="right">Kwota / mies.</th><th class="right">%</th></tr></thead><tbody>'+
+    rows.map(function(r){return '<tr><td>'+esc(r.label)+'</td><td class="right">'+fmtMoney(r.value)+'</td><td class="right">'+(total?Math.round(r.value/total*100):0)+'%</td></tr>';}).join('')+
+    '</tbody></table>';
+  }
+  var byEmp = STATE.employees.map(function(e){return {label:empName(e),value:totalMonthlyCostEmployee(e)};}).sort(function(a,b){return b.value-a.value;});
+  var byVendor = groupSum(function(c){return c.vendorId||'brak';}, function(k){return k==='brak'?'Brak dostawcy':vendorName(k);});
+  return '<h2 class="page-title">Analiza kosztów</h2><div class="page-sub">Cash burn: '+fmtMoney0(m.totalBurn)+'/mies. • Run-rate roczny: '+fmtMoney0(m.annualRunRate)+'</div>'+
+  '<div class="kpi-grid">'+kpi('Miesięczny cash burn',fmtMoney0(m.totalBurn),true)+kpi('Roczny run-rate',fmtMoney0(m.annualRunRate),true)+kpi('Koszty stałe',fmtMoney0(m.monthlyFixed))+kpi('Koszty zmienne/zewnętrzne',fmtMoney0(m.monthlyExternal))+'</div>'+
+  '<div class="grid2">'+
+  '<div class="panel"><h3>TOP 20 największych kosztów</h3>'+costsTable(top20)+'</div>'+
+  '<div class="panel"><h3>TOP 20 największych kosztów stałych</h3>'+costsTable(top20fixed)+'</div>'+
+  '</div><div class="grid2">'+
+  '<div class="panel"><h3>Koszt wg kategorii</h3>'+table(groupSum(function(c){return c.category||'Inne';},function(k){return k;}))+'</div>'+
+  '<div class="panel"><h3>Koszt wg projektu</h3>'+table(Object.keys(m.monthlyProjectCost).map(function(k){return {label:projectName(k),value:m.monthlyProjectCost[k]};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
+  '</div><div class="grid2">'+
+  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
+  '<div class="panel"><h3>Koszt wg pracownika</h3>'+table(byEmp)+'</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Koszt wg dostawcy</h3>'+table(byVendor)+'</div>';
+}
+
+/* ============================= SIMULATOR ============================= */
+function viewSimulator(){
+  var m = metrics();
+  var newTotal = m.totalBurn - m.potentialSavingsMonthly;
+  var pct = m.totalBurn>0? Math.round(m.potentialSavingsMonthly/m.totalBurn*100):0;
+  var selCosts = STATE.costs.filter(function(c){return c.excludeFromSimulation;});
+  var selEmp = STATE.employees.filter(function(e){return e.excludeFromSimulation;});
+  var selContracts = STATE.contracts.filter(function(c){return c.excludeFromSimulation;});
+  var selFin = STATE.financings.filter(function(f){return f.excludeFromSimulation;});
+  return '<h2 class="page-title">Symulator oszczędności</h2><div class="page-sub">Zaznacz koszty, pracowników, umowy lub leasingi do redukcji, aby zobaczyć wpływ na budżet spółki.</div>'+
+  '<div class="grid3">'+
+    kpi('Obecny koszt miesięczny',fmtMoney0(m.totalBurn),true)+
+    kpi('Planowane redukcje / mies.',fmtMoney0(m.potentialSavingsMonthly))+
+    kpi('Nowy koszt miesięczny',fmtMoney0(newTotal),true)+
+  '</div>'+
+  '<div class="grid3">'+
+    kpi('Oszczędność roczna',fmtMoney0(m.potentialSavingsAnnual))+
+    kpi('Procent redukcji',pct+'%')+
+    kpi('Nowy koszt roczny',fmtMoney0(newTotal*12))+
+  '</div>'+
+  '<div class="panel"><h3>Zaznaczeni pracownicy do redukcji</h3>'+(selEmp.length?'<table><tbody>'+selEmp.map(function(e){return '<tr><td>'+esc(empName(e))+'</td><td>'+esc(e.position)+'</td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'/mies.</td><td><span class="link" onclick="toggleSimEmp(\''+e.id+'\')">usuń z symulacji</span></td></tr>';}).join('')+'</tbody></table>':'<div class="empty">Brak — oznacz pracownika w jego karcie „Uwzględnij w symulatorze”.</div>')+'</div>'+
+  '<div class="panel"><h3>Zaznaczone koszty / abonamenty do redukcji</h3>'+(selCosts.length?costsTable(selCosts):'<div class="empty">Brak — oznacz koszt jako „Uwzględnij w symulatorze” w formularzu kosztu.</div>')+'</div>'+
+  (selContracts.length?'<div class="panel"><h3>Zaznaczone umowy do wypowiedzenia</h3>'+selContracts.map(function(c){return '<div>'+esc(c.name)+' — '+fmtMoney(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.</div>';}).join('')+'</div>':'')+
+  (selFin.length?'<div class="panel"><h3>Zaznaczone leasingi / kredyty do zakończenia</h3>'+selFin.map(function(f){return '<div>'+esc(f.lender)+' — '+fmtMoney(f.monthlyPayment)+'/mies.</div>';}).join('')+'</div>':'')+
+  '<div class="panel"><h3>Wszystkie pozycje — szybkie zaznaczanie</h3><div class="section-title" style="margin-top:0">Pracownicy</div><table><tbody>'+
+  STATE.employees.map(function(e){return '<tr><td><label><input type="checkbox" style="width:auto" '+(e.excludeFromSimulation?'checked':'')+' onchange="toggleSimEmp(\''+e.id+'\')"> '+esc(empName(e))+'</label></td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'</td></tr>';}).join('')+
+  '</tbody></table><div class="section-title">Koszty</div><table><tbody>'+
+  STATE.costs.map(function(c){return '<tr><td><label><input type="checkbox" style="width:auto" '+(c.excludeFromSimulation?'checked':'')+' onchange="toggleSimCost(\''+c.id+'\')"> '+esc(c.name)+'</label></td><td class="right">'+fmtMoney(monthlyEquivalent(c))+'</td></tr>';}).join('')+
+  '</tbody></table></div>';
+}
+function toggleSimEmp(id){
+  var e = byId(STATE.employees,id); if(!e) return;
+  var obj = Object.assign({}, e, {excludeFromSimulation: !e.excludeFromSimulation});
+  afterMutation(apiCall('PUT','/api/employees/'+id, obj)).catch(function(e2){ alert('Nie udało się zaktualizować: '+e2.message); });
+}
+function toggleSimCost(id){
+  var c = byId(STATE.costs,id); if(!c) return;
+  var obj = Object.assign({}, c, {excludeFromSimulation: !c.excludeFromSimulation});
+  afterMutation(apiCall('PUT','/api/costs/'+id, obj)).catch(function(e2){ alert('Nie udało się zaktualizować: '+e2.message); });
+}
+
+/* ============================= DOCUMENTS ============================= */
+function viewDocuments(){
+  return '<h2 class="page-title">Dokumenty</h2><div class="page-sub">'+STATE.documents.length+' dokumentów (linki)</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'documents\')">+ Dodaj dokument</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Rodzaj</th><th>Data</th><th>Link</th><th>Opis</th><th></th></tr></thead><tbody>'+
+  (STATE.documents.length?STATE.documents.map(function(d){
+    return '<tr><td>'+esc(d.name)+'</td><td>'+esc(d.docType||'—')+'</td><td>'+fmtDate(d.date)+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank" rel="noopener">otwórz</a>':'—')+'</td><td>'+esc(d.description||'')+'</td><td><span class="link" onclick="openForm(\'documents\',\''+d.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="6" class="empty">Brak dokumentów. Docelowo dokumenty będą przechowywane w SharePoint / Microsoft 365.</td></tr>')+
+  '</tbody></table></div>';
+}
+function documentForm(d){
+  d = d || {name:'',link:'',docType:'',date:todayISO(),description:''};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(d.id?'Edytuj dokument':'Nowy dokument')+'</h3>'+
+  '<form onsubmit="return saveDocument(event,\''+(d.id||'')+'\')">'+
+  '<label>Nazwa dokumentu</label><input name="name" value="'+esc(d.name)+'" required>'+
+  '<label>Link (np. SharePoint / OneDrive)</label><input name="link" value="'+esc(d.link)+'">'+
+  '<div class="form-row2"><div><label>Rodzaj</label><input name="docType" value="'+esc(d.docType)+'"></div><div><label>Data</label><input type="date" name="date" value="'+esc(d.date)+'"></div></div>'+
+  '<label>Opis</label><textarea name="description">'+esc(d.description)+'</textarea>'+
+  '<div class="modal-actions">'+(d.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'documents\',\''+d.id+'\',\''+esc(d.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveDocument(ev,id){
+  ev.preventDefault(); var f=new FormData(ev.target);
+  var obj = {name:f.get('name'),link:f.get('link'),docType:f.get('docType'),date:f.get('date'),description:f.get('description'),externalSource:'',externalId:'',sharePointUrl:'',documentUrl:f.get('link')};
+  var url = id? '/api/documents/'+id : '/api/documents';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać dokumentu: '+e.message); });
+  return false;
+}
+
+/* ============================= SETTINGS ============================= */
+function viewSettings(){
+  var hasDemo = STATE.employees.some(function(e){return e.isDemo;})||STATE.projects.some(function(p){return p.isDemo;})||STATE.costs.some(function(c){return c.isDemo;})||STATE.vendors.some(function(v){return v.isDemo;});
+  return '<h2 class="page-title">Ustawienia / słowniki</h2>'+
+  '<div class="panel"><h3>Gdzie przechowywane są dane</h3><div class="muted">Dane FFP Cost Control są zapisywane WYŁĄCZNIE w bazie PostgreSQL (przez Prisma ORM i API tej aplikacji) i widoczne dla każdego, kto otworzy tę aplikację — niezależnie od urządzenia i przeglądarki. Status ostatniego zapisu widać w pasku górnym. Pełne szczegóły (gdzie fizycznie stoi baza, jak wygląda backup, jak wdrożyć aplikację ponownie) znajdują się w pliku README repozytorium.</div>'+
+  '<div class="section-title">Ręczna kopia zapasowa (JSON) — dodatkowe zabezpieczenie</div>'+
+  '<button class="btn btn-sm" onclick="exportBackupJson()">Pobierz kopię zapasową (.json)</button> '+
+  '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
+  '</div>'+
+  '<div class="grid2">'+
+  '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
+  '<div class="panel"><h3>Centra kosztów</h3>'+dictList('costCenters')+'</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Waluta domyślna</h3>'+selectHtml('currency',['PLN','EUR','USD'],STATE.currency)+' <button class="btn btn-sm" onclick="setCurrency()">Zapisz</button></div>'+
+  '<div class="panel"><h3>Dane demonstracyjne</h3><div class="muted">Aplikacja zawiera kilka przykładowych rekordów oznaczonych jako DEMO, ułatwiających sprawdzenie działania.</div>'+
+  (hasDemo?'<button class="btn btn-danger" style="margin-top:10px" onclick="removeDemoData()">Usuń wszystkie dane DEMO</button>':'<div class="muted" style="margin-top:8px">Brak danych DEMO w systemie.</div>')+'</div>'+
+  '<div class="panel"><h3>Integracje (przygotowane na przyszłość)</h3><div class="muted">Microsoft Entra ID (logowanie firmowe), SharePoint, OneDrive, Outlook — pola techniczne (externalSource, externalId, sharePointUrl, documentUrl) są już przygotowane w modelu danych (tabela Document). Integracja zostanie wdrożona w kolejnym etapie.</div></div>';
+}
+function dictList(key){
+  return '<div id="dict-'+key+'">'+STATE[key].map(function(v,i){
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><span style="flex:1">'+esc(v)+'</span><span class="link" onclick="removeDictItem(\''+key+'\','+i+')">usuń</span></div>';
+  }).join('')+'</div><div style="display:flex;gap:6px;margin-top:8px"><input id="new-'+key+'" placeholder="Nowa pozycja"><button class="btn btn-sm" onclick="addDictItem(\''+key+'\')">Dodaj</button></div>';
+}
+function addDictItem(key){
+  var el = document.getElementById('new-'+key); var v = el.value.trim();
+  if(!v) return;
+  var newList = STATE[key].concat([v]);
+  afterMutation(apiCall('PUT','/api/settings',{key:key,value:newList})).then(function(){ el.value=''; })
+    .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function removeDictItem(key,i){
+  var newList = STATE[key].slice(); newList.splice(i,1);
+  afterMutation(apiCall('PUT','/api/settings',{key:key,value:newList})).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function setCurrency(){
+  var sel = document.querySelector('#content select[name=currency]');
+  afterMutation(apiCall('PUT','/api/settings',{key:'currency',value:sel.value})).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function removeDemoData(){
+  if(!confirm('Usunąć wszystkie dane DEMO z aplikacji?')) return;
+  afterMutation(apiCall('DELETE','/api/demo')).catch(function(e){ alert('Nie udało się usunąć danych DEMO: '+e.message); });
+}
+function exportBackupJson(){
+  var json = JSON.stringify(STATE, null, 2);
+  downloadTextFile('ffp-cost-control-backup-'+todayISO()+'.json', json, 'application/json');
+}
+function importBackupJsonFile(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var data;
+    try{
+      data = JSON.parse(reader.result);
+      if(!data || typeof data!=='object') throw new Error('bad format');
+    }catch(e){ alert('Nieprawidłowy plik kopii zapasowej.'); input.value=''; return; }
+    if(!confirm('Zastąpić WSZYSTKIE obecne dane w bazie PostgreSQL danymi z pliku kopii zapasowej? Tej operacji nie można cofnąć.')){ input.value=''; return; }
+    afterMutation(apiCall('POST','/api/restore', data))
+      .then(function(){ alert('Przywrócono dane z kopii zapasowej.'); })
+      .catch(function(e){ alert('Nie udało się przywrócić kopii: '+e.message); });
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+/* ============================= FORM DISPATCH ============================= */
+var ENTITY_STATE_KEY = {employees:'employees',projects:'projects',costs:'costs',contracts:'contracts',financing:'financings',vendors:'vendors',documents:'documents'};
+function openForm(entity,id,defaults){
+  var stateKey = ENTITY_STATE_KEY[entity]||entity;
+  var item = id?byId(STATE[stateKey],id):null;
+  var html;
+  if(entity==='employees') html = employeeForm(item);
+  else if(entity==='projects') html = projectForm(item);
+  else if(entity==='costs') html = costForm(item,defaults);
+  else if(entity==='contracts') html = contractForm(item);
+  else if(entity==='financing') html = financingForm(item);
+  else if(entity==='vendors') html = vendorForm(item);
+  else if(entity==='documents') html = documentForm(item);
+  else return;
+  openModalHtml(html);
+  if(entity==='employees') renderAllocRows();
+}
+
+/* ============================= INIT ============================= */
+async function boot(){
+  setSaveStatus('loading');
+  try{
+    await refreshState();
+    BOOTED = true;
+    render();
+    setSaveStatus('idle');
+  }catch(e){
+    document.getElementById('content').innerHTML = '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">Nie udało się połączyć z bazą danych</h3><div>'+esc(e.message)+'</div><button class="btn" style="margin-top:10px" onclick="boot()">Spróbuj ponownie</button></div>';
+    setSaveStatus('error','Brak połączenia z bazą');
+  }
+}
+boot();
+</script>
