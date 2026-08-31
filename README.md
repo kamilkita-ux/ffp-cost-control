@@ -17,9 +17,39 @@ przeglądarka.
 - Frontend: ten sam interfejs co wcześniej (`app/app-shell.html`), serwowany
   przez `app/route.ts`; logika UI woła REST API zamiast localStorage/Artifact
 
-Brak logowania w tej wersji (celowo, zgodnie z ustaleniami) — każdy z dostępem
-do adresu aplikacji widzi te same dane. Miejsce na Microsoft Entra ID i
-integrację SharePoint jest już przygotowane w modelu danych (patrz sekcja E).
+Miejsce na Microsoft Entra ID i integrację SharePoint jest już przygotowane
+w modelu danych (patrz sekcja E).
+
+## Status wdrożenia produkcyjnego (Railway)
+
+Aplikacja jest aktualnie wdrożona i działa na Railway:
+
+- **Adres:** https://app-production-8f46.up.railway.app
+- **Ochrona dostępu:** HTTP Basic Auth (login/hasło ustawione zmiennymi
+  środowiskowymi `APP_BASIC_AUTH_USER` / `APP_BASIC_AUTH_PASSWORD` na
+  serwisie `app`; patrz `middleware.ts`). Jeśli te zmienne nie są ustawione,
+  middleware nic nie blokuje — to celowe zabezpieczenie przed
+  przypadkowym zablokowaniem dostępu.
+- **Automatyczny backup:** osobny serwis Railway `backup-cron` (ten sam
+  repo, harmonogram cron `0 */4 * * *`, start command
+  `npx tsx scripts/backup-cron.ts`) zapisuje co 4 godziny pełny snapshot
+  danych jako nowy wiersz w tabeli `Backup` (ta sama baza PostgreSQL —
+  bez potrzeby osobnego wolumenu). Widoczne i przywracalne z poziomu
+  aplikacji: Ustawienia -> "Automatyczne kopie zapasowe". Retencja: 200
+  najnowszych wpisów (usuwane automatycznie).
+- **Trzy serwisy w projekcie Railway `ffp-cost-control`:** `app` (aplikacja
+  webowa), `Postgres` (baza), `backup-cron` (automatyczny backup).
+- **Wdrażanie kodu:** ponieważ środowisko robocze, w którym powstaje kod,
+  nie ma bezpośredniego dostępu do GitHuba (ograniczenie sandboxa, nie do
+  obejścia żadnym tokenem), zmiany trafiają na GitHub przez stronę
+  `github.com/<repo>/upload/main` (ręczne przeciągnięcie zmienionych
+  plików + "Commit changes"), a następnie wdrożenie na Railway jest
+  wywoływane ręcznie (`connect-service-source` / redeploy) — webhook
+  Railway<>GitHub nie zawsze uruchamia się sam po takim uploadzie.
+- **Znane otwarte punkty:** `npm audit` zgłasza 6 podatności (1 moderate,
+  5 high) w zależnościach — środowisko robocze nie ma dostępu do rejestru
+  npm, więc nie da się ich zweryfikować/naprawić stąd (`npm audit fix`);
+  do zrobienia w środowisku z dostępem do internetu.
 
 ## A. Gdzie fizycznie znajduje się baza danych
 

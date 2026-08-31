@@ -402,7 +402,38 @@ function onGlobalSearch(v){
 }
 
 /* ============================= MODAL ============================= */
-function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal').innerHTML=''; pendingModalSave=null; }
+// Autozapis wersji roboczej otwartego formularza do localStorage — zabezpieczenie
+// na wypadek nieoczekiwanego zamknięcia/przeładowania karty w trakcie wpisywania
+// danych (np. przez przeglądarkę mobilną w tle), zanim zdąży się kliknąć "Zapisz".
+// Czyszczone przy normalnym zamknięciu modala (Zapisz / Anuluj / X) — więc
+// "przeżywa" wyłącznie sytuację, w której strona zniknęła bez ostrzeżenia.
+var CURRENT_DRAFT_KEY = null;
+var DRAFT_TTL_MS = 7*24*60*60*1000; // wersje robocze starsze niż 7 dni są ignorowane
+function draftSave(){
+  if(!CURRENT_DRAFT_KEY) return;
+  var f = document.querySelector('#modal form');
+  if(!f) return;
+  try{
+    var fd = new FormData(f); var obj = {};
+    fd.forEach(function(v,k){ obj[k]=v; });
+    localStorage.setItem(CURRENT_DRAFT_KEY, JSON.stringify({savedAt:Date.now(), data:obj}));
+  }catch(e){ /* localStorage niedostępny — po prostu brak autozapisu, bez błędu dla użytkownika */ }
+}
+function draftLoad(key){
+  try{
+    var raw = localStorage.getItem(key);
+    if(!raw) return null;
+    var parsed = JSON.parse(raw);
+    if(!parsed || !parsed.data) return null;
+    if(Date.now()-parsed.savedAt > DRAFT_TTL_MS){ localStorage.removeItem(key); return null; }
+    return parsed;
+  }catch(e){ return null; }
+}
+function draftClear(key){ try{ localStorage.removeItem(key); }catch(e){} }
+function closeModal(){
+  document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal').innerHTML=''; pendingModalSave=null;
+  if(CURRENT_DRAFT_KEY){ draftClear(CURRENT_DRAFT_KEY); CURRENT_DRAFT_KEY=null; }
+}
 function openModalHtml(html){ document.getElementById('modal').innerHTML = html; document.getElementById('modal-overlay').classList.add('open'); }
 
 /* ============================= FIELD SCHEMAS ============================= */
@@ -1231,9 +1262,32 @@ function openForm(entity,id,defaults){
   else return;
   openModalHtml(html);
   if(entity==='employees') renderAllocRows();
+
+  CURRENT_DRAFT_KEY = 'ffp_draft_'+entity+'_'+(id||'new');
+  var draft = draftLoad(CURRENT_DRAFT_KEY);
+  if(draft){
+    var savedDate = new Date(draft.savedAt);
+    var p2=function(n){return (n<10?'0':'')+n;};
+    var whenStr = p2(savedDate.getDate())+'.'+p2(savedDate.getMonth()+1)+'.'+savedDate.getFullYear()+' '+p2(savedDate.getHours())+':'+p2(savedDate.getMinutes());
+    if(confirm('Znaleziono niezapisaną wersję roboczą tego formularza z '+whenStr+' (np. po nieoczekiwanym zamknięciu karty). Przywrócić ją?')){
+      var f = document.querySelector('#modal form');
+      if(f){
+        Object.keys(draft.data).forEach(function(k){
+          var el = f.elements.namedItem(k);
+          if(!el) return;
+          if(el.type==='checkbox'){ el.checked = (draft.data[k]==='on'); }
+          else { el.value = draft.data[k]; }
+        });
+      }
+    } else {
+      draftClear(CURRENT_DRAFT_KEY);
+    }
+  }
 }
 
 /* ============================= INIT ============================= */
+document.getElementById('modal-overlay').addEventListener('input', draftSave);
+document.getElementById('modal-overlay').addEventListener('change', draftSave);
 async function boot(){
   setSaveStatus('loading');
   try{
