@@ -146,6 +146,7 @@ export function serializeProject(p: any) {
     spv: str(p.spv),
     location: str(p.location),
     mwPower: p.mwPower === null ? "" : num(p.mwPower),
+    revenueMonthly: p.revenueMonthly === null ? "" : num(p.revenueMonthly),
     status: fromEnum(PROJECT_STATUS_MAP_REV, p.status, "development"),
     owner: str(p.owner),
     startDate: fromDate(p.startDate),

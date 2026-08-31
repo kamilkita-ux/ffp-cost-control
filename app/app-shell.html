@@ -227,6 +227,9 @@ function metrics(){
   },{});
   var totalProjectCost = Object.keys(monthlyProjectCost).reduce(function(s,k){return s+monthlyProjectCost[k];},0);
 
+  var monthlyProjectRevenue = STATE.projects.reduce(function(sum,p){ sum[p.id] = Number(p.revenueMonthly)||0; return sum; },{});
+  var monthlyRevenue = Object.keys(monthlyProjectRevenue).reduce(function(s,k){return s+monthlyProjectRevenue[k];},0);
+
   var unassignedCosts = STATE.costs.filter(function(c){return !c.projectId;});
   var monthlyAdminFromCosts = unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyAdminFromEmp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,'ADMIN')/100);},0);
@@ -256,10 +259,14 @@ function metrics(){
     STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0) +
     STATE.financings.filter(function(f){return f.excludeFromSimulation;}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
 
+  var monthlyProfit = monthlyRevenue - totalBurn;
+
   return {
     monthlyPayroll:monthlyPayroll, monthlyExternal:monthlyExternal, monthlyFinancing:monthlyFinancing,
     monthlyFixed:monthlyFixed, totalBurn:totalBurn, annualRunRate:annualRunRate,
     monthlyProjectCost:monthlyProjectCost, totalProjectCost:totalProjectCost,
+    monthlyProjectRevenue:monthlyProjectRevenue, monthlyRevenue:monthlyRevenue,
+    monthlyProfit:monthlyProfit, annualProfit:monthlyProfit*12,
     monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
     upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
     potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
@@ -473,6 +480,9 @@ function viewDashboard(){
   '<div class="kpi-grid">'+
     kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
     kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
+    kpi('Przychód / mies. (orientacyjny)', fmtMoney0(m.monthlyRevenue), true)+
+    kpi('Zysk / mies. (orientacyjny)', fmtMoney0(m.monthlyProfit), true, m.monthlyProfit<0)+
+    kpi('Zysk / rok (orientacyjny)', fmtMoney0(m.annualProfit))+
     kpi('Koszty stałe / mies.', fmtMoney0(m.monthlyFixed))+
     kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll))+
     kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
@@ -635,12 +645,13 @@ function saveEmployee(ev,id){
 /* ============================= PROJECTS ============================= */
 function viewProjects(){
   var m = metrics();
-  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies.</div>'+
+  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód łączny: '+fmtMoney0(m.monthlyRevenue)+'/mies.</div>'+
   '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
-  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th></th></tr></thead><tbody>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th>Przychód / mies.</th><th>Zysk / mies.</th><th></th></tr></thead><tbody>'+
   (STATE.projects.length?STATE.projects.map(function(p){
-    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(m.monthlyProjectCost[p.id]||0)+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
-  }).join(''):'<tr><td colspan="7" class="empty">Brak projektów</td></tr>')+
+    var cost = m.monthlyProjectCost[p.id]||0, rev = Number(p.revenueMonthly)||0, profit = rev-cost;
+    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(cost)+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(rev):'—')+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(profit):'—')+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="9" class="empty">Brak projektów</td></tr>')+
   '</tbody></table></div>';
 }
 function projectStatusPill(s){
@@ -648,13 +659,14 @@ function projectStatusPill(s){
   return '<span class="pill '+(map[s]||'pill-warn')+'">'+esc(s||'—')+'</span>';
 }
 function projectForm(p){
-  p = p || {name:'',code:'',spv:'',location:'',mwPower:'',status:'development',owner:'',startDate:'',endDate:'',description:''};
+  p = p || {name:'',code:'',spv:'',location:'',mwPower:'',revenueMonthly:'',status:'development',owner:'',startDate:'',endDate:'',description:''};
   var isNew = !p.id;
   return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy projekt':'Edytuj projekt')+'</h3>'+
   '<form onsubmit="return saveProject(event,\''+(p.id||'')+'\')">'+
   '<div class="form-row2"><div><label>Nazwa</label><input name="name" value="'+esc(p.name)+'" required></div><div><label>Kod projektu</label><input name="code" value="'+esc(p.code)+'"></div></div>'+
   '<div class="form-row2"><div><label>SPV</label><input name="spv" value="'+esc(p.spv)+'"></div><div><label>Lokalizacja</label><input name="location" value="'+esc(p.location)+'"></div></div>'+
   '<div class="form-row2"><div><label>Moc (MW)</label><input type="number" step="0.01" name="mwPower" value="'+p.mwPower+'"></div><div><label>Status</label>'+selectHtml('status',PROJECT_STATUS_OPTS,p.status)+'</div></div>'+
+  '<div class="form-row2"><div><label>Przychód miesięczny (orientacyjny)</label><input type="number" step="0.01" name="revenueMonthly" value="'+p.revenueMonthly+'"></div><div></div></div>'+
   '<div class="form-row2"><div><label>Osoba odpowiedzialna</label><input name="owner" value="'+esc(p.owner)+'"></div><div></div></div>'+
   '<div class="form-row2"><div><label>Data rozpoczęcia</label><input type="date" name="startDate" value="'+esc(p.startDate)+'"></div><div><label>Planowana data zakończenia</label><input type="date" name="endDate" value="'+esc(p.endDate)+'"></div></div>'+
   '<label>Opis</label><textarea class="textarea-lg" name="description">'+esc(p.description)+'</textarea>'+
@@ -663,7 +675,7 @@ function projectForm(p){
 }
 function saveProject(ev,id){
   ev.preventDefault(); var f = new FormData(ev.target);
-  var obj = {name:f.get('name'),code:f.get('code'),spv:f.get('spv'),location:f.get('location'),mwPower:f.get('mwPower'),status:f.get('status'),owner:f.get('owner'),startDate:f.get('startDate'),endDate:f.get('endDate'),description:f.get('description')};
+  var obj = {name:f.get('name'),code:f.get('code'),spv:f.get('spv'),location:f.get('location'),mwPower:f.get('mwPower'),revenueMonthly:f.get('revenueMonthly'),status:f.get('status'),owner:f.get('owner'),startDate:f.get('startDate'),endDate:f.get('endDate'),description:f.get('description')};
   var url = id? '/api/projects/'+id : '/api/projects';
   afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
     .catch(function(e){ alert('Nie udało się zapisać projektu: '+e.message); });
@@ -690,6 +702,8 @@ function projectDetail(p){
   '<h2 class="page-title">'+esc(p.name)+' <span class="pill pill-muted">'+esc(p.code||'')+'</span></h2>'+
   '<div class="page-sub">SPV: '+esc(p.spv||'—')+' • '+esc(p.location||'—')+' • '+esc(p.mwPower||'—')+' MW • '+projectStatusPill(p.status)+'</div>'+
   '<div class="kpi-grid">'+
+    kpi('Przychód miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)):'—',true)+
+    kpi('Zysk miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0)):'—',true)+
     kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
     kpi('Koszt od początku projektu',fmtMoney0(sinceStart))+
     kpi('Koszt pracowników',fmtMoney0(empCost))+

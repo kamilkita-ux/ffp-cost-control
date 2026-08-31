@@ -42,6 +42,7 @@ export async function POST(req: Request) {
           spv: str(p.spv) || null,
           location: str(p.location) || null,
           mwPower: numOrNull(p.mwPower),
+          revenueMonthly: numOrNull(p.revenueMonthly),
           status: toEnum(PROJECT_STATUS_MAP, p.status, "DEVELOPMENT") as any,
           owner: str(p.owner) || null,
           startDate: toDate(p.startDate),
