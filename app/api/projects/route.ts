@@ -10,6 +10,8 @@ function toData(body: any) {
     location: str(body.location) || null,
     mwPower: numOrNull(body.mwPower),
     revenueMonthly: numOrNull(body.revenueMonthly),
+    gridOperator: str(body.gridOperator) || null,
+    energyBuyer: str(body.energyBuyer) || null,
     status: toEnum(PROJECT_STATUS_MAP, body.status, "DEVELOPMENT") as any,
     owner: str(body.owner) || null,
     startDate: toDate(body.startDate),

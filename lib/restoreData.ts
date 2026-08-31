@@ -1,24 +1,28 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "./prisma";
 import {
   str, numOrNull, intOrNull, bool, toDate, toEnum,
   EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP, PROJECT_STATUS_MAP,
   RECURRENCE_MAP, PAYMENT_STATUS_MAP, NECESSITY_MAP, FINANCING_TYPE_MAP
-} from "@/lib/serialize";
+} from "./serialize";
 
-// POST /api/restore — przywraca CAŁĄ bazę z pliku kopii zapasowej JSON
-// (dokładnie ten sam format, który zwraca /api/bootstrap i który pobiera
-// przycisk "Pobierz kopię zapasową" w Ustawieniach).
+// Przywraca CAŁĄ bazę z obiektu danych o kształcie zwracanym przez
+// buildSnapshot() / /api/bootstrap (dokładnie ten sam format).
 //
-// Operacja niszcząca: usuwa bieżące dane i zastępuje je zawartością pliku,
-// w jednej transakcji (albo wszystko się powiedzie, albo nic się nie zmienia).
-export async function POST(req: Request) {
-  const data = await req.json();
+// To jest kopia logiki z app/api/restore/route.ts — celowo zduplikowana,
+// a nie zaimportowana z tamtego pliku, żeby NIE dotykać już działającego,
+// zweryfikowanego na produkcji endpointu ręcznego przywracania z pliku
+// JSON. Używana przez /api/admin/backups/[id]/restore (przywracanie z
+// automatycznego punktu backupu zapisanego w tabeli Backup).
+//
+// Operacja niszcząca: usuwa bieżące dane i zastępuje je zawartością
+// snapshotu, w jednej transakcji (albo wszystko się powiedzie, albo nic
+// się nie zmienia).
+export async function restoreSnapshot(db: typeof prisma, data: any) {
   if (!data || typeof data !== "object") {
-    return NextResponse.json({ error: "invalid_input" }, { status: 400 });
+    throw new Error("invalid_snapshot");
   }
 
-  await prisma.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     await tx.employeeProjectAllocation.deleteMany({});
     await tx.cost.deleteMany({});
     await tx.contract.deleteMany({});
@@ -214,6 +218,4 @@ export async function POST(req: Request) {
       await tx.appSetting.upsert({ where: { key: "currency" }, create: { key: "currency", value: data.currency }, update: { value: data.currency } });
     }
   }, { timeout: 30000 });
-
-  return NextResponse.json({ ok: true });
 }

@@ -107,6 +107,8 @@ model Project {
   location    String?
   mwPower     Decimal?      @db.Decimal(10, 2)
   revenueMonthly Decimal?   @db.Decimal(14, 2) // orientacyjny przychód miesięczny z projektu (dashboard: Przychód/Zysk)
+  gridOperator String?      // Operator sieci (OSD), do którego przyłączona jest farma, np. Tauron Dystrybucja
+  energyBuyer  String?      // Odbiorca energii / pośrednik zakupu (np. spółka obrotu, PPA)
   status      ProjectStatus @default(DEVELOPMENT)
   owner       String?
   startDate   DateTime?     @db.Date
@@ -333,4 +335,18 @@ model AppSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// Automatyczne punkty przywracania (backup) — pełny obraz danych (ten sam
+// kształt co /api/bootstrap) zapisywany co kilka godzin przez osobny
+// serwis-cron na Railway (scripts/backup-json.ts), plus kopie "na żądanie"
+// tworzone ręcznie z Ustawień (kind="manual"). Widoczne i przywracalne
+// z poziomu aplikacji (Ustawienia -> Automatyczne kopie zapasowe).
+model Backup {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  kind      String   @default("auto") // "auto" | "manual"
+  data      Json
+
+  @@index([createdAt])
 }
