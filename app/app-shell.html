@@ -933,7 +933,7 @@ function costForm(c,defaults){
   '<div class="form-row2"><div><label><input type="checkbox" style="width:auto" name="isFixed" '+(c.isFixed?'checked':'')+'> Koszt stały</label></div><div><label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(c.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze</label></div></div>'+
   '<label>Link do dokumentu</label><input name="documentLink" value="'+esc(c.documentLink)+'">'+
   '<label>Uwagi</label><textarea name="notes">'+esc(c.notes)+'</textarea>'+
-  '<div class="modal-actions">'+(c.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'costs\',\''+c.id+'\',\''+esc(c.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '<div class="modal-actions">'+(c.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'costs\',\''+c.id+'\',\''+esc(c.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button>'+(isNew?'<button type="button" class="btn" onclick="saveCostAndNew(this)">Zapisz i dodaj kolejny</button>':'')+'<button type="submit" class="btn btn-primary">Zapisz</button></div>'+
   '</form>';
 }
 function autoGross(el){
@@ -941,17 +941,40 @@ function autoGross(el){
   var net = parseFloat(form.netAmount.value)||0, vat = parseFloat(form.vat.value)||0;
   if(net>0) form.grossAmount.value = (net*(1+vat/100)).toFixed(2);
 }
-function saveCost(ev,id){
-  ev.preventDefault(); var f = new FormData(ev.target);
-  var obj = {name:f.get('name'),description:f.get('description'),vendorId:f.get('vendorId'),netAmount:f.get('netAmount'),vat:f.get('vat'),grossAmount:f.get('grossAmount'),currency:f.get('currency'),
+function collectCostForm(form){
+  var f = new FormData(form);
+  return {name:f.get('name'),description:f.get('description'),vendorId:f.get('vendorId'),netAmount:f.get('netAmount'),vat:f.get('vat'),grossAmount:f.get('grossAmount'),currency:f.get('currency'),
     category:f.get('category'),subcategory:f.get('subcategory'),departmentId:f.get('departmentId'),projectId:f.get('projectId'),costCenter:f.get('costCenter'),
     costDate:f.get('costDate'),invoiceDate:f.get('invoiceDate'),dueDate:f.get('dueDate'),paymentStatus:f.get('paymentStatus'),recurrence:f.get('recurrence'),
     docNumber:f.get('docNumber'),notes:f.get('notes'),necessity:f.get('necessity'),isFixed:f.get('isFixed')==='on',excludeFromSimulation:f.get('excludeFromSimulation')==='on',
     budgetMonthly:f.get('budgetMonthly'),documentLink:f.get('documentLink')};
+}
+function saveCost(ev,id){
+  ev.preventDefault();
+  var obj = collectCostForm(ev.target);
   var url = id? '/api/costs/'+id : '/api/costs';
   afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
     .catch(function(e){ alert('Nie udało się zapisać kosztu: '+e.message); });
   return false;
+}
+// "Zapisz i dodaj kolejny": przyspiesza seryjne wpisywanie wielu kosztów —
+// zapisuje bieżący koszt, a potem od razu otwiera nowy, pusty formularz
+// z zachowanym dostawcą/projektem/kategorią/działem/datą (najczęściej
+// powtarzające się pola przy wpisywaniu kilku kosztów z rzędu).
+function saveCostAndNew(btn){
+  if(btn.disabled) return;
+  var form = btn.closest('form');
+  var obj = collectCostForm(form);
+  if(!obj.name){ alert('Podaj nazwę kosztu.'); return; }
+  btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Zapisywanie…';
+  afterMutation(apiCall('POST','/api/costs',obj)).then(function(){
+    if(CURRENT_DRAFT_KEY){ draftClear(CURRENT_DRAFT_KEY); }
+    openForm('costs', null, {
+      vendorId:obj.vendorId, projectId:obj.projectId, category:obj.category, subcategory:obj.subcategory,
+      departmentId:obj.departmentId, costCenter:obj.costCenter, costDate:obj.costDate, recurrence:obj.recurrence,
+      necessity:obj.necessity, isFixed:obj.isFixed, currency:obj.currency, vat:obj.vat
+    });
+  }).catch(function(e){ btn.disabled=false; btn.textContent=orig; alert('Nie udało się zapisać kosztu: '+e.message); });
 }
 
 /* ============================= CONTRACTS ============================= */
