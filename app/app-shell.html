@@ -159,6 +159,9 @@ var BOOTED = false;
 var currentTab = (function(){ try{ return localStorage.getItem('ffp_tab')||'dashboard'; }catch(e){ return 'dashboard'; } })();
 var searchQuery = '';
 var pendingModalSave = null;
+var DASH_PERIOD = (function(){ try{ return localStorage.getItem('ffp_dash_period')||'month'; }catch(e){ return 'month'; } })();
+var DASH_CUSTOM_FROM = (function(){ try{ return localStorage.getItem('ffp_dash_from')||''; }catch(e){ return ''; } })();
+var DASH_CUSTOM_TO = (function(){ try{ return localStorage.getItem('ffp_dash_to')||''; }catch(e){ return ''; } })();
 
 /* ============================= HELPERS ============================= */
 function uid(prefix){ return (prefix||'id')+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
@@ -273,6 +276,69 @@ function metrics(){
     activeEmployees:activeEmployees
   };
 }
+/* ============================= PROJEKCJA WG WYBRANEGO OKRESU (Dashboard) ============================= */
+var DASH_PERIODS = [
+  {key:'month',label:'Ten miesiąc'},
+  {key:'quarter',label:'Ten kwartał'},
+  {key:'year',label:'Ten rok'},
+  {key:'2y',label:'2 lata do przodu'},
+  {key:'3y',label:'3 lata do przodu'},
+  {key:'5y',label:'5 lat do przodu'},
+  {key:'custom',label:'Wybrany okres'}
+];
+function periodRange(key,customFrom,customTo){
+  var now = new Date(); now.setHours(0,0,0,0);
+  var from, to;
+  if(key==='quarter'){ var q = Math.floor(now.getMonth()/3); from = new Date(now.getFullYear(), q*3, 1); to = new Date(now.getFullYear(), q*3+3, 0); }
+  else if(key==='year'){ from = new Date(now.getFullYear(),0,1); to = new Date(now.getFullYear(),11,31); }
+  else if(key==='2y'){ from = now; to = new Date(now.getFullYear()+2, now.getMonth(), now.getDate()); }
+  else if(key==='3y'){ from = now; to = new Date(now.getFullYear()+3, now.getMonth(), now.getDate()); }
+  else if(key==='5y'){ from = now; to = new Date(now.getFullYear()+5, now.getMonth(), now.getDate()); }
+  else if(key==='custom'){
+    from = customFrom? new Date(customFrom+'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
+    to = customTo? new Date(customTo+'T00:00:00') : new Date(now.getFullYear(), now.getMonth()+1, 0);
+    if(to<from){ var tmp=from; from=to; to=tmp; }
+  }
+  else { from = new Date(now.getFullYear(), now.getMonth(), 1); to = new Date(now.getFullYear(), now.getMonth()+1, 0); } // 'month' (domyślnie)
+  return {from:from, to:to};
+}
+function monthsBetweenDates(from,to){
+  var days = Math.max(0,(to-from)/86400000)+1; // liczba dni włącznie
+  return days/30.4368; // średnia długość miesiąca
+}
+// Projekcja przychodów/kosztów/zysku dla wybranego okresu, w oparciu o
+// bieżący miesięczny "run-rate" (metrics()) pomnożony przez liczbę miesięcy
+// w okresie, plus koszty JEDNORAZOWE/NIEREGULARNE, które faktycznie mają
+// datę (costDate) w tym okresie (nie są liczone w run-rate, więc dodajemy
+// je osobno jako realnie odnotowane pozycje).
+function periodMetrics(key,customFrom,customTo){
+  var r = periodRange(key,customFrom,customTo);
+  var m = metrics();
+  var months = monthsBetweenDates(r.from,r.to);
+  var oneTime = STATE.costs.filter(function(c){
+    if(monthlyEquivalent(c)>0) return false; // już policzone w run-rate
+    if(!c.costDate) return false;
+    var d = new Date(c.costDate+'T00:00:00');
+    return d>=r.from && d<=r.to;
+  }).reduce(function(s,c){return s+(Number(c.grossAmount)||Number(c.netAmount)||0);},0);
+  var revenue = m.monthlyRevenue*months;
+  var recurringCosts = m.totalBurn*months;
+  var costs = recurringCosts+oneTime;
+  return {from:r.from, to:r.to, months:months, revenue:revenue, recurringCosts:recurringCosts, oneTimeCosts:oneTime, costs:costs, profit:revenue-costs};
+}
+function setDashPeriod(key){
+  DASH_PERIOD = key;
+  try{ localStorage.setItem('ffp_dash_period',key); }catch(e){}
+  render();
+}
+function setDashCustomRange(){
+  var f = document.getElementById('dash-custom-from');
+  var t = document.getElementById('dash-custom-to');
+  DASH_CUSTOM_FROM = f? f.value : '';
+  DASH_CUSTOM_TO = t? t.value : '';
+  try{ localStorage.setItem('ffp_dash_from',DASH_CUSTOM_FROM); localStorage.setItem('ffp_dash_to',DASH_CUSTOM_TO); }catch(e){}
+  render();
+}
 function monthlyEquivalentGeneric(amount,freq){
   amount = Number(amount)||0;
   switch(freq){
@@ -299,12 +365,34 @@ function setSaveStatus(status,message){
     var el = document.getElementById(id);
     if(el) el.innerHTML = html;
   });
+  if(status==='error'){ unlockModalSubmit(); }
 }
 window.addEventListener('beforeunload', function(ev){
   if(window.__saveStatus==='saving'){
     ev.preventDefault(); ev.returnValue = 'Trwa zapisywanie do bazy danych. Czy na pewno chcesz opuścić stronę?'; return ev.returnValue;
   }
 });
+// Zabezpieczenie przed podwójnym zapisem: blokuje przycisk "Zapisz" od razu
+// po kliknięciu (np. przy szybkim, wielokrotnym wprowadzaniu danych), żeby
+// nie powstały przypadkowo dwa identyczne wpisy w bazie. Odblokowuje się
+// automatycznie po błędzie zapisu (patrz setSaveStatus powyżej) albo po
+// 15 sekundach jako zabezpieczenie awaryjne.
+function unlockModalSubmit(){
+  var overlay = document.getElementById('modal-overlay');
+  if(!overlay) return;
+  overlay.querySelectorAll('button[type="submit"]').forEach(function(b){
+    if(b.disabled){ b.disabled=false; b.textContent = b.dataset._origText || 'Zapisz'; }
+  });
+}
+document.getElementById('modal-overlay').addEventListener('submit', function(ev){
+  var btn = ev.target.querySelector('button[type="submit"]');
+  if(btn && !btn.disabled){
+    btn.disabled = true;
+    btn.dataset._origText = btn.textContent;
+    btn.textContent = 'Zapisywanie…';
+    setTimeout(function(){ if(btn.isConnected && btn.disabled){ btn.disabled=false; btn.textContent = btn.dataset._origText||'Zapisz'; } }, 15000);
+  }
+}, true);
 
 // Generyczne wywołanie API (fetch -> Next.js Route Handler -> Prisma -> PostgreSQL).
 async function apiCall(method, url, body){
@@ -505,9 +593,26 @@ function viewDashboard(){
     }).join('') || '<div class="empty">Brak danych</div>';
   }
 
+  var pm = periodMetrics(DASH_PERIOD,DASH_CUSTOM_FROM,DASH_CUSTOM_TO);
+  var periodRangeLabel = fmtDate(pm.from.toISOString().slice(0,10))+' — '+fmtDate(pm.to.toISOString().slice(0,10));
+
   return ''+
   '<h2 class="page-title">Dashboard Prezesa</h2>'+
   '<div class="page-sub">Stan na '+fmtDate(todayISO())+' • dane aktualizowane na bieżąco</div>'+
+  '<div class="panel">'+
+    '<h3>Wyniki wg okresu</h3>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+
+      DASH_PERIODS.map(function(p){ return '<button class="btn btn-sm'+(DASH_PERIOD===p.key?' btn-primary':'')+'" onclick="setDashPeriod(\''+p.key+'\')">'+p.label+'</button>'; }).join('')+
+    '</div>'+
+    (DASH_PERIOD==='custom'? '<div class="form-row2" style="margin-bottom:10px"><div><label>Od</label><input type="date" id="dash-custom-from" value="'+esc(DASH_CUSTOM_FROM)+'" onchange="setDashCustomRange()"></div><div><label>Do</label><input type="date" id="dash-custom-to" value="'+esc(DASH_CUSTOM_TO)+'" onchange="setDashCustomRange()"></div></div>':'')+
+    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate) + realnie odnotowane koszty jednorazowe z tego okresu. To orientacyjna projekcja, nie gwarancja wyniku.</div>'+
+    '<div class="kpi-grid">'+
+      kpi('Przychód w okresie (projekcja)', fmtMoney0(pm.revenue), true)+
+      kpi('Koszty w okresie (projekcja + jednorazowe)', fmtMoney0(pm.costs), true)+
+      kpi('z tego koszty jednorazowe (realne)', fmtMoney0(pm.oneTimeCosts))+
+      kpi('Zysk w okresie (projekcja)', fmtMoney0(pm.profit), true, pm.profit<0)+
+    '</div>'+
+  '</div>'+
   '<div class="kpi-grid">'+
     kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
     kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
