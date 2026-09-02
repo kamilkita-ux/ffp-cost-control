@@ -9,6 +9,7 @@ function toData(body: any) {
     spv: str(body.spv) || null,
     location: str(body.location) || null,
     mwPower: numOrNull(body.mwPower),
+    revenueMonthly: numOrNull(body.revenueMonthly),
     status: toEnum(PROJECT_STATUS_MAP, body.status, "DEVELOPMENT") as any,
     owner: str(body.owner) || null,
     startDate: toDate(body.startDate),
