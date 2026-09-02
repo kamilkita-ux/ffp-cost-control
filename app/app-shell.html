@@ -186,7 +186,15 @@ function fmtDate(iso){
   var p = iso.split('-'); if(p.length!==3) return iso;
   return p[2]+'.'+p[1]+'.'+p[0];
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+// UWAGA: celowo NIE używamy Date.toISOString() do formatowania dat lokalnych —
+// ono konwertuje na UTC, co dla stref czasowych na wschód od UTC (Polska)
+// potrafi cofnąć datę o jeden dzień (np. lokalna północ 1 września staje się
+// 31 sierpnia 22:00 UTC). localISO() buduje string z lokalnych składowych daty.
+function localISO(d){
+  function p2(n){ return (n<10?'0':'')+n; }
+  return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+}
+function todayISO(){ return localISO(new Date()); }
 function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
@@ -221,26 +229,52 @@ function empAllocPct(e,projectId){
 }
 
 function metrics(){
-  var activeEmployees = STATE.employees.filter(function(e){return e.status!=='zakończona współpraca';});
+  // WAŻNE: wszystkie wyliczenia finansowe (KPI, dashboard, analiza, symulator)
+  // celowo POMIJAJĄ rekordy oznaczone jako DEMO (isDemo=true) — inaczej
+  // przykładowe dane demonstracyjne (widoczne dalej w tabelach z tagiem
+  // "DEMO", żeby dało się je znaleźć i usunąć) zniekształcałyby realne
+  // liczby firmy, dopóki ktoś ręcznie nie usunie danych DEMO w Ustawieniach.
+  var realProjects = STATE.projects.filter(function(p){return !p.isDemo;});
+  var realCosts = STATE.costs.filter(function(c){return !c.isDemo;});
+  var realEmployeesAll = STATE.employees.filter(function(e){return !e.isDemo;});
+
+  var activeEmployees = realEmployeesAll.filter(function(e){return e.status!=='zakończona współpraca';});
   var monthlyPayroll = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
-  var monthlyExternal = STATE.costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyExternal = realCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyFinancing = STATE.financings.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
-  var monthlyFixedNonPayroll = STATE.costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyFixedNonPayroll = realCosts.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyFixed = monthlyPayroll+monthlyFixedNonPayroll+monthlyFinancing;
   var totalBurn = monthlyPayroll+monthlyExternal+monthlyFinancing;
   var annualRunRate = totalBurn*12;
 
+  // UWAGA: te mapy per-projekt liczone są dla WSZYSTKICH projektów (łącznie
+  // z DEMO), żeby wiersz/podstrona projektu demonstracyjnego nie wywalała
+  // błędu przy odczycie — ale wewnątrz używają już tylko realCosts/
+  // activeEmployees (bez DEMO), więc projekt DEMO i tak wychodzi na zero.
+  // Sumy zbiorcze (totalProjectCost, monthlyRevenue) liczone są WYŁĄCZNIE
+  // po realProjects, żeby DEMO nie zawyżało łącznych KPI.
   var monthlyProjectCost = STATE.projects.reduce(function(sum,p){
-    var c = STATE.costs.filter(function(x){return x.projectId===p.id;}).reduce(function(s,x){return s+monthlyEquivalent(x);},0);
+    var c = realCosts.filter(function(x){return x.projectId===p.id;}).reduce(function(s,x){return s+monthlyEquivalent(x);},0);
     var emp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
     sum[p.id] = c+emp; return sum;
   },{});
-  var totalProjectCost = Object.keys(monthlyProjectCost).reduce(function(s,k){return s+monthlyProjectCost[k];},0);
+  var totalProjectCost = realProjects.reduce(function(s,p){return s+(monthlyProjectCost[p.id]||0);},0);
 
   var monthlyProjectRevenue = STATE.projects.reduce(function(sum,p){ sum[p.id] = Number(p.revenueMonthly)||0; return sum; },{});
-  var monthlyRevenue = Object.keys(monthlyProjectRevenue).reduce(function(s,k){return s+monthlyProjectRevenue[k];},0);
+  var monthlyRevenue = realProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
 
-  var unassignedCosts = STATE.costs.filter(function(c){return !c.projectId;});
+  // Portfel wg rodzaju aktywa (PV / BESS / Hybryda / Inne) — przychód i koszt miesięczny.
+  var byAssetType = {};
+  realProjects.forEach(function(p){
+    var t = p.assetType || 'PV';
+    if(!byAssetType[t]) byAssetType[t] = {revenue:0, cost:0, count:0, mwPower:0};
+    byAssetType[t].revenue += monthlyProjectRevenue[p.id]||0;
+    byAssetType[t].cost += monthlyProjectCost[p.id]||0;
+    byAssetType[t].count += 1;
+    byAssetType[t].mwPower += Number(p.mwPower)||0;
+  });
+
+  var unassignedCosts = realCosts.filter(function(c){return !c.projectId;});
   var monthlyAdminFromCosts = unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyAdminFromEmp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,'ADMIN')/100);},0);
   var monthlyAdmin = monthlyAdminFromCosts+monthlyAdminFromEmp;
@@ -248,24 +282,24 @@ function metrics(){
   var deptCost = {};
   STATE.departments.forEach(function(d){
     var empC = activeEmployees.filter(function(e){return e.departmentId===d.id;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
-    var costC = STATE.costs.filter(function(c){return c.departmentId===d.id;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    var costC = realCosts.filter(function(c){return c.departmentId===d.id;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
     deptCost[d.id] = {employees:activeEmployees.filter(function(e){return e.departmentId===d.id;}).length, empCost:empC, otherCost:costC, total:empC+costC};
   });
 
   function upcomingIn(days){
-    return STATE.costs.filter(function(c){
+    return realCosts.filter(function(c){
       if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
       var d = daysUntil(c.dueDate); return d!==null && d>=0 && d<=days;
     });
   }
-  var overdue = STATE.costs.filter(function(c){
+  var overdue = realCosts.filter(function(c){
     if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
     var d = daysUntil(c.dueDate); return d!==null && d<0;
   });
 
   var potentialSavingsMonthly =
-    STATE.costs.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0) +
-    STATE.employees.filter(function(e){return e.excludeFromSimulation;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0) +
+    realCosts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0) +
+    realEmployeesAll.filter(function(e){return e.excludeFromSimulation;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0) +
     STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0) +
     STATE.financings.filter(function(f){return f.excludeFromSimulation;}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
 
@@ -279,22 +313,22 @@ function metrics(){
   STATE.projects.forEach(function(p){
     var financingLeft = STATE.financings.filter(function(f){return f.projectId===p.id;})
       .reduce(function(s,f){return s+(Number(f.remainingBalance)||0);},0);
-    var unpaidCosts = STATE.costs.filter(function(c){
+    var unpaidCosts = realCosts.filter(function(c){
       return c.projectId===p.id && c.paymentStatus!=='zapłacony' && c.paymentStatus!=='anulowany';
     }).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
     futureCapitalNeed[p.id] = financingLeft+unpaidCosts;
   });
-  var totalFutureCapitalNeed = Object.keys(futureCapitalNeed).reduce(function(s,k){return s+futureCapitalNeed[k];},0);
+  var totalFutureCapitalNeed = realProjects.reduce(function(s,p){return s+(futureCapitalNeed[p.id]||0);},0);
 
   // Przekroczenie budżetu projektu: suma WSZYSTKICH kosztów (brutto) danego
   // projektu od początku, porównana z zadeklarowanym budżetem całkowitym.
   var projectBudgetStatus = {};
   STATE.projects.forEach(function(p){
     var budget = Number(p.budgetTotal)||0;
-    var spent = STATE.costs.filter(function(c){return c.projectId===p.id;}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+    var spent = realCosts.filter(function(c){return c.projectId===p.id;}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
     projectBudgetStatus[p.id] = {budget:budget, spent:spent, over: budget>0 && spent>budget, pct: budget>0? Math.round(spent/budget*100):null};
   });
-  var overBudgetProjects = STATE.projects.filter(function(p){return projectBudgetStatus[p.id].over;});
+  var overBudgetProjects = realProjects.filter(function(p){return projectBudgetStatus[p.id].over;});
 
   return {
     monthlyPayroll:monthlyPayroll, monthlyExternal:monthlyExternal, monthlyFinancing:monthlyFinancing,
@@ -307,7 +341,8 @@ function metrics(){
     potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
     activeEmployees:activeEmployees,
     futureCapitalNeed:futureCapitalNeed, totalFutureCapitalNeed:totalFutureCapitalNeed,
-    projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects
+    projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects,
+    byAssetType:byAssetType
   };
 }
 /* ============================= PROJEKCJA WG WYBRANEGO OKRESU (Dashboard) ============================= */
@@ -619,7 +654,7 @@ function viewDashboard(){
   var m = metrics();
   var topCosts = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,10);
   var byCategory = {};
-  STATE.costs.forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
   var byDept = m.deptCost;
   var terminable = STATE.contracts.filter(function(c){ var d=daysUntil(c.earliestTerminationDate); return d!==null && d>=0 && d<=90; });
   var unassignedEmp = STATE.employees.filter(function(e){ return !e.allocations || e.allocations.length===0; });
@@ -634,7 +669,7 @@ function viewDashboard(){
   }
 
   var pm = periodMetrics(DASH_PERIOD,DASH_CUSTOM_FROM,DASH_CUSTOM_TO);
-  var periodRangeLabel = fmtDate(pm.from.toISOString().slice(0,10))+' — '+fmtDate(pm.to.toISOString().slice(0,10));
+  var periodRangeLabel = fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to));
 
   return ''+
   '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Dashboard Prezesa</h2><button class="btn btn-sm" onclick="window.print()">🖶 Eksportuj raport (PDF/druk)</button></div>'+
@@ -679,7 +714,12 @@ function viewDashboard(){
     '<div class="panel"><h3>Struktura kosztów według działów (miesięcznie)</h3>'+barRows(byDept, Object.keys(byDept).reduce(function(s,k){return s+byDept[k].total;},0), function(k){return deptName(k);})+'</div>'+
   '</div>'+
   '<div class="grid2">'+
-    '<div class="panel"><h3>Struktura kosztów według projektów (miesięcznie)</h3>'+barRows(m.monthlyProjectCost, m.totalProjectCost, function(k){return projectName(k);})+'</div>'+
+    '<div class="panel"><h3>Struktura kosztów według projektów (miesięcznie)</h3>'+barRows(STATE.projects.filter(function(p){return !p.isDemo;}).reduce(function(o,p){o[p.id]=m.monthlyProjectCost[p.id]||0;return o;},{}), m.totalProjectCost, function(k){return projectName(k);})+'</div>'+
+    '<div class="panel"><h3>Portfel wg rodzaju aktywa</h3>'+(Object.keys(m.byAssetType).length?'<div class="table-wrap"><table><thead><tr><th>Rodzaj</th><th>Projekty</th><th>Moc MW</th><th>Przychód/mies.</th><th>Koszt/mies.</th><th>Zysk/mies.</th></tr></thead><tbody>'+
+      Object.keys(m.byAssetType).map(function(t){
+        var a = m.byAssetType[t];
+        return '<tr><td><span class="pill pill-muted">'+esc(t)+'</span></td><td>'+a.count+'</td><td>'+a.mwPower.toFixed(1)+'</td><td class="right">'+fmtMoney0(a.revenue)+'</td><td class="right">'+fmtMoney0(a.cost)+'</td><td class="right">'+fmtMoney0(a.revenue-a.cost)+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'<div class="empty">Brak projektów</div>')+'</div>'+
     '<div class="panel"><h3>TOP 10 największych kosztów</h3>'+costsTable(topCosts,false)+'</div>'+
   '</div>'+
   '<div class="grid3">'+
@@ -724,7 +764,9 @@ function exportCsv(rows,headers,filename){
     lines.push(headers.map(function(h){ var v=r[h.key]; return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'));
   });
   var csv = lines.join('\n');
-  downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+  // BOM na początku pliku — bez niego Excel na Windows potrafi błędnie
+  // odczytać polskie znaki (ą, ę, ł, ń itd.) jako krzaki przy otwieraniu CSV.
+  downloadTextFile(filename, '﻿'+csv, 'text/csv;charset=utf-8');
 }
 function downloadTextFile(filename, content, mime){
   var blob = new Blob([content], {type: mime||'text/plain'});
@@ -859,10 +901,10 @@ function projectForm(p){
   '<div class="form-row2"><div><label>Moc (MW)</label><input type="number" step="0.01" name="mwPower" value="'+p.mwPower+'"></div><div><label>Status</label>'+selectHtml('status',PROJECT_STATUS_OPTS,p.status)+'</div></div>'+
   '<div class="form-row2"><div><label>Rodzaj aktywa</label>'+selectHtml('assetType',ASSET_TYPE_OPTS,p.assetType)+'</div><div><label>Przychód miesięczny (orientacyjny)</label><input type="number" step="0.01" name="revenueMonthly" value="'+p.revenueMonthly+'"></div></div>'+
   '<div class="section-title">CAPEX i budżet</div>'+
-  '<div class="form-row2"><div><label>CAPEX — nakład inwestycyjny</label><input type="number" step="0.01" name="capex" value="'+p.capex+'"></div><div><label>Budżet całkowity (zatwierdzony)</label><input type="number" step="0.01" name="budgetTotal" value="'+p.budgetTotal+'"></div></div>'+
+  '<div class="form-row2"><div><label>CAPEX — nakład inwestycyjny</label><input type="number" step="0.01" min="0" name="capex" value="'+p.capex+'"></div><div><label>Budżet całkowity (zatwierdzony)</label><input type="number" step="0.01" min="0" name="budgetTotal" value="'+p.budgetTotal+'"></div></div>'+
   '<div class="section-title">Przyłącze do sieci</div>'+
   '<div class="form-row2"><div><label>Operator sieci (OSD)</label><input name="gridOperator" value="'+esc(p.gridOperator)+'" placeholder="np. Tauron Dystrybucja"></div><div><label>Odbiorca energii / pośrednik zakupu</label><input name="energyBuyer" value="'+esc(p.energyBuyer)+'" placeholder="np. spółka obrotu, PPA"></div></div>'+
-  '<div class="form-row2"><div><label>Moc wnioskowana (MW)</label><input type="number" step="0.01" name="requestedPowerMW" value="'+p.requestedPowerMW+'"></div><div><label>Moc przyznana (MW)</label><input type="number" step="0.01" name="grantedPowerMW" value="'+p.grantedPowerMW+'"></div></div>'+
+  '<div class="form-row2"><div><label>Moc wnioskowana (MW)</label><input type="number" step="0.01" min="0" name="requestedPowerMW" value="'+p.requestedPowerMW+'"></div><div><label>Moc przyznana (MW)</label><input type="number" step="0.01" min="0" name="grantedPowerMW" value="'+p.grantedPowerMW+'"></div></div>'+
   '<div class="form-row2"><div><label>Status warunków przyłączenia</label>'+selectHtml('connectionConditionsStatus',CONNECTION_STATUS_OPTS,p.connectionConditionsStatus)+'</div><div><label>Status umowy przyłączeniowej</label>'+selectHtml('connectionAgreementStatus',AGREEMENT_STATUS_OPTS,p.connectionAgreementStatus)+'</div></div>'+
   '<div class="section-title">Ryzyko prawne i regulacyjne</div>'+
   '<div class="form-row2"><div><label>Status pozwoleń (budowlane itp.)</label>'+selectHtml('permitsStatus',PERMIT_STATUS_OPTS,p.permitsStatus)+'</div><div><label>Decyzja środowiskowa</label>'+selectHtml('environmentalDecisionStatus',ENV_DECISION_STATUS_OPTS,p.environmentalDecisionStatus)+'</div></div>'+
@@ -1191,7 +1233,7 @@ function saveVendor(ev,id){
 /* ============================= PAYMENTS ============================= */
 function viewPayments(){
   var groups = {zalegle:[],dzisiaj:[],d7:[],d14:[],d30:[],pozniej:[]};
-  STATE.costs.forEach(function(c){
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){
     if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany'||!c.dueDate) return;
     var d = daysUntil(c.dueDate);
     if(d<0) groups.zalegle.push(c);
@@ -1244,11 +1286,15 @@ function deleteDept(id){
 /* ============================= ANALYSIS ============================= */
 function viewAnalysis(){
   var m = metrics();
-  var top20 = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
-  var top20fixed = STATE.costs.filter(function(c){return c.isFixed;}).slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
+  // Analiza pomija dane DEMO (spójnie z metrics()) — inaczej przykładowy
+  // rekord demonstracyjny mieszałby się z realnymi liczbami w zestawieniach.
+  var realCostsA = STATE.costs.filter(function(c){return !c.isDemo;});
+  var realEmployeesA = STATE.employees.filter(function(e){return !e.isDemo;});
+  var top20 = realCostsA.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
+  var top20fixed = realCostsA.filter(function(c){return c.isFixed;}).slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
   function groupSum(keyFn,labelFn){
     var g={};
-    STATE.costs.forEach(function(c){ var k=keyFn(c); g[k]=(g[k]||0)+monthlyEquivalent(c); });
+    realCostsA.forEach(function(c){ var k=keyFn(c); g[k]=(g[k]||0)+monthlyEquivalent(c); });
     return Object.keys(g).map(function(k){return {label:labelFn(k),value:g[k]};}).sort(function(a,b){return b.value-a.value;});
   }
   function table(rows){
@@ -1257,7 +1303,7 @@ function viewAnalysis(){
     rows.map(function(r){return '<tr><td>'+esc(r.label)+'</td><td class="right">'+fmtMoney(r.value)+'</td><td class="right">'+(total?Math.round(r.value/total*100):0)+'%</td></tr>';}).join('')+
     '</tbody></table>';
   }
-  var byEmp = STATE.employees.map(function(e){return {label:empName(e),value:totalMonthlyCostEmployee(e)};}).sort(function(a,b){return b.value-a.value;});
+  var byEmp = realEmployeesA.map(function(e){return {label:empName(e),value:totalMonthlyCostEmployee(e)};}).sort(function(a,b){return b.value-a.value;});
   var byVendor = groupSum(function(c){return c.vendorId||'brak';}, function(k){return k==='brak'?'Brak dostawcy':vendorName(k);});
   return '<h2 class="page-title">Analiza kosztów</h2><div class="page-sub">Cash burn: '+fmtMoney0(m.totalBurn)+'/mies. • Run-rate roczny: '+fmtMoney0(m.annualRunRate)+'</div>'+
   '<div class="kpi-grid">'+kpi('Miesięczny cash burn',fmtMoney0(m.totalBurn),true)+kpi('Roczny run-rate',fmtMoney0(m.annualRunRate),true)+kpi('Koszty stałe',fmtMoney0(m.monthlyFixed))+kpi('Koszty zmienne/zewnętrzne',fmtMoney0(m.monthlyExternal))+'</div>'+
@@ -1266,7 +1312,7 @@ function viewAnalysis(){
   '<div class="panel"><h3>TOP 20 największych kosztów stałych</h3>'+costsTable(top20fixed)+'</div>'+
   '</div><div class="grid2">'+
   '<div class="panel"><h3>Koszt wg kategorii</h3>'+table(groupSum(function(c){return c.category||'Inne';},function(k){return k;}))+'</div>'+
-  '<div class="panel"><h3>Koszt wg projektu</h3>'+table(Object.keys(m.monthlyProjectCost).map(function(k){return {label:projectName(k),value:m.monthlyProjectCost[k]};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
+  '<div class="panel"><h3>Koszt wg projektu</h3>'+table(STATE.projects.filter(function(p){return !p.isDemo;}).map(function(p){return {label:projectName(p.id),value:m.monthlyProjectCost[p.id]||0};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
   '</div><div class="grid2">'+
   '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
   '<div class="panel"><h3>Koszt wg pracownika</h3>'+table(byEmp)+'</div>'+
