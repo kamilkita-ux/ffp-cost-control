@@ -36,6 +36,13 @@ ${body}
 export async function GET() {
   return new NextResponse(loadShell(), {
     status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" }
+    // Bez Cache-Control przeglądarka (zwłaszcza na telefonie) potrafi
+    // pokazywać starą wersję strony po wdrożeniu nowego kodu, mimo że
+    // serwer ma już nową wersję — stąd wrażenie "nie działa", chociaż
+    // deploy przeszedł poprawnie. Wymuszamy zawsze świeże pobranie.
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, must-revalidate"
+    }
   });
 }
