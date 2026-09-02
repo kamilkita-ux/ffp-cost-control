@@ -248,6 +248,17 @@ function metrics(){
   var monthlyProjectRevenue = STATE.projects.reduce(function(sum,p){ sum[p.id] = Number(p.revenueMonthly)||0; return sum; },{});
   var monthlyRevenue = Object.keys(monthlyProjectRevenue).reduce(function(s,k){return s+monthlyProjectRevenue[k];},0);
 
+  // Portfel wg rodzaju aktywa (PV / BESS / Hybryda / Inne) — przychód i koszt miesięczny.
+  var byAssetType = {};
+  STATE.projects.forEach(function(p){
+    var t = p.assetType || 'PV';
+    if(!byAssetType[t]) byAssetType[t] = {revenue:0, cost:0, count:0, mwPower:0};
+    byAssetType[t].revenue += monthlyProjectRevenue[p.id]||0;
+    byAssetType[t].cost += monthlyProjectCost[p.id]||0;
+    byAssetType[t].count += 1;
+    byAssetType[t].mwPower += Number(p.mwPower)||0;
+  });
+
   var unassignedCosts = STATE.costs.filter(function(c){return !c.projectId;});
   var monthlyAdminFromCosts = unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyAdminFromEmp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,'ADMIN')/100);},0);
@@ -315,7 +326,8 @@ function metrics(){
     potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
     activeEmployees:activeEmployees,
     futureCapitalNeed:futureCapitalNeed, totalFutureCapitalNeed:totalFutureCapitalNeed,
-    projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects
+    projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects,
+    byAssetType:byAssetType
   };
 }
 /* ============================= PROJEKCJA WG WYBRANEGO OKRESU (Dashboard) ============================= */
@@ -688,6 +700,11 @@ function viewDashboard(){
   '</div>'+
   '<div class="grid2">'+
     '<div class="panel"><h3>Struktura kosztów według projektów (miesięcznie)</h3>'+barRows(m.monthlyProjectCost, m.totalProjectCost, function(k){return projectName(k);})+'</div>'+
+    '<div class="panel"><h3>Portfel wg rodzaju aktywa</h3>'+(Object.keys(m.byAssetType).length?'<div class="table-wrap"><table><thead><tr><th>Rodzaj</th><th>Projekty</th><th>Moc MW</th><th>Przychód/mies.</th><th>Koszt/mies.</th><th>Zysk/mies.</th></tr></thead><tbody>'+
+      Object.keys(m.byAssetType).map(function(t){
+        var a = m.byAssetType[t];
+        return '<tr><td><span class="pill pill-muted">'+esc(t)+'</span></td><td>'+a.count+'</td><td>'+a.mwPower.toFixed(1)+'</td><td class="right">'+fmtMoney0(a.revenue)+'</td><td class="right">'+fmtMoney0(a.cost)+'</td><td class="right">'+fmtMoney0(a.revenue-a.cost)+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'<div class="empty">Brak projektów</div>')+'</div>'+
     '<div class="panel"><h3>TOP 10 największych kosztów</h3>'+costsTable(topCosts,false)+'</div>'+
   '</div>'+
   '<div class="grid3">'+
