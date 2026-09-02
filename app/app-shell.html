@@ -613,12 +613,10 @@ function viewDashboard(){
       kpi('Zysk w okresie (projekcja)', fmtMoney0(pm.profit), true, pm.profit<0)+
     '</div>'+
   '</div>'+
+  '<div class="page-sub" style="margin-top:18px">Poniżej: stałe wskaźniki operacyjne liczone zawsze miesięcznie/rocznie — nie zmieniają się wraz z przełącznikiem okresu powyżej.</div>'+
   '<div class="kpi-grid">'+
     kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
     kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
-    kpi('Przychód / mies. (orientacyjny)', fmtMoney0(m.monthlyRevenue), true)+
-    kpi('Zysk / mies. (orientacyjny)', fmtMoney0(m.monthlyProfit), true, m.monthlyProfit<0)+
-    kpi('Zysk / rok (orientacyjny)', fmtMoney0(m.annualProfit))+
     kpi('Koszty stałe / mies.', fmtMoney0(m.monthlyFixed))+
     kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll))+
     kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
