@@ -73,6 +73,13 @@ tr:hover td{background:var(--accent-bg);}
 .pill-muted{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 .filters select,.filters input{width:auto;min-width:130px;}
+@media print{
+  .no-print{display:none!important;}
+  body{background:#fff;color:#000;}
+  .panel{box-shadow:none;border:1px solid #999;break-inside:avoid;}
+  .kpi{border:1px solid #999;break-inside:avoid;}
+  a,.link{color:#000!important;text-decoration:none;}
+}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .muted{color:var(--muted);}
 .right{text-align:right;}
@@ -117,14 +124,14 @@ tr:hover td{background:var(--accent-bg);}
 }
 </style>
 <div id="app">
-  <div id="sidebar-overlay" onclick="closeMobileNav()"></div>
-  <div id="sidebar">
+  <div id="sidebar-overlay" class="no-print" onclick="closeMobileNav()"></div>
+  <div id="sidebar" class="no-print">
     <h1>FFP Cost Control</h1>
     <div class="sub">Farmy Fotowoltaiki Polska S.A.</div>
     <div id="nav-list"></div>
   </div>
   <div id="main">
-    <div id="topbar">
+    <div id="topbar" class="no-print">
       <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
       <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
       <div class="spacer"></div>
@@ -138,7 +145,7 @@ tr:hover td{background:var(--accent-bg);}
     <div id="content"><div class="empty" style="padding:40px;text-align:center">Ładowanie danych z bazy PostgreSQL…</div></div>
   </div>
 </div>
-<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+<div id="modal-overlay" class="no-print" onclick="if(event.target===this)closeModal()">
   <div id="modal"></div>
 </div>
 <div id="search-overlay"></div>
@@ -179,7 +186,15 @@ function fmtDate(iso){
   var p = iso.split('-'); if(p.length!==3) return iso;
   return p[2]+'.'+p[1]+'.'+p[0];
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+// UWAGA: celowo NIE używamy Date.toISOString() do formatowania dat lokalnych —
+// ono konwertuje na UTC, co dla stref czasowych na wschód od UTC (Polska)
+// potrafi cofnąć datę o jeden dzień (np. lokalna północ 1 września staje się
+// 31 sierpnia 22:00 UTC). localISO() buduje string z lokalnych składowych daty.
+function localISO(d){
+  function p2(n){ return (n<10?'0':'')+n; }
+  return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+}
+function todayISO(){ return localISO(new Date()); }
 function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
@@ -264,6 +279,31 @@ function metrics(){
 
   var monthlyProfit = monthlyRevenue - totalBurn;
 
+  // Przyszłe zapotrzebowanie na kapitał per projekt: pozostałe do spłaty
+  // finansowanie (leasingi/kredyty) powiązane z projektem + koszty projektu
+  // jeszcze niezapłacone (planowane/zatwierdzone/do zapłaty), liczone kwotą
+  // brutto (to zapotrzebowanie na kapitał, nie koszt miesięczny/ekwiwalent).
+  var futureCapitalNeed = {};
+  STATE.projects.forEach(function(p){
+    var financingLeft = STATE.financings.filter(function(f){return f.projectId===p.id;})
+      .reduce(function(s,f){return s+(Number(f.remainingBalance)||0);},0);
+    var unpaidCosts = STATE.costs.filter(function(c){
+      return c.projectId===p.id && c.paymentStatus!=='zapłacony' && c.paymentStatus!=='anulowany';
+    }).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+    futureCapitalNeed[p.id] = financingLeft+unpaidCosts;
+  });
+  var totalFutureCapitalNeed = Object.keys(futureCapitalNeed).reduce(function(s,k){return s+futureCapitalNeed[k];},0);
+
+  // Przekroczenie budżetu projektu: suma WSZYSTKICH kosztów (brutto) danego
+  // projektu od początku, porównana z zadeklarowanym budżetem całkowitym.
+  var projectBudgetStatus = {};
+  STATE.projects.forEach(function(p){
+    var budget = Number(p.budgetTotal)||0;
+    var spent = STATE.costs.filter(function(c){return c.projectId===p.id;}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+    projectBudgetStatus[p.id] = {budget:budget, spent:spent, over: budget>0 && spent>budget, pct: budget>0? Math.round(spent/budget*100):null};
+  });
+  var overBudgetProjects = STATE.projects.filter(function(p){return projectBudgetStatus[p.id].over;});
+
   return {
     monthlyPayroll:monthlyPayroll, monthlyExternal:monthlyExternal, monthlyFinancing:monthlyFinancing,
     monthlyFixed:monthlyFixed, totalBurn:totalBurn, annualRunRate:annualRunRate,
@@ -273,7 +313,9 @@ function metrics(){
     monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
     upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
     potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
-    activeEmployees:activeEmployees
+    activeEmployees:activeEmployees,
+    futureCapitalNeed:futureCapitalNeed, totalFutureCapitalNeed:totalFutureCapitalNeed,
+    projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects
   };
 }
 /* ============================= PROJEKCJA WG WYBRANEGO OKRESU (Dashboard) ============================= */
@@ -529,6 +571,12 @@ var STATUS_OPTS_EMP = ['aktywny','urlop','zawieszony','zakończona współpraca'
 var CONTRACT_TYPE_OPTS = ['umowa o pracę','B2B','zlecenie','dzieło','kontrakt managerski','inne'];
 var CRIT_OPTS = ['krytyczne','ważne','możliwe do zastąpienia','możliwe do outsourcingu','możliwe do redukcji'];
 var PROJECT_STATUS_OPTS = ['development','pozwolenia','RTB','budowa','operacyjny','zawieszony','sprzedany','zamknięty'];
+var ASSET_TYPE_OPTS = ['PV','BESS','Hybryda','Inne'];
+var CONNECTION_STATUS_OPTS = ['nie dotyczy','w przygotowaniu','wniosek złożony','wydane warunki','odmowa'];
+var AGREEMENT_STATUS_OPTS = ['nie dotyczy','w negocjacjach','podpisana','wypowiedziana'];
+var PERMIT_STATUS_OPTS = ['nie dotyczy','w trakcie','uzyskane','odmowa'];
+var ENV_DECISION_STATUS_OPTS = ['nie dotyczy','w trakcie','uzyskana','odmowa','nie wymagana'];
+var ZONING_STATUS_OPTS = ['nie dotyczy','MPZP','warunki zabudowy — w trakcie','warunki zabudowy — uzyskane','brak pokrycia MPZP'];
 var RECURRENCE_OPTS = ['jednorazowy','miesięczny','kwartalny','półroczny','roczny','nieregularny'];
 var PAYMENT_STATUS_OPTS = ['planowany','zatwierdzony','do zapłaty','zapłacony','anulowany'];
 var NECESSITY_OPTS = ['niezbędny','ważny','opcjonalny','do analizy','do redukcji'];
@@ -594,10 +642,10 @@ function viewDashboard(){
   }
 
   var pm = periodMetrics(DASH_PERIOD,DASH_CUSTOM_FROM,DASH_CUSTOM_TO);
-  var periodRangeLabel = fmtDate(pm.from.toISOString().slice(0,10))+' — '+fmtDate(pm.to.toISOString().slice(0,10));
+  var periodRangeLabel = fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to));
 
   return ''+
-  '<h2 class="page-title">Dashboard Prezesa</h2>'+
+  '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Dashboard Prezesa</h2><button class="btn btn-sm" onclick="window.print()">🖶 Eksportuj raport (PDF/druk)</button></div>'+
   '<div class="page-sub">Stan na '+fmtDate(todayISO())+' • dane aktualizowane na bieżąco</div>'+
   '<div class="panel">'+
     '<h3>Wyniki wg okresu</h3>'+
@@ -627,8 +675,13 @@ function viewDashboard(){
     kpi('Aktywne projekty', String(STATE.projects.filter(function(p){return ['budowa','operacyjny','pozwolenia','RTB','development'].indexOf(p.status)>=0;}).length))+
     kpi('Potencjalne oszczędności / mies.', fmtMoney0(m.potentialSavingsMonthly), false, m.potentialSavingsMonthly>0)+
     kpi('Potencjalne oszczędności / rok', fmtMoney0(m.potentialSavingsAnnual))+
+    kpi('Przyszłe zapotrzebowanie na kapitał (wszystkie projekty)', fmtMoney0(m.totalFutureCapitalNeed), true)+
   '</div>'+
   (m.overdue.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Zaległe płatności ('+m.overdue.length+')</h3>'+costsTable(m.overdue,false)+'</div>':'')+
+  (m.overBudgetProjects.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Projekty z przekroczonym budżetem ('+m.overBudgetProjects.length+')</h3>'+m.overBudgetProjects.map(function(p){
+    var bs = m.projectBudgetStatus[p.id];
+    return '<div style="margin-bottom:6px"><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span> — budżet '+fmtMoney0(bs.budget)+', wydano '+fmtMoney0(bs.spent)+' ('+bs.pct+'%)</div>';
+  }).join('')+'</div>':'')+
   '<div class="grid2">'+
     '<div class="panel"><h3>Struktura kosztów według kategorii (miesięcznie)</h3>'+barRows(byCategory, m.monthlyExternal, function(k){return k;})+'</div>'+
     '<div class="panel"><h3>Struktura kosztów według działów (miesięcznie)</h3>'+barRows(byDept, Object.keys(byDept).reduce(function(s,k){return s+byDept[k].total;},0), function(k){return deptName(k);})+'</div>'+
@@ -779,29 +832,50 @@ function saveEmployee(ev,id){
 /* ============================= PROJECTS ============================= */
 function viewProjects(){
   var m = metrics();
-  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód łączny: '+fmtMoney0(m.monthlyRevenue)+'/mies.</div>'+
-  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
-  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th>Przychód / mies.</th><th>Zysk / mies.</th><th></th></tr></thead><tbody>'+
+  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód łączny: '+fmtMoney0(m.monthlyRevenue)+'/mies. • przyszłe zapotrzebowanie na kapitał: '+fmtMoney0(m.totalFutureCapitalNeed)+'</div>'+
+  '<div class="toolbar"><div><button class="btn btn-sm" onclick="exportProjectsCsv()">Eksport CSV</button></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Rodzaj</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th>Przychód / mies.</th><th>Zysk / mies.</th><th>Budżet</th><th></th></tr></thead><tbody>'+
   (STATE.projects.length?STATE.projects.map(function(p){
     var cost = m.monthlyProjectCost[p.id]||0, rev = Number(p.revenueMonthly)||0, profit = rev-cost;
-    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(cost)+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(rev):'—')+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(profit):'—')+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
-  }).join(''):'<tr><td colspan="9" class="empty">Brak projektów</td></tr>')+
+    var bs = m.projectBudgetStatus[p.id];
+    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td><span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(cost)+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(rev):'—')+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(profit):'—')+'</td><td>'+(bs.budget>0?'<span class="pill '+(bs.over?'pill-danger':'pill-ok')+'">'+bs.pct+'%</span>':'—')+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="10" class="empty">Brak projektów</td></tr>')+
   '</tbody></table></div>';
+}
+function exportProjectsCsv(){
+  var m = metrics();
+  exportCsv(STATE.projects.map(function(p){
+    var bs = m.projectBudgetStatus[p.id];
+    return {name:p.name,code:p.code,assetType:p.assetType,status:p.status,mw:p.mwPower,location:p.location,
+      cost:m.monthlyProjectCost[p.id]||0, revenue:p.revenueMonthly, capex:p.capex, budget:bs.budget, spent:bs.spent,
+      futureCapital:m.futureCapitalNeed[p.id]||0};
+  }),[{key:'name',label:'Nazwa'},{key:'code',label:'Kod'},{key:'assetType',label:'Rodzaj'},{key:'status',label:'Status'},{key:'mw',label:'Moc MW'},{key:'location',label:'Lokalizacja'},
+    {key:'cost',label:'Koszt/mies.'},{key:'revenue',label:'Przychód/mies.'},{key:'capex',label:'CAPEX'},{key:'budget',label:'Budżet'},{key:'spent',label:'Wydano'},{key:'futureCapital',label:'Przyszłe zapotrzebowanie na kapitał'}],
+    'projekty.csv');
 }
 function projectStatusPill(s){
   var map={'operacyjny':'pill-ok','budowa':'pill-ok','sprzedany':'pill-muted','zamknięty':'pill-muted','zawieszony':'pill-danger'};
   return '<span class="pill '+(map[s]||'pill-warn')+'">'+esc(s||'—')+'</span>';
 }
 function projectForm(p){
-  p = p || {name:'',code:'',spv:'',location:'',mwPower:'',revenueMonthly:'',gridOperator:'',energyBuyer:'',status:'development',owner:'',startDate:'',endDate:'',description:''};
+  p = p || {name:'',code:'',spv:'',location:'',mwPower:'',revenueMonthly:'',gridOperator:'',energyBuyer:'',assetType:'PV',capex:'',budgetTotal:'',requestedPowerMW:'',grantedPowerMW:'',connectionConditionsStatus:'nie dotyczy',connectionAgreementStatus:'nie dotyczy',permitsStatus:'nie dotyczy',environmentalDecisionStatus:'nie dotyczy',zoningStatus:'nie dotyczy',status:'development',owner:'',startDate:'',endDate:'',description:''};
   var isNew = !p.id;
   return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy projekt':'Edytuj projekt')+'</h3>'+
   '<form onsubmit="return saveProject(event,\''+(p.id||'')+'\')">'+
   '<div class="form-row2"><div><label>Nazwa</label><input name="name" value="'+esc(p.name)+'" required></div><div><label>Kod projektu</label><input name="code" value="'+esc(p.code)+'"></div></div>'+
   '<div class="form-row2"><div><label>SPV</label><input name="spv" value="'+esc(p.spv)+'"></div><div><label>Lokalizacja</label><input name="location" value="'+esc(p.location)+'"></div></div>'+
   '<div class="form-row2"><div><label>Moc (MW)</label><input type="number" step="0.01" name="mwPower" value="'+p.mwPower+'"></div><div><label>Status</label>'+selectHtml('status',PROJECT_STATUS_OPTS,p.status)+'</div></div>'+
-  '<div class="form-row2"><div><label>Przychód miesięczny (orientacyjny)</label><input type="number" step="0.01" name="revenueMonthly" value="'+p.revenueMonthly+'"></div><div></div></div>'+
+  '<div class="form-row2"><div><label>Rodzaj aktywa</label>'+selectHtml('assetType',ASSET_TYPE_OPTS,p.assetType)+'</div><div><label>Przychód miesięczny (orientacyjny)</label><input type="number" step="0.01" name="revenueMonthly" value="'+p.revenueMonthly+'"></div></div>'+
+  '<div class="section-title">CAPEX i budżet</div>'+
+  '<div class="form-row2"><div><label>CAPEX — nakład inwestycyjny</label><input type="number" step="0.01" name="capex" value="'+p.capex+'"></div><div><label>Budżet całkowity (zatwierdzony)</label><input type="number" step="0.01" name="budgetTotal" value="'+p.budgetTotal+'"></div></div>'+
+  '<div class="section-title">Przyłącze do sieci</div>'+
   '<div class="form-row2"><div><label>Operator sieci (OSD)</label><input name="gridOperator" value="'+esc(p.gridOperator)+'" placeholder="np. Tauron Dystrybucja"></div><div><label>Odbiorca energii / pośrednik zakupu</label><input name="energyBuyer" value="'+esc(p.energyBuyer)+'" placeholder="np. spółka obrotu, PPA"></div></div>'+
+  '<div class="form-row2"><div><label>Moc wnioskowana (MW)</label><input type="number" step="0.01" name="requestedPowerMW" value="'+p.requestedPowerMW+'"></div><div><label>Moc przyznana (MW)</label><input type="number" step="0.01" name="grantedPowerMW" value="'+p.grantedPowerMW+'"></div></div>'+
+  '<div class="form-row2"><div><label>Status warunków przyłączenia</label>'+selectHtml('connectionConditionsStatus',CONNECTION_STATUS_OPTS,p.connectionConditionsStatus)+'</div><div><label>Status umowy przyłączeniowej</label>'+selectHtml('connectionAgreementStatus',AGREEMENT_STATUS_OPTS,p.connectionAgreementStatus)+'</div></div>'+
+  '<div class="section-title">Ryzyko prawne i regulacyjne</div>'+
+  '<div class="form-row2"><div><label>Status pozwoleń (budowlane itp.)</label>'+selectHtml('permitsStatus',PERMIT_STATUS_OPTS,p.permitsStatus)+'</div><div><label>Decyzja środowiskowa</label>'+selectHtml('environmentalDecisionStatus',ENV_DECISION_STATUS_OPTS,p.environmentalDecisionStatus)+'</div></div>'+
+  '<div class="form-row2"><div><label>MPZP / warunki zabudowy</label>'+selectHtml('zoningStatus',ZONING_STATUS_OPTS,p.zoningStatus)+'</div><div></div></div>'+
+  '<div class="section-title">Pozostałe</div>'+
   '<div class="form-row2"><div><label>Osoba odpowiedzialna</label><input name="owner" value="'+esc(p.owner)+'"></div><div></div></div>'+
   '<div class="form-row2"><div><label>Data rozpoczęcia</label><input type="date" name="startDate" value="'+esc(p.startDate)+'"></div><div><label>Planowana data zakończenia</label><input type="date" name="endDate" value="'+esc(p.endDate)+'"></div></div>'+
   '<label>Opis</label><textarea class="textarea-lg" name="description">'+esc(p.description)+'</textarea>'+
@@ -810,7 +884,7 @@ function projectForm(p){
 }
 function saveProject(ev,id){
   ev.preventDefault(); var f = new FormData(ev.target);
-  var obj = {name:f.get('name'),code:f.get('code'),spv:f.get('spv'),location:f.get('location'),mwPower:f.get('mwPower'),revenueMonthly:f.get('revenueMonthly'),gridOperator:f.get('gridOperator'),energyBuyer:f.get('energyBuyer'),status:f.get('status'),owner:f.get('owner'),startDate:f.get('startDate'),endDate:f.get('endDate'),description:f.get('description')};
+  var obj = {name:f.get('name'),code:f.get('code'),spv:f.get('spv'),location:f.get('location'),mwPower:f.get('mwPower'),revenueMonthly:f.get('revenueMonthly'),gridOperator:f.get('gridOperator'),energyBuyer:f.get('energyBuyer'),assetType:f.get('assetType'),capex:f.get('capex'),budgetTotal:f.get('budgetTotal'),requestedPowerMW:f.get('requestedPowerMW'),grantedPowerMW:f.get('grantedPowerMW'),connectionConditionsStatus:f.get('connectionConditionsStatus'),connectionAgreementStatus:f.get('connectionAgreementStatus'),permitsStatus:f.get('permitsStatus'),environmentalDecisionStatus:f.get('environmentalDecisionStatus'),zoningStatus:f.get('zoningStatus'),status:f.get('status'),owner:f.get('owner'),startDate:f.get('startDate'),endDate:f.get('endDate'),description:f.get('description')};
   var url = id? '/api/projects/'+id : '/api/projects';
   afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
     .catch(function(e){ alert('Nie udało się zapisać projektu: '+e.message); });
@@ -833,8 +907,14 @@ function projectDetail(p){
   var fixedCost = costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var oneTimeCost = costs.filter(function(c){return c.recurrence==='jednorazowy'||c.recurrence==='nieregularny';}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
   var sinceStart = costs.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0)+oneTimeCost*0; // sum of all recorded gross amounts as "since start"
-  return '<span class="link" onclick="goTab(\'projects\')">← Projekty</span>'+
-  '<h2 class="page-title">'+esc(p.name)+' <span class="pill pill-muted">'+esc(p.code||'')+'</span></h2>'+
+  var annualProfit = p.revenueMonthly!==''? (Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0))*12 : null;
+  var capex = Number(p.capex)||0;
+  var paybackYears = (capex>0 && annualProfit>0)? (capex/annualProfit) : null;
+  var roiPct = (capex>0 && annualProfit!==null)? (annualProfit/capex*100) : null;
+  var bs = m.projectBudgetStatus[p.id];
+  var futureCapital = m.futureCapitalNeed[p.id]||0;
+  return '<span class="link no-print" onclick="goTab(\'projects\')">← Projekty</span>'+
+  '<h2 class="page-title">'+esc(p.name)+' <span class="pill pill-muted">'+esc(p.code||'')+'</span> <span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></h2>'+
   '<div class="page-sub">SPV: '+esc(p.spv||'—')+' • '+esc(p.location||'—')+' • '+esc(p.mwPower||'—')+' MW • '+projectStatusPill(p.status)+'</div>'+
   '<div class="page-sub">Operator sieci: '+esc(p.gridOperator||'—')+' • Odbiorca energii / pośrednik zakupu: '+esc(p.energyBuyer||'—')+'</div>'+
   '<div class="kpi-grid">'+
@@ -846,6 +926,31 @@ function projectDetail(p){
     kpi('Koszt zewnętrzny',fmtMoney0(extCost))+
     kpi('Koszt stały',fmtMoney0(fixedCost))+
     kpi('Koszt jednorazowy',fmtMoney0(oneTimeCost))+
+    kpi('Przyszłe zapotrzebowanie na kapitał',fmtMoney0(futureCapital),true,futureCapital>0)+
+  '</div>'+
+  '<div class="panel'+(bs.over?' ':'')+'"'+(bs.over?' style="border-color:var(--danger)"':'')+'><h3'+(bs.over?' style="color:var(--danger)"':'')+'>Budżet vs. wykonanie'+(bs.over?' ⚠ przekroczony':'')+'</h3>'+
+    (bs.budget>0? '<div>Budżet całkowity: '+fmtMoney0(bs.budget)+' • Wydano dotychczas: '+fmtMoney0(bs.spent)+' ('+bs.pct+'%)</div><div class="progress-bar" style="margin-top:8px"><div style="width:'+Math.min(bs.pct,100)+'%;'+(bs.over?'background:var(--danger)':'')+'"></div></div>' : '<div class="empty">Brak zadeklarowanego budżetu całkowitego dla tego projektu.</div>')+
+  '</div>'+
+  '<div class="panel"><h3>Orientacyjny ROI / okres zwrotu <span class="muted" style="font-weight:400;font-size:11.5px">(uproszczony szacunek, nie pełny IRR/DCF)</span></h3>'+
+    (capex>0? '<div class="kpi-grid">'+
+      kpi('CAPEX',fmtMoney0(capex))+
+      kpi('Roczny zysk (projekcja)',annualProfit!==null?fmtMoney0(annualProfit):'—',false,annualProfit!==null&&annualProfit<0)+
+      kpi('Uproszczony ROI / rok',roiPct!==null?roiPct.toFixed(1)+'%':'—')+
+      kpi('Uproszczony okres zwrotu',paybackYears!==null?paybackYears.toFixed(1)+' lat':'—')+
+    '</div><div class="muted" style="margin-top:6px">Wyliczenie: CAPEX / roczny zysk projekcji, bez dyskontowania przepływów pieniężnych — do wstępnej orientacji, nie do decyzji inwestycyjnej.</div>'
+    : '<div class="empty">Uzupełnij CAPEX w edycji projektu, aby zobaczyć szacunek.</div>')+
+  '</div>'+
+  '<div class="panel"><h3>Przyłącze, pozwolenia i ryzyko regulacyjne</h3>'+
+    '<div class="grid2">'+
+      '<div><div class="section-title" style="margin-top:0">Przyłącze do sieci</div>'+
+      '<div>Moc wnioskowana: '+esc(p.requestedPowerMW||'—')+' MW • Moc przyznana: '+esc(p.grantedPowerMW||'—')+' MW</div>'+
+      '<div>Warunki przyłączenia: '+esc(p.connectionConditionsStatus||'—')+'</div>'+
+      '<div>Umowa przyłączeniowa: '+esc(p.connectionAgreementStatus||'—')+'</div></div>'+
+      '<div><div class="section-title" style="margin-top:0">Pozwolenia i środowisko</div>'+
+      '<div>Pozwolenia: '+esc(p.permitsStatus||'—')+'</div>'+
+      '<div>Decyzja środowiskowa: '+esc(p.environmentalDecisionStatus||'—')+'</div>'+
+      '<div>MPZP / warunki zabudowy: '+esc(p.zoningStatus||'—')+'</div></div>'+
+    '</div>'+
   '</div>'+
   '<div class="panel"><h3>Opis</h3><div>'+esc(p.description||'—')+'</div></div>'+
   '<div class="panel"><div class="toolbar"><h3 style="margin:0">Koszty projektu</h3><button class="btn btn-sm btn-primary" onclick="openForm(\'costs\',null,{projectId:\''+p.id+'\'})">+ dodaj koszt</button></div>'+costsTable(costs)+'</div>'+
@@ -1270,7 +1375,32 @@ function viewSettings(){
   '<div class="panel"><h3>Waluta domyślna</h3>'+selectHtml('currency',['PLN','EUR','USD'],STATE.currency)+' <button class="btn btn-sm" onclick="setCurrency()">Zapisz</button></div>'+
   '<div class="panel"><h3>Dane demonstracyjne</h3><div class="muted">Aplikacja zawiera kilka przykładowych rekordów oznaczonych jako DEMO, ułatwiających sprawdzenie działania.</div>'+
   (hasDemo?'<button class="btn btn-danger" style="margin-top:10px" onclick="removeDemoData()">Usuń wszystkie dane DEMO</button>':'<div class="muted" style="margin-top:8px">Brak danych DEMO w systemie.</div>')+'</div>'+
+  '<div class="panel"><h3>Dziennik zmian (audyt)</h3><div class="muted">Kto i kiedy tworzył, edytował lub usuwał dane w systemie — login odczytywany z logowania (Kamil / Jerzy / Grzegorz).</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="ensureChangelogLoaded(true)">Odśwież</button></div>'+
+  '<div id="changelog-list">'+renderChangelogList()+'</div>'+
+  '</div>'+
   '<div class="panel"><h3>Integracje (przygotowane na przyszłość)</h3><div class="muted">Microsoft Entra ID (logowanie firmowe), SharePoint, OneDrive, Outlook — pola techniczne (externalSource, externalId, sharePointUrl, documentUrl) są już przygotowane w modelu danych (tabela Document). Integracja zostanie wdrożona w kolejnym etapie.</div></div>';
+}
+var CHANGELOG_LIST = null;
+function ensureChangelogLoaded(force){
+  if(CHANGELOG_LIST!==null && !force) return;
+  CHANGELOG_LIST = 'loading';
+  fetch('/api/changelog?limit=200').then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){ CHANGELOG_LIST = data.entries||[]; if(currentTab==='settings'){ var el=document.getElementById('changelog-list'); if(el) el.innerHTML = renderChangelogList(); } })
+    .catch(function(){ CHANGELOG_LIST = []; if(currentTab==='settings'){ var el=document.getElementById('changelog-list'); if(el) el.innerHTML = renderChangelogList(); } });
+}
+function renderChangelogList(){
+  if(CHANGELOG_LIST===null){ ensureChangelogLoaded(); return '<div class="muted">Wczytywanie…</div>'; }
+  if(CHANGELOG_LIST==='loading') return '<div class="muted">Wczytywanie…</div>';
+  if(!CHANGELOG_LIST.length) return '<div class="empty">Brak wpisów w dzienniku zmian.</div>';
+  var actionLabel = {create:'utworzenie',update:'edycja',delete:'usunięcie'};
+  return '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Użytkownik</th><th>Obiekt</th><th>Akcja</th><th>Opis</th></tr></thead><tbody>'+
+    CHANGELOG_LIST.map(function(e){
+      return '<tr><td>'+fmtBackupDate(e.createdAt)+'</td><td>'+esc(e.user)+'</td><td>'+esc(e.entity)+'</td><td>'+esc(actionLabel[e.action]||e.action)+'</td><td>'+esc(e.summary||'—')+'</td></tr>';
+    }).join('')+
+  '</tbody></table></div>';
 }
 function dictList(key){
   return '<div id="dict-'+key+'">'+STATE[key].map(function(v,i){
