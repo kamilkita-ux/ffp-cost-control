@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeFinancing, str, numOrNull, intOrNull, bool, toDate, toEnum, FINANCING_TYPE_MAP } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -28,16 +29,18 @@ export async function PUT(req: Request, { params }: Ctx) {
   const body = await req.json();
   try {
     const updated = await prisma.financing.update({ where: { id }, data: toData(body) });
+    await logChange(req, "financing", id, "update", updated.lender);
     return NextResponse.json(serializeFinancing(updated));
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const { id } = await params;
   try {
-    await prisma.financing.update({ where: { id }, data: { deletedAt: new Date() } });
+    const updated = await prisma.financing.update({ where: { id }, data: { deletedAt: new Date() } });
+    await logChange(req, "financing", id, "delete", updated.lender);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });

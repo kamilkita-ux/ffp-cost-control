@@ -4,6 +4,7 @@ import {
   serializeCost, str, numOrNull, bool, toDate,
   toEnum, PAYMENT_STATUS_MAP, RECURRENCE_MAP, NECESSITY_MAP
 } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 function toData(body: any) {
   return {
@@ -38,5 +39,6 @@ export async function POST(req: Request) {
   const body = await req.json();
   if (!body?.name) return NextResponse.json({ error: "invalid_input", message: "Nazwa kosztu jest wymagana." }, { status: 400 });
   const created = await prisma.cost.create({ data: toData(body) });
+  await logChange(req, "cost", created.id, "create", created.name);
   return NextResponse.json(serializeCost(created), { status: 201 });
 }

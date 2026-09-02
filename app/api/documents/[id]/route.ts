@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeDocument, str, toDate } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -23,16 +24,18 @@ export async function PUT(req: Request, { params }: Ctx) {
   const body = await req.json();
   try {
     const updated = await prisma.document.update({ where: { id }, data: toData(body) });
+    await logChange(req, "document", id, "update", updated.name);
     return NextResponse.json(serializeDocument(updated));
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const { id } = await params;
   try {
-    await prisma.document.update({ where: { id }, data: { deletedAt: new Date() } });
+    const updated = await prisma.document.update({ where: { id }, data: { deletedAt: new Date() } });
+    await logChange(req, "document", id, "delete", updated.name);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });

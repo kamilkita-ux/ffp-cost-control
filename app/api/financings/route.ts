@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeFinancing, str, numOrNull, intOrNull, bool, toDate, toEnum, FINANCING_TYPE_MAP } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 function toData(body: any) {
   return {
@@ -25,5 +26,6 @@ export async function POST(req: Request) {
   const body = await req.json();
   if (!body?.lender) return NextResponse.json({ error: "invalid_input", message: "Bank / leasingodawca jest wymagany." }, { status: 400 });
   const created = await prisma.financing.create({ data: toData(body) });
+  await logChange(req, "financing", created.id, "create", created.lender);
   return NextResponse.json(serializeFinancing(created), { status: 201 });
 }

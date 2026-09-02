@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeDepartment } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -8,5 +9,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_input", message: "Nazwa działu jest wymagana." }, { status: 400 });
   }
   const created = await prisma.department.create({ data: { name: String(body.name) } });
+  await logChange(req, "department", created.id, "create", created.name);
   return NextResponse.json(serializeDepartment(created), { status: 201 });
 }

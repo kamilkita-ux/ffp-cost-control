@@ -5,6 +5,7 @@ import {
   EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP, PROJECT_STATUS_MAP,
   RECURRENCE_MAP, PAYMENT_STATUS_MAP, NECESSITY_MAP, FINANCING_TYPE_MAP
 } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 // POST /api/restore — przywraca CAŁĄ bazę z pliku kopii zapasowej JSON
 // (dokładnie ten sam format, który zwraca /api/bootstrap i który pobiera
@@ -45,6 +46,16 @@ export async function POST(req: Request) {
           revenueMonthly: numOrNull(p.revenueMonthly),
           gridOperator: str(p.gridOperator) || null,
           energyBuyer: str(p.energyBuyer) || null,
+          assetType: str(p.assetType) || "PV",
+          capex: numOrNull(p.capex),
+          budgetTotal: numOrNull(p.budgetTotal),
+          requestedPowerMW: numOrNull(p.requestedPowerMW),
+          grantedPowerMW: numOrNull(p.grantedPowerMW),
+          connectionConditionsStatus: str(p.connectionConditionsStatus) || null,
+          connectionAgreementStatus: str(p.connectionAgreementStatus) || null,
+          permitsStatus: str(p.permitsStatus) || null,
+          environmentalDecisionStatus: str(p.environmentalDecisionStatus) || null,
+          zoningStatus: str(p.zoningStatus) || null,
           status: toEnum(PROJECT_STATUS_MAP, p.status, "DEVELOPMENT") as any,
           owner: str(p.owner) || null,
           startDate: toDate(p.startDate),
@@ -215,5 +226,6 @@ export async function POST(req: Request) {
     }
   }, { timeout: 30000 });
 
+  await logChange(req, "database", null, "update", "Przywrócono bazę z pliku kopii zapasowej (restore)");
   return NextResponse.json({ ok: true });
 }

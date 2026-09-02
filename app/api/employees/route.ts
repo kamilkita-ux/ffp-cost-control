@@ -4,6 +4,7 @@ import {
   serializeEmployee, str, numOrNull, bool,
   toEnum, EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP
 } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 function toData(body: any) {
   return {
@@ -60,5 +61,6 @@ export async function POST(req: Request) {
     }
     return tx.employee.findUniqueOrThrow({ where: { id: emp.id }, include: { allocations: true } });
   });
+  await logChange(req, "employee", created.id, "create", `${created.firstName} ${created.lastName}`);
   return NextResponse.json(serializeEmployee(created), { status: 201 });
 }

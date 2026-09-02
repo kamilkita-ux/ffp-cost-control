@@ -186,15 +186,7 @@ function fmtDate(iso){
   var p = iso.split('-'); if(p.length!==3) return iso;
   return p[2]+'.'+p[1]+'.'+p[0];
 }
-// UWAGA: celowo NIE używamy Date.toISOString() do formatowania dat lokalnych —
-// ono konwertuje na UTC, co dla stref czasowych na wschód od UTC (Polska)
-// potrafi cofnąć datę o jeden dzień (np. lokalna północ 1 września staje się
-// 31 sierpnia 22:00 UTC). localISO() buduje string z lokalnych składowych daty.
-function localISO(d){
-  function p2(n){ return (n<10?'0':'')+n; }
-  return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
-}
-function todayISO(){ return localISO(new Date()); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
 function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
@@ -642,7 +634,7 @@ function viewDashboard(){
   }
 
   var pm = periodMetrics(DASH_PERIOD,DASH_CUSTOM_FROM,DASH_CUSTOM_TO);
-  var periodRangeLabel = fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to));
+  var periodRangeLabel = fmtDate(pm.from.toISOString().slice(0,10))+' — '+fmtDate(pm.to.toISOString().slice(0,10));
 
   return ''+
   '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Dashboard Prezesa</h2><button class="btn btn-sm" onclick="window.print()">🖶 Eksportuj raport (PDF/druk)</button></div>'+

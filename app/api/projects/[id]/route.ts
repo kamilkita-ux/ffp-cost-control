@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeProject, str, numOrNull, toDate, toEnum, PROJECT_STATUS_MAP } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -14,6 +15,16 @@ function toData(body: any) {
     revenueMonthly: numOrNull(body.revenueMonthly),
     gridOperator: str(body.gridOperator) || null,
     energyBuyer: str(body.energyBuyer) || null,
+    assetType: str(body.assetType) || "PV",
+    capex: numOrNull(body.capex),
+    budgetTotal: numOrNull(body.budgetTotal),
+    requestedPowerMW: numOrNull(body.requestedPowerMW),
+    grantedPowerMW: numOrNull(body.grantedPowerMW),
+    connectionConditionsStatus: str(body.connectionConditionsStatus) || null,
+    connectionAgreementStatus: str(body.connectionAgreementStatus) || null,
+    permitsStatus: str(body.permitsStatus) || null,
+    environmentalDecisionStatus: str(body.environmentalDecisionStatus) || null,
+    zoningStatus: str(body.zoningStatus) || null,
     status: toEnum(PROJECT_STATUS_MAP, body.status, "DEVELOPMENT") as any,
     owner: str(body.owner) || null,
     startDate: toDate(body.startDate),
@@ -27,6 +38,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   const body = await req.json();
   try {
     const updated = await prisma.project.update({ where: { id }, data: toData(body) });
+    await logChange(req, "project", id, "update", updated.name);
     return NextResponse.json(serializeProject(updated));
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -34,10 +46,11 @@ export async function PUT(req: Request, { params }: Ctx) {
 }
 
 // Soft delete — projekt jest odwoływany z kosztów/umów/leasingów/przypisań pracowników.
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const { id } = await params;
   try {
-    await prisma.project.update({ where: { id }, data: { deletedAt: new Date() } });
+    const updated = await prisma.project.update({ where: { id }, data: { deletedAt: new Date() } });
+    await logChange(req, "project", id, "delete", updated.name);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
