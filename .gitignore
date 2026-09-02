@@ -1,0 +1,27 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# env — NIGDY nie commitować prawdziwych danych dostępowych
+.env
+.env*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# lokalne backupy bazy
+/backups/*.dump
+/backups/*.sql.gz
+
+# misc
+.DS_Store
+*.pem
+.vercel

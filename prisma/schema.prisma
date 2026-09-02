@@ -1,0 +1,335 @@
+// FFP Cost Control — model danych
+// PostgreSQL + Prisma ORM. Zgodny z polem "Model danych" z briefu (sekcja 35).
+// Wszystkie encje mają: stabilne id (cuid), createdAt, updatedAt.
+// Soft delete (deletedAt) tam, gdzie dane mogą być historycznie odwoływane
+// z innych rekordów (Employee, Department, Project, Vendor) — nigdy nie usuwamy
+// twardo powiązanych danych kosztowych. Rejestry transakcyjne (Cost, Contract,
+// Financing, Document) używają twardego DELETE, bo to pojedyncze zapisy księgowe
+// bez odwołań z innych tabel.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmployeeStatus {
+  AKTYWNY
+  URLOP
+  ZAWIESZONY
+  ZAKONCZONA_WSPOLPRACA
+}
+
+enum ContractType {
+  UMOWA_O_PRACE
+  B2B
+  ZLECENIE
+  DZIELO
+  KONTRAKT_MANAGERSKI
+  INNE
+}
+
+enum CriticalRating {
+  KRYTYCZNE
+  WAZNE
+  MOZLIWE_DO_ZASTAPIENIA
+  MOZLIWE_DO_OUTSOURCINGU
+  MOZLIWE_DO_REDUKCJI
+}
+
+enum ProjectStatus {
+  DEVELOPMENT
+  POZWOLENIA
+  RTB
+  BUDOWA
+  OPERACYJNY
+  ZAWIESZONY
+  SPRZEDANY
+  ZAMKNIETY
+}
+
+enum Recurrence {
+  JEDNORAZOWY
+  MIESIECZNY
+  KWARTALNY
+  POLROCZNY
+  ROCZNY
+  NIEREGULARNY
+}
+
+enum PaymentStatus {
+  PLANOWANY
+  ZATWIERDZONY
+  DO_ZAPLATY
+  ZAPLACONY
+  ANULOWANY
+}
+
+enum Necessity {
+  NIEZBEDNY
+  WAZNY
+  OPCJONALNY
+  DO_ANALIZY
+  DO_REDUKCJI
+}
+
+enum FinancingType {
+  LEASING_OPERACYJNY
+  LEASING_FINANSOWY
+  KREDYT_INWESTYCYJNY
+  KREDYT_OBROTOWY
+  POZYCZKA
+  INNE
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  employees Employee[]
+  costs     Cost[]
+
+  @@index([deletedAt])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  isDemo      Boolean       @default(false)
+  name        String
+  code        String?
+  spv         String?
+  location    String?
+  mwPower     Decimal?      @db.Decimal(10, 2)
+  status      ProjectStatus @default(DEVELOPMENT)
+  owner       String?
+  startDate   DateTime?     @db.Date
+  endDate     DateTime?     @db.Date
+  description String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  costs       Cost[]
+  contracts   Contract[]
+  financings  Financing[]
+  allocations EmployeeProjectAllocation[]
+
+  @@index([deletedAt])
+  @@index([status])
+}
+
+model Employee {
+  id            String         @id @default(cuid())
+  isDemo        Boolean        @default(false)
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
+  position      String
+  departmentId  String?
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  managerId     String?
+  status        EmployeeStatus @default(AKTYWNY)
+  contractType  ContractType   @default(UMOWA_O_PRACE)
+
+  // koszt
+  netSalary        Decimal? @db.Decimal(12, 2)
+  grossSalary      Decimal? @db.Decimal(12, 2)
+  employerCost     Decimal? @db.Decimal(12, 2)
+  otherMonthlyCost Decimal  @default(0) @db.Decimal(12, 2)
+  bonus            Decimal  @default(0) @db.Decimal(12, 2)
+  car              Decimal  @default(0) @db.Decimal(12, 2)
+  phoneCost        Decimal  @default(0) @db.Decimal(12, 2)
+  computer         Decimal  @default(0) @db.Decimal(12, 2)
+  otherBenefits    Decimal  @default(0) @db.Decimal(12, 2)
+
+  // opis stanowiska
+  responsibilities String? @db.Text
+  justification    String? @db.Text
+  keyTasks         String? @db.Text
+
+  // ocena
+  criticalRating       CriticalRating @default(WAZNE)
+  presidentNotes       String?        @db.Text
+  excludeFromSimulation Boolean       @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  allocations EmployeeProjectAllocation[]
+
+  @@index([deletedAt])
+  @@index([departmentId])
+}
+
+// Przypisanie pracownika do projektu z procentem czasu (projectId = "ADMIN" jest
+// pseudo-projektem reprezentującym Administrację/Centralę i NIE ma rekordu w Project —
+// obsługiwane po stronie API/warstwy obliczeniowej, nie jako FK).
+model EmployeeProjectAllocation {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  projectId  String? // null/"ADMIN" => Administracja/Centrala (pseudo-projekt, brak FK)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pct        Decimal  @default(0) @db.Decimal(5, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([projectId])
+}
+
+model Vendor {
+  id            String    @id @default(cuid())
+  isDemo        Boolean   @default(false)
+  name          String
+  nip           String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  serviceType   String?
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  costs     Cost[]
+  contracts Contract[]
+
+  @@index([deletedAt])
+}
+
+model Cost {
+  id           String        @id @default(cuid())
+  isDemo       Boolean       @default(false)
+  name         String
+  description  String?       @db.Text
+  vendorId     String?
+  vendor       Vendor?       @relation(fields: [vendorId], references: [id])
+  netAmount    Decimal?      @db.Decimal(14, 2)
+  vat          Decimal       @default(23) @db.Decimal(5, 2)
+  grossAmount  Decimal       @default(0) @db.Decimal(14, 2)
+  currency     String        @default("PLN")
+  category     String
+  subcategory  String?
+  departmentId String?
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  projectId    String?
+  project      Project?      @relation(fields: [projectId], references: [id])
+  costCenter   String?
+  costDate     DateTime?     @db.Date
+  invoiceDate  DateTime?     @db.Date
+  dueDate      DateTime?     @db.Date
+  paymentStatus PaymentStatus @default(PLANOWANY)
+  recurrence   Recurrence    @default(JEDNORAZOWY)
+  docNumber    String?
+  notes        String?       @db.Text
+  necessity    Necessity     @default(DO_ANALIZY)
+  isFixed      Boolean       @default(false)
+  excludeFromSimulation Boolean @default(false)
+  budgetMonthly Decimal?     @db.Decimal(14, 2)
+  documentLink String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+  @@index([projectId])
+  @@index([departmentId])
+  @@index([vendorId])
+  @@index([dueDate])
+  @@index([category])
+}
+
+model Contract {
+  id                     String     @id @default(cuid())
+  vendorId               String?
+  vendor                 Vendor?    @relation(fields: [vendorId], references: [id])
+  name                   String
+  description            String?    @db.Text
+  amount                 Decimal?   @db.Decimal(14, 2)
+  netGross               String     @default("brutto")
+  frequency              Recurrence @default(MIESIECZNY)
+  projectId              String?
+  project                Project?   @relation(fields: [projectId], references: [id])
+  startDate              DateTime?  @db.Date
+  endDate                DateTime?  @db.Date
+  noticePeriodDays       Int?
+  earliestTerminationDate DateTime? @db.Date
+  autoRenew              Boolean    @default(false)
+  owner                  String?
+  documentLink           String?
+  notes                  String?    @db.Text
+  excludeFromSimulation  Boolean    @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+  @@index([projectId])
+  @@index([vendorId])
+}
+
+model Financing {
+  id                    String        @id @default(cuid())
+  lender                String
+  subject               String?
+  type                  FinancingType @default(LEASING_OPERACYJNY)
+  initialAmount         Decimal?      @db.Decimal(14, 2)
+  remainingBalance      Decimal?      @db.Decimal(14, 2)
+  monthlyPayment        Decimal       @default(0) @db.Decimal(14, 2)
+  numInstallments       Int?
+  remainingInstallments Int?
+  nextPaymentDate       DateTime?     @db.Date
+  endDate               DateTime?     @db.Date
+  interestRate          Decimal?      @db.Decimal(6, 3)
+  projectId             String?
+  project               Project?      @relation(fields: [projectId], references: [id])
+  notes                 String?       @db.Text
+  excludeFromSimulation Boolean       @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+  @@index([projectId])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  name        String
+  link        String?
+  docType     String?
+  date        DateTime? @db.Date
+  description String?  @db.Text
+
+  // pola przygotowane pod przyszłą integrację SharePoint / Microsoft 365 (sekcja 24 briefu)
+  externalSource String?
+  externalId     String?
+  sharePointUrl  String?
+  documentUrl    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+}
+
+// Proste słowniki i ustawienia (kategorie kosztów, centra kosztów, waluta) —
+// przechowywane jako klucz -> wartość JSON, edytowalne z modułu Ustawienia.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
