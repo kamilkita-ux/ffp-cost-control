@@ -4,6 +4,7 @@ import {
   serializeEmployee, str, numOrNull, bool,
   toEnum, EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP
 } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -64,16 +65,18 @@ export async function PUT(req: Request, { params }: Ctx) {
       }
       return tx.employee.findUniqueOrThrow({ where: { id: emp.id }, include: { allocations: true } });
     });
+    await logChange(req, "employee", id, "update", `${updated.firstName} ${updated.lastName}`);
     return NextResponse.json(serializeEmployee(updated));
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const { id } = await params;
   try {
-    await prisma.employee.update({ where: { id }, data: { deletedAt: new Date() } });
+    const updated = await prisma.employee.update({ where: { id }, data: { deletedAt: new Date() } });
+    await logChange(req, "employee", id, "delete", `${updated.firstName} ${updated.lastName}`);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "not_found" }, { status: 404 });

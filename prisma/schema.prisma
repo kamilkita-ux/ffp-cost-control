@@ -109,6 +109,16 @@ model Project {
   revenueMonthly Decimal?   @db.Decimal(14, 2) // orientacyjny przychód miesięczny z projektu (dashboard: Przychód/Zysk)
   gridOperator String?      // Operator sieci (OSD), do którego przyłączona jest farma, np. Tauron Dystrybucja
   energyBuyer  String?      // Odbiorca energii / pośrednik zakupu (np. spółka obrotu, PPA)
+  assetType    String?      @default("PV") // PV | BESS | Hybryda | Inne — rodzaj aktywa
+  capex        Decimal?     @db.Decimal(14, 2) // nakład inwestycyjny (CAPEX) — do liczenia orientacyjnego okresu zwrotu/ROI
+  budgetTotal  Decimal?     @db.Decimal(14, 2) // całkowity zatwierdzony budżet projektu — do alertu o przekroczeniu
+  requestedPowerMW Decimal? @db.Decimal(10, 2) // moc wnioskowana w warunkach przyłączenia
+  grantedPowerMW   Decimal? @db.Decimal(10, 2) // moc przyznana w warunkach przyłączenia
+  connectionConditionsStatus String? // status warunków przyłączenia (np. złożony wniosek / wydane / odmowa)
+  connectionAgreementStatus  String? // status umowy przyłączeniowej (np. w negocjacjach / podpisana)
+  permitsStatus              String? // status pozwoleń (budowlane itp.)
+  environmentalDecisionStatus String? // status decyzji środowiskowej
+  zoningStatus                String? // status MPZP / warunków zabudowy
   status      ProjectStatus @default(DEVELOPMENT)
   owner       String?
   startDate   DateTime?     @db.Date
@@ -349,4 +359,22 @@ model Backup {
   data      Json
 
   @@index([createdAt])
+}
+
+// Dziennik zmian (kto i kiedy zmienił dany rekord) — prosty log audytowy,
+// zapisywany przy każdej operacji create/update/delete z API. Użytkownik
+// jest odczytywany z nagłówka Basic Auth (login), nie ma osobnej tabeli
+// kont — to nadal jest "wspólny dostęp z osobnymi hasłami", nie pełny
+// system ról. Widoczny w Ustawieniach -> Dziennik zmian.
+model ChangeLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  user      String?
+  entity    String
+  entityId  String?
+  action    String   // "create" | "update" | "delete"
+  summary   String?
+
+  @@index([createdAt])
+  @@index([entity])
 }

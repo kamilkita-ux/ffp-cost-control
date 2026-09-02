@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeContract, str, numOrNull, intOrNull, bool, toDate, toEnum, RECURRENCE_MAP } from "@/lib/serialize";
+import { logChange } from "@/lib/audit";
 
 function toData(body: any) {
   return {
@@ -27,5 +28,6 @@ export async function POST(req: Request) {
   const body = await req.json();
   if (!body?.name) return NextResponse.json({ error: "invalid_input", message: "Nazwa umowy jest wymagana." }, { status: 400 });
   const created = await prisma.contract.create({ data: toData(body) });
+  await logChange(req, "contract", created.id, "create", created.name);
   return NextResponse.json(serializeContract(created), { status: 201 });
 }

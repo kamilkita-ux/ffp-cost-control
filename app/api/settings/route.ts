@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logChange } from "@/lib/audit";
 
 const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters"]);
 
@@ -17,5 +18,6 @@ export async function PUT(req: Request) {
     create: { key, value: body.value },
     update: { value: body.value }
   });
+  await logChange(req, "setting", key, "update", key);
   return NextResponse.json({ key: saved.key, value: saved.value });
 }
