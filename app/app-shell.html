@@ -1091,12 +1091,18 @@ function saveDocument(ev,id){
 
 /* ============================= SETTINGS ============================= */
 function viewSettings(){
+  ensureBackupsLoaded();
   var hasDemo = STATE.employees.some(function(e){return e.isDemo;})||STATE.projects.some(function(p){return p.isDemo;})||STATE.costs.some(function(c){return c.isDemo;})||STATE.vendors.some(function(v){return v.isDemo;});
   return '<h2 class="page-title">Ustawienia / słowniki</h2>'+
   '<div class="panel"><h3>Gdzie przechowywane są dane</h3><div class="muted">Dane FFP Cost Control są zapisywane WYŁĄCZNIE w bazie PostgreSQL (przez Prisma ORM i API tej aplikacji) i widoczne dla każdego, kto otworzy tę aplikację — niezależnie od urządzenia i przeglądarki. Status ostatniego zapisu widać w pasku górnym. Pełne szczegóły (gdzie fizycznie stoi baza, jak wygląda backup, jak wdrożyć aplikację ponownie) znajdują się w pliku README repozytorium.</div>'+
   '<div class="section-title">Ręczna kopia zapasowa (JSON) — dodatkowe zabezpieczenie</div>'+
   '<button class="btn btn-sm" onclick="exportBackupJson()">Pobierz kopię zapasową (.json)</button> '+
   '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
+  '</div>'+
+  '<div class="panel"><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3>'+
+  '<div class="muted">System sam zapisuje pełny stan danych co kilka godzin. Poniżej lista ostatnich punktów — możesz cofnąć się do dowolnego z nich jednym kliknięciem, albo pobrać go jako plik.</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
+  '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
   '</div>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
@@ -1152,6 +1158,59 @@ function importBackupJsonFile(input){
     input.value = '';
   };
   reader.readAsText(file);
+}
+
+/* --------- Automatyczne kopie zapasowe / punkty przywracania --------- */
+var BACKUPS_LIST = null; // null = jeszcze nie wczytano, 'loading' = w trakcie, [] / [...] = gotowe
+
+function ensureBackupsLoaded(force){
+  if(BACKUPS_LIST!==null && !force) return;
+  BACKUPS_LIST = 'loading';
+  fetch('/api/admin/backups').then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(list){ BACKUPS_LIST = list; if(currentTab==='settings') render(); })
+    .catch(function(){ BACKUPS_LIST = []; if(currentTab==='settings') render(); });
+}
+function fmtBackupDate(iso){
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  function p2(n){ return (n<10?'0':'')+n; }
+  return p2(d.getDate())+'.'+p2(d.getMonth()+1)+'.'+d.getFullYear()+' '+p2(d.getHours())+':'+p2(d.getMinutes());
+}
+function renderBackupsList(){
+  if(BACKUPS_LIST===null || BACKUPS_LIST==='loading'){
+    return '<div class="muted">Wczytywanie listy kopii…</div>';
+  }
+  if(!BACKUPS_LIST.length){
+    return '<div class="muted">Brak zapisanych kopii — pierwsza automatyczna kopia pojawi się w ciągu kilku godzin, albo utwórz ją teraz przyciskiem powyżej.</div>';
+  }
+  return '<table><thead><tr><th>Data i godzina</th><th>Typ</th><th>Pracownicy</th><th>Projekty</th><th>Koszty</th><th>Dostawcy</th><th></th></tr></thead><tbody>'+
+    BACKUPS_LIST.map(function(b){
+      return '<tr><td>'+fmtBackupDate(b.createdAt)+'</td>'+
+        '<td>'+(b.kind==='manual'?'ręczna':'automatyczna')+'</td>'+
+        '<td>'+b.counts.employees+'</td><td>'+b.counts.projects+'</td><td>'+b.counts.costs+'</td><td>'+b.counts.vendors+'</td>'+
+        '<td style="white-space:nowrap"><span class="link" onclick="downloadBackupPoint(\''+b.id+'\')">pobierz</span> · <span class="link" style="color:#b91c1c" onclick="restoreBackupPoint(\''+b.id+'\')">przywróć</span></td></tr>';
+    }).join('')+
+    '</tbody></table>';
+}
+function createManualBackupNow(){
+  apiCall('POST','/api/admin/backups').then(function(){ ensureBackupsLoaded(true); alert('Utworzono kopię zapasową.'); })
+    .catch(function(e){ alert('Nie udało się utworzyć kopii: '+e.message); });
+}
+function downloadBackupPoint(id){
+  fetch('/api/admin/backups/'+id).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){
+    downloadTextFile('ffp-cost-control-backup-'+id+'.json', JSON.stringify(data,null,2), 'application/json');
+  }).catch(function(e){ alert('Nie udało się pobrać kopii: '+e.message); });
+}
+function restoreBackupPoint(id){
+  if(!confirm('Przywrócić dane do tego punktu? WSZYSTKIE obecne dane w bazie zostaną zastąpione danymi z tej kopii. Tej operacji nie można cofnąć.')) return;
+  afterMutation(apiCall('POST','/api/admin/backups/'+id+'/restore'))
+    .then(function(){ alert('Przywrócono dane do wybranego punktu.'); })
+    .catch(function(e){ alert('Nie udało się przywrócić kopii: '+e.message); });
 }
 
 /* ============================= FORM DISPATCH ============================= */

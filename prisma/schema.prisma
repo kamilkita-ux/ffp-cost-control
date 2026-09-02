@@ -334,3 +334,17 @@ model AppSetting {
   value     Json
   updatedAt DateTime @updatedAt
 }
+
+// Automatyczne punkty przywracania (backup) — pełny obraz danych (ten sam
+// kształt co /api/bootstrap) zapisywany co kilka godzin przez osobny
+// serwis-cron na Railway (scripts/backup-json.ts), plus kopie "na żądanie"
+// tworzone ręcznie z Ustawień (kind="manual"). Widoczne i przywracalne
+// z poziomu aplikacji (Ustawienia -> Automatyczne kopie zapasowe).
+model Backup {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  kind      String   @default("auto") // "auto" | "manual"
+  data      Json
+
+  @@index([createdAt])
+}

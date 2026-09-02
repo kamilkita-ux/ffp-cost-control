@@ -13,7 +13,8 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "db:backup": "bash scripts/backup.sh"
+    "db:backup": "bash scripts/backup.sh",
+    "backup:cron": "tsx scripts/backup-cron.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.10.0",
