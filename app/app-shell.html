@@ -299,12 +299,34 @@ function setSaveStatus(status,message){
     var el = document.getElementById(id);
     if(el) el.innerHTML = html;
   });
+  if(status==='error'){ unlockModalSubmit(); }
 }
 window.addEventListener('beforeunload', function(ev){
   if(window.__saveStatus==='saving'){
     ev.preventDefault(); ev.returnValue = 'Trwa zapisywanie do bazy danych. Czy na pewno chcesz opuścić stronę?'; return ev.returnValue;
   }
 });
+// Zabezpieczenie przed podwójnym zapisem: blokuje przycisk "Zapisz" od razu
+// po kliknięciu (np. przy szybkim, wielokrotnym wprowadzaniu danych), żeby
+// nie powstały przypadkowo dwa identyczne wpisy w bazie. Odblokowuje się
+// automatycznie po błędzie zapisu (patrz setSaveStatus powyżej) albo po
+// 15 sekundach jako zabezpieczenie awaryjne.
+function unlockModalSubmit(){
+  var overlay = document.getElementById('modal-overlay');
+  if(!overlay) return;
+  overlay.querySelectorAll('button[type="submit"]').forEach(function(b){
+    if(b.disabled){ b.disabled=false; b.textContent = b.dataset._origText || 'Zapisz'; }
+  });
+}
+document.getElementById('modal-overlay').addEventListener('submit', function(ev){
+  var btn = ev.target.querySelector('button[type="submit"]');
+  if(btn && !btn.disabled){
+    btn.disabled = true;
+    btn.dataset._origText = btn.textContent;
+    btn.textContent = 'Zapisywanie…';
+    setTimeout(function(){ if(btn.isConnected && btn.disabled){ btn.disabled=false; btn.textContent = btn.dataset._origText||'Zapisz'; } }, 15000);
+  }
+}, true);
 
 // Generyczne wywołanie API (fetch -> Next.js Route Handler -> Prisma -> PostgreSQL).
 async function apiCall(method, url, body){
