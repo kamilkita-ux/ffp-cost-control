@@ -749,7 +749,9 @@ function exportCsv(rows,headers,filename){
     lines.push(headers.map(function(h){ var v=r[h.key]; return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'));
   });
   var csv = lines.join('\n');
-  downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+  // BOM na początku pliku — bez niego Excel na Windows potrafi błędnie
+  // odczytać polskie znaki (ą, ę, ł, ń itd.) jako krzaki przy otwieraniu CSV.
+  downloadTextFile(filename, '﻿'+csv, 'text/csv;charset=utf-8');
 }
 function downloadTextFile(filename, content, mime){
   var blob = new Blob([content], {type: mime||'text/plain'});
