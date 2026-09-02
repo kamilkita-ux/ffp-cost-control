@@ -10,6 +10,7 @@ import {
   serializeFinancing,
   serializeDocument
 } from "@/lib/serialize";
+import { currentLogin, isRestrictedUser } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,13 @@ const DEFAULT_COST_CENTERS = ["Centrala", "Zarząd", "Development", "Realizacja"
 // GET /api/bootstrap — pełny odczyt danych do hydratacji interfejsu (STATE).
 // To jedyny endpoint typu "odczytaj wszystko" — wszystkie zapisy idą przez
 // dedykowane endpointy CRUD per encja (patrz app/api/<encja>/route.ts).
-export async function GET() {
+//
+// Zwraca też restricted:true dla kont z listy APP_BASIC_AUTH_RESTRICTED_USERS
+// (patrz lib/access.ts) — frontend na tej podstawie ukrywa kwoty wynagrodzeń
+// pracowników w interfejsie. Same dane (wynagrodzenia) i tak są tu zwracane
+// w pełni, bo są potrzebne do poprawnego wyliczenia kosztów projektów i
+// wyniku finansowego — patrz komentarz w lib/access.ts o zakresie tej ochrony.
+export async function GET(req: Request) {
   const [departments, projects, employees, vendors, costs, contracts, financings, documents, settings] =
     await prisma.$transaction([
       prisma.department.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } }),
@@ -55,6 +62,8 @@ export async function GET() {
     documents: documents.map(serializeDocument),
     costCategories: settingsMap.costCategories ?? DEFAULT_CATEGORIES,
     costCenters: settingsMap.costCenters ?? DEFAULT_COST_CENTERS,
-    currency: settingsMap.currency ?? "PLN"
+    currency: settingsMap.currency ?? "PLN",
+    currentUser: currentLogin(req),
+    restricted: isRestrictedUser(req)
   });
 }

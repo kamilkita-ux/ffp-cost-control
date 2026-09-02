@@ -2,13 +2,21 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // Proste zabezpieczenie dostępu (HTTP Basic Auth) — celowo NIE jest to
-// pełny system logowania z kontami użytkowników i rolami, tylko zestaw
-// niezależnych par login/hasło (każda osoba ma swoje własne, ale wszystkie
-// dają ten sam, pełny dostęp do aplikacji), ustawiany przez zmienne
+// pełny system logowania z kontami użytkowników i rolami w bazie danych,
+// tylko zestaw niezależnych par login/hasło ustawiany przez zmienne
 // środowiskowe w Railway:
 //   APP_BASIC_AUTH_USER / APP_BASIC_AUTH_PASSWORD — główne konto (Kamil)
-//   APP_BASIC_AUTH_EXTRA_USERS — dodatkowe konta, format:
-//     "login1:haslo1,login2:haslo2" (np. dla Jerzego i Grzegorza)
+//   APP_BASIC_AUTH_EXTRA_USERS — dodatkowe konta z PEŁNYM dostępem, format:
+//     "login1:haslo1,login2:haslo2" (np. dla Jerzego)
+//   APP_BASIC_AUTH_RESTRICTED_USERS — konta z dostępem OGRANICZONYM (bez
+//     wglądu w wynagrodzenia pracowników — patrz lib/access.ts), ten sam
+//     format co wyżej (np. dla Grzegorza, Macieja, Michała, Magdaleny)
+//
+// Na poziomie samego middleware wszystkie trzy grupy kont przechodzą
+// identycznie (middleware tylko sprawdza, czy login+hasło się zgadzają) —
+// faktyczne ukrywanie wynagrodzeń dla kont z listy "restricted" dzieje się
+// w warstwie aplikacji (app/api/bootstrap i frontend), bo middleware nie
+// ma dostępu do bazy danych, a tylko tam wiadomo, co jest "wynagrodzeniem".
 //
 // Jeśli główne zmienne nie są ustawione, middleware nic nie blokuje —
 // dzięki temu włączenie/wyłączenie ochrony to tylko dodanie/usunięcie
@@ -36,6 +44,7 @@ export function middleware(req: NextRequest) {
   }
 
   const extraUsers = parseExtraUsers(process.env.APP_BASIC_AUTH_EXTRA_USERS);
+  const restrictedUsers = parseExtraUsers(process.env.APP_BASIC_AUTH_RESTRICTED_USERS);
 
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Basic ")) {
@@ -54,6 +63,9 @@ export function middleware(req: NextRequest) {
         return NextResponse.next();
       }
       if (extraUsers[suppliedUser] && extraUsers[suppliedUser] === suppliedPass) {
+        return NextResponse.next();
+      }
+      if (restrictedUsers[suppliedUser] && restrictedUsers[suppliedUser] === suppliedPass) {
         return NextResponse.next();
       }
     }
