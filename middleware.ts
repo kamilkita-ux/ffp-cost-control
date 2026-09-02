@@ -2,20 +2,40 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // Proste zabezpieczenie dostępu (HTTP Basic Auth) — celowo NIE jest to
-// pełny system logowania z kontami użytkowników, tylko jedna wspólna
-// nazwa/hasło dla całej aplikacji, ustawiane przez zmienne środowiskowe
-// APP_BASIC_AUTH_USER / APP_BASIC_AUTH_PASSWORD w Railway.
+// pełny system logowania z kontami użytkowników i rolami, tylko zestaw
+// niezależnych par login/hasło (każda osoba ma swoje własne, ale wszystkie
+// dają ten sam, pełny dostęp do aplikacji), ustawiany przez zmienne
+// środowiskowe w Railway:
+//   APP_BASIC_AUTH_USER / APP_BASIC_AUTH_PASSWORD — główne konto (Kamil)
+//   APP_BASIC_AUTH_EXTRA_USERS — dodatkowe konta, format:
+//     "login1:haslo1,login2:haslo2" (np. dla Jerzego i Grzegorza)
 //
-// Jeśli te zmienne nie są ustawione, middleware nic nie blokuje — dzięki
-// temu włączenie/wyłączenie ochrony to tylko dodanie/usunięcie zmiennych
-// w Railway, bez zmiany kodu i bez ryzyka zablokowania się na starcie.
-export function middleware(req: NextRequest) {
-  const user = process.env.APP_BASIC_AUTH_USER;
-  const pass = process.env.APP_BASIC_AUTH_PASSWORD;
+// Jeśli główne zmienne nie są ustawione, middleware nic nie blokuje —
+// dzięki temu włączenie/wyłączenie ochrony to tylko dodanie/usunięcie
+// zmiennych w Railway, bez zmiany kodu i bez ryzyka zablokowania się na
+// starcie.
+function parseExtraUsers(raw: string | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  if (!raw) return map;
+  raw.split(",").forEach((pair) => {
+    const idx = pair.indexOf(":");
+    if (idx === -1) return;
+    const u = pair.slice(0, idx).trim();
+    const p = pair.slice(idx + 1).trim();
+    if (u && p) map[u] = p;
+  });
+  return map;
+}
 
-  if (!user || !pass) {
+export function middleware(req: NextRequest) {
+  const primaryUser = process.env.APP_BASIC_AUTH_USER;
+  const primaryPass = process.env.APP_BASIC_AUTH_PASSWORD;
+
+  if (!primaryUser || !primaryPass) {
     return NextResponse.next();
   }
+
+  const extraUsers = parseExtraUsers(process.env.APP_BASIC_AUTH_EXTRA_USERS);
 
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Basic ")) {
@@ -30,7 +50,10 @@ export function middleware(req: NextRequest) {
     if (sepIdx !== -1) {
       const suppliedUser = decoded.slice(0, sepIdx);
       const suppliedPass = decoded.slice(sepIdx + 1);
-      if (suppliedUser === user && suppliedPass === pass) {
+      if (suppliedUser === primaryUser && suppliedPass === primaryPass) {
+        return NextResponse.next();
+      }
+      if (extraUsers[suppliedUser] && extraUsers[suppliedUser] === suppliedPass) {
         return NextResponse.next();
       }
     }
