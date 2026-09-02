@@ -107,6 +107,8 @@ model Project {
   location    String?
   mwPower     Decimal?      @db.Decimal(10, 2)
   revenueMonthly Decimal?   @db.Decimal(14, 2) // orientacyjny przychód miesięczny z projektu (dashboard: Przychód/Zysk)
+  gridOperator String?      // Operator sieci (OSD), do którego przyłączona jest farma, np. Tauron Dystrybucja
+  energyBuyer  String?      // Odbiorca energii / pośrednik zakupu (np. spółka obrotu, PPA)
   status      ProjectStatus @default(DEVELOPMENT)
   owner       String?
   startDate   DateTime?     @db.Date

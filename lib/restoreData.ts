@@ -47,6 +47,8 @@ export async function restoreSnapshot(db: typeof prisma, data: any) {
           location: str(p.location) || null,
           mwPower: numOrNull(p.mwPower),
           revenueMonthly: numOrNull(p.revenueMonthly),
+          gridOperator: str(p.gridOperator) || null,
+          energyBuyer: str(p.energyBuyer) || null,
           status: toEnum(PROJECT_STATUS_MAP, p.status, "DEVELOPMENT") as any,
           owner: str(p.owner) || null,
           startDate: toDate(p.startDate),
