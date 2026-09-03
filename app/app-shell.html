@@ -385,6 +385,7 @@ function periodMetrics(key,customFrom,customTo){
   var m = metrics();
   var months = monthsBetweenDates(r.from,r.to);
   var oneTime = STATE.costs.filter(function(c){
+    if(c.isDemo) return false; // pomiń dane demonstracyjne — patrz metrics()
     if(monthlyEquivalent(c)>0) return false; // już policzone w run-rate
     if(!c.costDate) return false;
     var d = new Date(c.costDate+'T00:00:00');
