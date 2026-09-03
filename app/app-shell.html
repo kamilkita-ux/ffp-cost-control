@@ -693,7 +693,7 @@ function viewDashboard(){
     kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
     kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
     kpi('Koszty stałe / mies.', fmtMoney0(m.monthlyFixed))+
-    kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll))+
+    (STATE.restricted?'':kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll)))+
     kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
     kpi('Koszty administracyjne / mies.', fmtMoney0(m.monthlyAdmin))+
     kpi('Płatności w 7 dni', fmtMoney0(m.upcoming7.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming7.length+' szt.', false, m.upcoming7.length>0)+
@@ -780,15 +780,16 @@ function downloadTextFile(filename, content, mime){
 /* ============================= EMPLOYEES ============================= */
 function viewEmployees(){
   var m = metrics();
+  var restricted = !!STATE.restricted;
   var list = STATE.employees.filter(applySearchFilter);
-  return '<h2 class="page-title">Pracownicy</h2><div class="page-sub">Łączny koszt miesięczny: '+fmtMoney0(m.monthlyPayroll)+' • '+STATE.employees.length+' osób</div>'+
+  return '<h2 class="page-title">Pracownicy</h2><div class="page-sub">'+(restricted?'':'Łączny koszt miesięczny: '+fmtMoney0(m.monthlyPayroll)+' • ')+STATE.employees.length+' osób</div>'+
   '<div class="toolbar"><div class="filters">'+
     '<select onchange="empFilterDept(this.value)"><option value="">Wszystkie działy</option>'+STATE.departments.map(function(d){return '<option value="'+d.id+'">'+esc(d.name)+'</option>';}).join('')+'</select>'+
     '<select onchange="empFilterStatus(this.value)"><option value="">Wszystkie statusy</option>'+STATUS_OPTS_EMP.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('')+'</select>'+
   '</div><div><button class="btn btn-sm" onclick="exportEmployeesCsv()">Eksport CSV</button> <button class="btn btn-primary" onclick="openForm(\'employees\')">+ Dodaj pracownika</button></div></div>'+
-  '<div class="table-wrap"><table><thead><tr><th>Imię i nazwisko</th><th>Stanowisko</th><th>Dział</th><th>Forma</th><th>Status</th><th>Koszt / mies.</th><th>Ocena</th><th>Projekty</th><th></th></tr></thead><tbody>'+
+  '<div class="table-wrap"><table><thead><tr><th>Imię i nazwisko</th><th>Stanowisko</th><th>Dział</th><th>Forma</th><th>Status</th>'+(restricted?'':'<th>Koszt / mies.</th>')+'<th>Ocena</th><th>Projekty</th><th></th></tr></thead><tbody>'+
   (list.length?list.map(function(e){
-    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span>'+(e.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(e.position)+'</td><td>'+esc(deptName(e.departmentId))+'</td><td>'+esc(e.contractType)+'</td><td>'+empStatusPill(e.status)+'</td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'</td><td>'+necessityPill(e.criticalRating)+'</td><td>'+(e.allocations||[]).map(function(a){return esc(projectName(a.projectId))+' '+a.pct+'%';}).join(', ')+'</td><td><span class="link" onclick="openForm(\'employees\',\''+e.id+'\')">edytuj</span></td></tr>';
+    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span>'+(e.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(e.position)+'</td><td>'+esc(deptName(e.departmentId))+'</td><td>'+esc(e.contractType)+'</td><td>'+empStatusPill(e.status)+'</td>'+(restricted?'':'<td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'</td>')+'<td>'+necessityPill(e.criticalRating)+'</td><td>'+(e.allocations||[]).map(function(a){return esc(projectName(a.projectId))+' '+a.pct+'%';}).join(', ')+'</td><td><span class="link" onclick="openForm(\'employees\',\''+e.id+'\')">edytuj</span></td></tr>';
   }).join(''):'<tr><td colspan="9" class="empty">Brak pracowników</td></tr>')+
   '</tbody></table></div>';
 }
@@ -801,8 +802,14 @@ function empFilterDept(v){ empFilters.dept=v; render(); }
 function empFilterStatus(v){ empFilters.status=v; render(); }
 function applySearchFilter(){ return true; }
 function exportEmployeesCsv(){
-  exportCsv(STATE.employees.map(function(e){return {name:empName(e),position:e.position,dept:deptName(e.departmentId),status:e.status,contractType:e.contractType,cost:totalMonthlyCostEmployee(e)};}),
-    [{key:'name',label:'Imię i nazwisko'},{key:'position',label:'Stanowisko'},{key:'dept',label:'Dział'},{key:'status',label:'Status'},{key:'contractType',label:'Forma'},{key:'cost',label:'Koszt miesięczny'}],'pracownicy.csv');
+  var restricted = !!STATE.restricted;
+  var headers = [{key:'name',label:'Imię i nazwisko'},{key:'position',label:'Stanowisko'},{key:'dept',label:'Dział'},{key:'status',label:'Status'},{key:'contractType',label:'Forma'}];
+  if(!restricted) headers.push({key:'cost',label:'Koszt miesięczny'});
+  exportCsv(STATE.employees.map(function(e){
+    var row = {name:empName(e),position:e.position,dept:deptName(e.departmentId),status:e.status,contractType:e.contractType};
+    if(!restricted) row.cost = totalMonthlyCostEmployee(e);
+    return row;
+  }), headers,'pracownicy.csv');
 }
 
 function employeeForm(e){
@@ -810,19 +817,28 @@ function employeeForm(e){
     netSalary:'',grossSalary:'',employerCost:'',otherMonthlyCost:0,bonus:0,car:0,phoneCost:0,computer:0,otherBenefits:0,
     responsibilities:'',justification:'',keyTasks:'',allocations:[],criticalRating:'ważne',presidentNotes:'',excludeFromSimulation:false};
   var isNew = !e.id;
+  var restricted = !!STATE.restricted;
   window.__allocDraft = (e.allocations||[]).slice();
+  // Dla kont z ograniczonym dostępem pola wynagrodzeń są ukryte (input
+  // type="hidden" zachowuje istniejącą wartość, żeby zapis formularza przez
+  // taką osobę NIE wyzerował wynagrodzenia — patrz lib/access.ts).
+  var costFields = restricted
+    ? ['netSalary','grossSalary','employerCost','bonus','car','phoneCost','computer','otherBenefits','otherMonthlyCost'].map(function(k){
+        return '<input type="hidden" name="'+k+'" value="'+(e[k]===undefined||e[k]===null?'':e[k])+'">';
+      }).join('')
+    : '<div class="section-title">Koszt</div>'+
+      '<div class="form-row2"><div><label>Wynagrodzenie netto</label><input type="number" step="0.01" name="netSalary" value="'+e.netSalary+'"></div><div><label>Wynagrodzenie brutto</label><input type="number" step="0.01" name="grossSalary" value="'+e.grossSalary+'"></div></div>'+
+      '<div class="form-row2"><div><label>Pełny koszt pracodawcy</label><input type="number" step="0.01" name="employerCost" value="'+e.employerCost+'"></div><div><label>Premie / mies.</label><input type="number" step="0.01" name="bonus" value="'+e.bonus+'"></div></div>'+
+      '<div class="form-row2"><div><label>Samochód (ryczałt)</label><input type="number" step="0.01" name="car" value="'+e.car+'"></div><div><label>Telefon (koszt)</label><input type="number" step="0.01" name="phoneCost" value="'+e.phoneCost+'"></div></div>'+
+      '<div class="form-row2"><div><label>Komputer / sprzęt</label><input type="number" step="0.01" name="computer" value="'+e.computer+'"></div><div><label>Inne benefity / mies.</label><input type="number" step="0.01" name="otherBenefits" value="'+e.otherBenefits+'"></div></div>'+
+      '<label>Inne koszty miesięczne</label><input type="number" step="0.01" name="otherMonthlyCost" value="'+e.otherMonthlyCost+'">';
   return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy pracownik':'Edytuj pracownika')+'</h3>'+
   '<form id="entity-form" onsubmit="return saveEmployee(event,\''+(e.id||'')+'\')">'+
   '<div class="form-row2"><div><label>Imię</label><input name="firstName" value="'+esc(e.firstName)+'" required></div><div><label>Nazwisko</label><input name="lastName" value="'+esc(e.lastName)+'" required></div></div>'+
   '<div class="form-row2"><div><label>Służbowy e-mail</label><input type="email" name="email" value="'+esc(e.email)+'"></div><div><label>Telefon</label><input name="phone" value="'+esc(e.phone)+'"></div></div>'+
   '<div class="form-row2"><div><label>Stanowisko</label><input name="position" value="'+esc(e.position)+'" required></div><div><label>Dział</label>'+selectHtml('departmentId',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),e.departmentId,'—')+'</div></div>'+
   '<div class="form-row2"><div><label>Status</label>'+selectHtml('status',STATUS_OPTS_EMP,e.status)+'</div><div><label>Forma współpracy</label>'+selectHtml('contractType',CONTRACT_TYPE_OPTS,e.contractType)+'</div></div>'+
-  '<div class="section-title">Koszt</div>'+
-  '<div class="form-row2"><div><label>Wynagrodzenie netto</label><input type="number" step="0.01" name="netSalary" value="'+e.netSalary+'"></div><div><label>Wynagrodzenie brutto</label><input type="number" step="0.01" name="grossSalary" value="'+e.grossSalary+'"></div></div>'+
-  '<div class="form-row2"><div><label>Pełny koszt pracodawcy</label><input type="number" step="0.01" name="employerCost" value="'+e.employerCost+'"></div><div><label>Premie / mies.</label><input type="number" step="0.01" name="bonus" value="'+e.bonus+'"></div></div>'+
-  '<div class="form-row2"><div><label>Samochód (ryczałt)</label><input type="number" step="0.01" name="car" value="'+e.car+'"></div><div><label>Telefon (koszt)</label><input type="number" step="0.01" name="phoneCost" value="'+e.phoneCost+'"></div></div>'+
-  '<div class="form-row2"><div><label>Komputer / sprzęt</label><input type="number" step="0.01" name="computer" value="'+e.computer+'"></div><div><label>Inne benefity / mies.</label><input type="number" step="0.01" name="otherBenefits" value="'+e.otherBenefits+'"></div></div>'+
-  '<label>Inne koszty miesięczne</label><input type="number" step="0.01" name="otherMonthlyCost" value="'+e.otherMonthlyCost+'">'+
+  costFields+
   '<div class="section-title">Odpowiedzialność</div>'+
   '<label>Za co odpowiada?</label><textarea class="textarea-lg" name="responsibilities">'+esc(e.responsibilities)+'</textarea>'+
   '<label>Dlaczego ta osoba jest potrzebna spółce?</label><textarea class="textarea-lg" name="justification">'+esc(e.justification)+'</textarea>'+
@@ -956,7 +972,7 @@ function projectDetail(p){
     kpi('Zysk miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0)):'—',true)+
     kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
     kpi('Koszt od początku projektu',fmtMoney0(sinceStart))+
-    kpi('Koszt pracowników',fmtMoney0(empCost))+
+    (STATE.restricted?'':kpi('Koszt pracowników',fmtMoney0(empCost)))+
     kpi('Koszt zewnętrzny',fmtMoney0(extCost))+
     kpi('Koszt stały',fmtMoney0(fixedCost))+
     kpi('Koszt jednorazowy',fmtMoney0(oneTimeCost))+
@@ -988,9 +1004,9 @@ function projectDetail(p){
   '</div>'+
   '<div class="panel"><h3>Opis</h3><div>'+esc(p.description||'—')+'</div></div>'+
   '<div class="panel"><div class="toolbar"><h3 style="margin:0">Koszty projektu</h3><button class="btn btn-sm btn-primary" onclick="openForm(\'costs\',null,{projectId:\''+p.id+'\'})">+ dodaj koszt</button></div>'+costsTable(costs)+'</div>'+
-  '<div class="panel"><h3>Osoby pracujące przy projekcie</h3>'+(emps.length?'<div class="table-wrap"><table><thead><tr><th>Osoba</th><th>Stanowisko</th><th>% czasu</th><th>Koszt przypisany</th></tr></thead><tbody>'+emps.map(function(e){
+  '<div class="panel"><h3>Osoby pracujące przy projekcie</h3>'+(emps.length?'<div class="table-wrap"><table><thead><tr><th>Osoba</th><th>Stanowisko</th><th>% czasu</th>'+(STATE.restricted?'':'<th>Koszt przypisany</th>')+'</tr></thead><tbody>'+emps.map(function(e){
     var pct = empAllocPct(e,p.id);
-    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span></td><td>'+esc(e.position)+'</td><td>'+pct+'%</td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e)*pct/100)+'</td></tr>';
+    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span></td><td>'+esc(e.position)+'</td><td>'+pct+'%</td>'+(STATE.restricted?'':'<td class="right">'+fmtMoney(totalMonthlyCostEmployee(e)*pct/100)+'</td>')+'</tr>';
   }).join('')+'</tbody></table></div>':'<div class="empty">Brak przypisanych osób</div>')+'</div>'+
   '<button class="btn" onclick="openForm(\'projects\',\''+p.id+'\')">Edytuj projekt</button>';
 }
@@ -999,7 +1015,7 @@ function employeeDetail(e){
   return '<span class="link" onclick="goTab(\'employees\')">← Pracownicy</span>'+
   '<h2 class="page-title">'+esc(empName(e))+'</h2>'+
   '<div class="page-sub">'+esc(e.position)+' • '+esc(deptName(e.departmentId))+' • '+empStatusPill(e.status)+'</div>'+
-  '<div class="kpi-grid">'+kpi('Całkowity koszt miesięczny',fmtMoney0(totalMonthlyCostEmployee(e)),true)+kpi('Forma współpracy',e.contractType)+kpi('Ocena stanowiska',e.criticalRating)+'</div>'+
+  '<div class="kpi-grid">'+(STATE.restricted?'':kpi('Całkowity koszt miesięczny',fmtMoney0(totalMonthlyCostEmployee(e)),true))+kpi('Forma współpracy',e.contractType)+kpi('Ocena stanowiska',e.criticalRating)+'</div>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>Za co odpowiada</h3><div>'+esc(e.responsibilities||'—')+'</div></div>'+
   '<div class="panel"><h3>Dlaczego ta osoba jest potrzebna</h3><div>'+esc(e.justification||'—')+'</div></div>'+
@@ -1313,10 +1329,12 @@ function viewAnalysis(){
   '</div><div class="grid2">'+
   '<div class="panel"><h3>Koszt wg kategorii</h3>'+table(groupSum(function(c){return c.category||'Inne';},function(k){return k;}))+'</div>'+
   '<div class="panel"><h3>Koszt wg projektu</h3>'+table(STATE.projects.filter(function(p){return !p.isDemo;}).map(function(p){return {label:projectName(p.id),value:m.monthlyProjectCost[p.id]||0};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
-  '</div><div class="grid2">'+
+  '</div>'+(STATE.restricted?
+  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'
+  :'<div class="grid2">'+
   '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
   '<div class="panel"><h3>Koszt wg pracownika</h3>'+table(byEmp)+'</div>'+
-  '</div>'+
+  '</div>')+
   '<div class="panel"><h3>Koszt wg dostawcy</h3>'+table(byVendor)+'</div>';
 }
 
