@@ -391,7 +391,19 @@ function metrics(){
   var totalProjectCost = realProjects.reduce(function(s,p){return s+(monthlyProjectCost[p.id]||0);},0);
 
   var monthlyProjectRevenue = STATE.projects.reduce(function(sum,p){ sum[p.id] = Number(p.revenueMonthly)||0; return sum; },{});
-  var monthlyRevenue = realProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
+  // WAŻNE (2026-09-05, na wyraźne potwierdzenie Kamila): do BIEŻĄCYCH KPI
+  // (przychód, zysk, projekcje okresowe) liczymy WYŁĄCZNIE projekty ze
+  // statusem "operacyjny" — czyli faktycznie działające i generujące
+  // przychód. Projekty w rozwoju/pozwoleniach/RTB/budowie mogą mieć
+  // wypełnione pole revenueMonthly jako PLANOWANY/DOCELOWY przychód po
+  // uruchomieniu — to jest założenie na przyszłość, nie bieżący wynik, więc
+  // liczymy je osobno (monthlyRevenueProjected) i NIE wliczamy do
+  // monthlyRevenue/monthlyProfit/projekcji okresowych, żeby nie zawyżać
+  // bieżącego run-rate.
+  var operationalProjects = realProjects.filter(function(p){return p.status==='operacyjny';});
+  var nonOperationalProjects = realProjects.filter(function(p){return p.status!=='operacyjny';});
+  var monthlyRevenue = operationalProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
+  var monthlyRevenueProjected = nonOperationalProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
 
   // Portfel wg rodzaju aktywa (PV / BESS / Hybryda / Inne) — przychód i koszt miesięczny.
   var byAssetType = {};
@@ -465,6 +477,8 @@ function metrics(){
     monthlyFixed:monthlyFixed, totalBurn:totalBurn, annualRunRate:annualRunRate,
     monthlyProjectCost:monthlyProjectCost, totalProjectCost:totalProjectCost,
     monthlyProjectRevenue:monthlyProjectRevenue, monthlyRevenue:monthlyRevenue,
+    monthlyRevenueProjected:monthlyRevenueProjected, operationalProjectsCount:operationalProjects.length,
+    nonOperationalProjectsCount:nonOperationalProjects.length,
     monthlyProfit:monthlyProfit, annualProfit:monthlyProfit*12,
     monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
     upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
@@ -644,7 +658,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-05-02 (Zalozenia+Wykresy)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-05-03 (przychod tylko operacyjne)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -850,7 +864,9 @@ function viewDashboard(){
     kpi('Potencjalne oszczędności / mies.', fmtMoney0(m.potentialSavingsMonthly), false, m.potentialSavingsMonthly>0)+
     kpi('Potencjalne oszczędności / rok', fmtMoney0(m.potentialSavingsAnnual))+
     kpi('Przyszłe zapotrzebowanie na kapitał (wszystkie projekty)', fmtMoney0(m.totalFutureCapitalNeed), true)+
+    kpi('Docelowy przychód po uruchomieniu (założenie, '+m.nonOperationalProjectsCount+' proj. w rozwoju)', fmtMoney0(m.monthlyRevenueProjected))+
   '</div>'+
+  '<div class="muted" style="margin:-6px 0 12px">Przychód powyżej ("Przychód w okresie") liczony jest WYŁĄCZNIE z projektów o statusie „operacyjny" ('+m.operationalProjectsCount+' szt.). Projekty w rozwoju/pozwoleniach/RTB/budowie mogą mieć wpisany planowany przychód docelowy — to założenie na przyszłość (patrz kafelek obok), nie bieżący wynik.</div>'+
   (m.overdue.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Zaległe płatności ('+m.overdue.length+')</h3>'+costsTable(m.overdue,false)+'</div>':'')+
   (m.overBudgetProjects.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Projekty z przekroczonym budżetem ('+m.overBudgetProjects.length+')</h3>'+m.overBudgetProjects.map(function(p){
     var bs = m.projectBudgetStatus[p.id];
@@ -1029,7 +1045,7 @@ function saveEmployee(ev,id){
 /* ============================= PROJECTS ============================= */
 function viewProjects(){
   var m = metrics();
-  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód łączny: '+fmtMoney0(m.monthlyRevenue)+'/mies. • przyszłe zapotrzebowanie na kapitał: '+fmtMoney0(m.totalFutureCapitalNeed)+'</div>'+
+  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód bieżący (operacyjne): '+fmtMoney0(m.monthlyRevenue)+'/mies. • docelowy przychód po uruchomieniu (założenie): '+fmtMoney0(m.monthlyRevenueProjected)+'/mies. • przyszłe zapotrzebowanie na kapitał: '+fmtMoney0(m.totalFutureCapitalNeed)+'</div>'+
   '<div class="toolbar"><div><button class="btn btn-sm" onclick="exportProjectsCsv()">Eksport CSV</button></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
   '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Rodzaj</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th>Przychód / mies.</th><th>Zysk / mies.</th><th>Budżet</th><th></th></tr></thead><tbody>'+
   (STATE.projects.length?STATE.projects.map(function(p){
