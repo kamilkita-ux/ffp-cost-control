@@ -1,0 +1,1876 @@
+<title>FFP Cost Control</title>
+<style>
+:root{
+  --bg:#f4f6f8; --panel:#ffffff; --border:#dde3e8; --text:#1a2733; --muted:#6b7a87;
+  --accent:#0f6e4f; --accent-dark:#0a4f38; --accent-bg:#e6f4ee;
+  --danger:#c0392b; --danger-bg:#fdeceb; --warn:#b7791f; --warn-bg:#fdf3e0;
+  --ok:#1e8e5a; --shadow:0 1px 3px rgba(20,30,40,.08);
+  /* Wykresy — paleta kategorialna (stała kolejność, walidowana pod kątem
+     ślepoty barw — patrz skill dataviz), plus jeden odcień sekwencyjny
+     (spójny z akcentem aplikacji) do wykresów jednoserowych/wielkości. */
+  --chart-seq:#0f6e4f; --chart-seq-2:#eb6834;
+  --chart-1:#2a78d6; --chart-2:#eb6834; --chart-3:#1baf7a; --chart-4:#eda100;
+  --chart-grid:#dde3e8; --chart-label:#6b7a87;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12181d; --panel:#1a2229; --border:#2a343c; --text:#e6edf3; --muted:#93a1ac;
+    --accent:#2fae7f; --accent-dark:#2fae7f; --accent-bg:#123a2c;
+    --danger:#e5766a; --danger-bg:#3a1f1c; --warn:#e0b463; --warn-bg:#3a2f14; --ok:#4fce9a;
+    --chart-seq:#2fae7f; --chart-seq-2:#d95926;
+    --chart-1:#3987e5; --chart-2:#d95926; --chart-3:#199e70; --chart-4:#c98500;
+    --chart-grid:#2a343c; --chart-label:#93a1ac;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12181d; --panel:#1a2229; --border:#2a343c; --text:#e6edf3; --muted:#93a1ac;
+  --accent:#2fae7f; --accent-dark:#2fae7f; --accent-bg:#123a2c;
+  --danger:#e5766a; --danger-bg:#3a1f1c; --warn:#e0b463; --warn-bg:#3a2f14; --ok:#4fce9a;
+  --chart-seq:#2fae7f; --chart-seq-2:#d95926;
+  --chart-1:#3987e5; --chart-2:#d95926; --chart-3:#199e70; --chart-4:#c98500;
+  --chart-grid:#2a343c; --chart-label:#93a1ac;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;}
+a{color:var(--accent);}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 9px;width:100%;}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;}
+label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin:8px 0 3px;}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap;}
+.btn:hover{border-color:var(--accent);}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent-dark);}
+.btn-danger{color:var(--danger);}
+.btn-sm{padding:4px 9px;font-size:12px;border-radius:6px;}
+.btn-icon{padding:6px 9px;}
+#app{display:flex;min-height:100vh;}
+#sidebar{width:220px;flex:none;background:var(--panel);border-right:1px solid var(--border);padding:14px 10px;position:sticky;top:0;height:100vh;overflow-y:auto;}
+#sidebar h1{font-size:15px;margin:4px 8px 2px;color:var(--accent);}
+#sidebar .sub{font-size:11px;color:var(--muted);margin:0 8px 14px;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;color:var(--text);text-decoration:none;font-size:13.5px;font-weight:500;margin-bottom:2px;cursor:pointer;}
+.nav-item:hover{background:var(--accent-bg);}
+.nav-item.active{background:var(--accent);color:#fff;}
+.nav-icon{width:18px;text-align:center;}
+#main{flex:1;min-width:0;}
+#topbar{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;gap:10px;align-items:center;}
+#topbar input[type=search]{max-width:340px;}
+#topbar .spacer{flex:1;}
+#content{padding:18px;max-width:1400px;}
+.hide-mobile{display:inline-flex;}
+h2.page-title{margin:0 0 4px;font-size:20px;}
+.page-sub{color:var(--muted);font-size:12.5px;margin-bottom:16px;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow);}
+.kpi .label{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+.kpi .value{font-size:22px;font-weight:700;margin-top:6px;}
+.kpi .value.small{font-size:17px;}
+.kpi.accent .value{color:var(--accent);}
+.kpi.warn .value{color:var(--warn);}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow);}
+.panel h3{margin:0 0 12px;font-size:14.5px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr;}}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-size:11px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);padding:7px 8px;white-space:nowrap;}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr:hover td{background:var(--accent-bg);}
+.table-wrap{overflow-x:auto;}
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
+.pill-ok{background:var(--accent-bg);color:var(--accent);}
+.pill-warn{background:var(--warn-bg);color:var(--warn);}
+.pill-danger{background:var(--danger-bg);color:var(--danger);}
+.pill-muted{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.filters select,.filters input{width:auto;min-width:130px;}
+@media print{
+  .no-print{display:none!important;}
+  body{background:#fff;color:#000;}
+  .panel{box-shadow:none;border:1px solid #999;break-inside:avoid;}
+  .kpi{border:1px solid #999;break-inside:avoid;}
+  a,.link{color:#000!important;text-decoration:none;}
+}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.muted{color:var(--muted);}
+.right{text-align:right;}
+#modal-overlay{position:fixed;inset:0;background:rgba(10,15,20,.5);display:none;align-items:flex-start;justify-content:center;z-index:100;overflow-y:auto;padding:30px 12px;}
+#modal-overlay.open{display:flex;}
+#modal{background:var(--panel);border-radius:12px;max-width:640px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+#modal h3{margin-top:0;}
+.form-row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;border-top:1px solid var(--border);padding-top:14px;}
+.close-x{float:right;background:none;border:none;font-size:20px;color:var(--muted);}
+.alloc-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+.alloc-row select{flex:2;}
+.alloc-row input{flex:1;}
+.link{color:var(--accent);cursor:pointer;text-decoration:underline;font-weight:600;}
+.demo-tag{background:var(--warn-bg);color:var(--warn);font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;margin-left:6px;}
+.empty{color:var(--muted);font-style:italic;padding:14px 0;}
+.badge-count{background:var(--accent);color:#fff;border-radius:10px;font-size:10px;padding:0 6px;margin-left:auto;}
+.progress-bar{height:8px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--border);}
+.progress-bar>div{height:100%;background:var(--accent);}
+.viz-wrap{width:100%;overflow-x:auto;}
+.viz-wrap svg{display:block;}
+.viz-legend{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px;font-size:12px;color:var(--muted);}
+.viz-legend-item{display:flex;align-items:center;gap:6px;}
+.viz-legend-swatch{width:10px;height:10px;border-radius:2px;flex:none;}
+.viz-axis-label{fill:var(--chart-label);font-size:10.5px;}
+.viz-value-label{fill:var(--text);font-size:10.5px;font-weight:600;}
+.viz-note{margin-top:14px;padding-top:6px;border-top:1px dashed var(--border);}
+#mobile-menu-btn{display:none;}
+.textarea-lg{min-height:70px;}
+.section-title{font-weight:700;font-size:12.5px;text-transform:uppercase;color:var(--muted);margin:16px 0 8px;letter-spacing:.03em;}
+.tab-bar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap;}
+.tab-btn{background:none;border:none;padding:9px 14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;font-size:13px;}
+.tab-btn.active{color:var(--accent);border-color:var(--accent);}
+@media(max-width:820px){
+  #sidebar{position:fixed;left:-240px;top:0;height:100vh;z-index:50;transition:left .2s;box-shadow:0 0 20px rgba(0,0,0,.2);}
+  #sidebar.open{left:0;}
+  #mobile-menu-btn{display:inline-flex;}
+  .hide-mobile{display:none;}
+  #content{padding:12px;}
+  .kpi-grid{grid-template-columns:repeat(2,1fr);}
+  .kpi .value{font-size:18px;}
+  #topbar input[type=search]{max-width:none;flex:1;}
+  #sidebar-overlay.open{display:block;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;}
+}
+#sidebar-overlay{display:none;}
+#save-status-mobile{display:none;padding:6px 12px;}
+#save-status-mobile .pill{display:block;text-align:center;}
+@media(max-width:820px){
+  #save-status-mobile{display:block;}
+}
+</style>
+<div id="app">
+  <div id="sidebar-overlay" class="no-print" onclick="closeMobileNav()"></div>
+  <div id="sidebar" class="no-print">
+    <h1>FFP Cost Control</h1>
+    <div class="sub">Farmy Fotowoltaiki Polska S.A.</div>
+    <div id="nav-list"></div>
+  </div>
+  <div id="main">
+    <div id="topbar" class="no-print">
+      <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
+      <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
+      <div class="spacer"></div>
+      <div id="save-status" class="hide-mobile"></div>
+      <button class="btn btn-primary hide-mobile" onclick="openForm('costs')">+ Koszt</button>
+      <button class="btn hide-mobile" onclick="openForm('employees')">+ Pracownik</button>
+      <button class="btn hide-mobile" onclick="openForm('projects')">+ Projekt</button>
+      <button class="btn btn-icon" onclick="openForm('costs')" title="Dodaj koszt" style="display:none" id="mobile-add-btn">+</button>
+    </div>
+    <div id="save-status-mobile"></div>
+    <div id="content"><div class="empty" style="padding:40px;text-align:center">Ładowanie danych z bazy PostgreSQL…</div></div>
+  </div>
+</div>
+<div id="modal-overlay" class="no-print" onclick="if(event.target===this)closeModal()">
+  <div id="modal"></div>
+</div>
+<div id="search-overlay"></div>
+
+<script>
+/* =============================================================================
+   FFP Cost Control — warstwa danych.
+   Jedyne źródło prawdy: PostgreSQL, przez API Next.js (app/api/**).
+   STATE poniżej to WYŁĄCZNIE lokalna kopia w pamięci przeglądarki, hydratowana
+   z /api/bootstrap przy starcie i po każdym zapisie — nigdy nie jest zapisywana
+   bezpośrednio do żadnego trwałego magazynu przeglądarki (localStorage служy
+   tu tylko do zapamiętania OSTATNIO OTWARTEJ ZAKŁADKI, co jest czystą wygodą
+   nawigacyjną i nie ma nic wspólnego z przechowywaniem danych firmowych).
+   ========================================================================== */
+var STATE = { departments:[], projects:[], employees:[], vendors:[], costs:[], contracts:[], financings:[], documents:[], costCategories:[], costCenters:[], currency:'PLN' };
+var BOOTED = false;
+
+var currentTab = (function(){ try{ return localStorage.getItem('ffp_tab')||'dashboard'; }catch(e){ return 'dashboard'; } })();
+var searchQuery = '';
+var pendingModalSave = null;
+var DASH_PERIOD = (function(){ try{ return localStorage.getItem('ffp_dash_period')||'month'; }catch(e){ return 'month'; } })();
+var DASH_CUSTOM_FROM = (function(){ try{ return localStorage.getItem('ffp_dash_from')||''; }catch(e){ return ''; } })();
+var DASH_CUSTOM_TO = (function(){ try{ return localStorage.getItem('ffp_dash_to')||''; }catch(e){ return ''; } })();
+
+/* ============================= HELPERS ============================= */
+function uid(prefix){ return (prefix||'id')+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function fmtMoney(n){
+  n = Number(n)||0;
+  var s = n.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return s+' zł';
+}
+function fmtMoney0(n){
+  n = Number(n)||0;
+  return n.toLocaleString('pl-PL',{maximumFractionDigits:0})+' zł';
+}
+function fmtDate(iso){
+  if(!iso) return '—';
+  var p = iso.split('-'); if(p.length!==3) return iso;
+  return p[2]+'.'+p[1]+'.'+p[0];
+}
+// UWAGA: celowo NIE używamy Date.toISOString() do formatowania dat lokalnych —
+// ono konwertuje na UTC, co dla stref czasowych na wschód od UTC (Polska)
+// potrafi cofnąć datę o jeden dzień (np. lokalna północ 1 września staje się
+// 31 sierpnia 22:00 UTC). localISO() buduje string z lokalnych składowych daty.
+function localISO(d){
+  function p2(n){ return (n<10?'0':'')+n; }
+  return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+}
+function todayISO(){ return localISO(new Date()); }
+function daysUntil(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00'); var t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+/* ============================= WYKRESY (proste SVG, bez zewnętrznych bibliotek) =============================
+   Jeden odcień (sekwencyjny) dla wykresów jednej wielkości/serii, stała
+   paleta kategorialna (4 kolory) dla wykresów wieloseryjnych — patrz
+   zmienne --chart-* w <style>. Etykiety wartości bezpośrednio na
+   wykresie (pełnią rolę widoku tabelarycznego), natywny <title> jako
+   podpowiedź po najechaniu. */
+function svgBarChart(items, opts){
+  opts = opts || {};
+  var color = opts.color || 'var(--chart-seq)';
+  var width = opts.width || 640;
+  var barH = opts.barH || 22;
+  var gap = opts.gap || 10;
+  var leftPad = opts.leftPad || 190;
+  var rightPad = opts.rightPad || 80;
+  var topPad = 4;
+  var fmt = opts.formatValue || function(v){ return fmtMoney0(v); };
+  var n = items.length;
+  if(!n) return '<div class="empty">Brak danych</div>';
+  var maxV = Math.max.apply(null, items.map(function(i){return Number(i.value)||0;}).concat([0.0001]));
+  var height = topPad*2 + n*(barH+gap) - gap;
+  var plotW = Math.max(60, width-leftPad-rightPad);
+  var bars = items.map(function(it,idx){
+    var v = Number(it.value)||0;
+    var y = topPad + idx*(barH+gap);
+    var w = maxV>0? Math.max(2,(v/maxV)*plotW) : 0;
+    return '<g><title>'+esc(it.label)+': '+esc(fmt(v))+'</title>'+
+      '<text x="'+(leftPad-8)+'" y="'+(y+barH/2+4)+'" text-anchor="end" class="viz-axis-label">'+esc(it.label)+'</text>'+
+      '<rect x="'+leftPad+'" y="'+y+'" width="'+w+'" height="'+barH+'" rx="4" fill="'+color+'"></rect>'+
+      '<text x="'+(leftPad+w+8)+'" y="'+(y+barH/2+4)+'" class="viz-value-label">'+esc(fmt(v))+'</text></g>';
+  }).join('');
+  return '<div class="viz-wrap"><svg viewBox="0 0 '+width+' '+height+'" width="100%" height="'+height+'" role="img" aria-label="wykres słupkowy">'+bars+'</svg></div>';
+}
+function svgStackedBarChart(rows, series, opts){
+  opts = opts || {};
+  var width = opts.width || 900, height = opts.height || 260;
+  var leftPad = 74, rightPad = 34, topPad = 10, bottomPad = 30;
+  var n = rows.length;
+  if(!n) return '<div class="empty">Brak danych</div>';
+  var plotW = width-leftPad-rightPad, plotH = height-topPad-bottomPad;
+  var maxTotal = Math.max.apply(null, rows.map(function(r){return series.reduce(function(s,se){return s+(Number(r[se.key])||0);},0);}).concat([1]));
+  var slot = plotW/n;
+  var barW = Math.max(1, slot*0.7);
+  var bars = rows.map(function(r,idx){
+    var x = leftPad + idx*slot + slot*0.15;
+    var yCursor = topPad+plotH;
+    var segs = series.map(function(se){
+      var v = Number(r[se.key])||0;
+      var h = maxTotal>0? (v/maxTotal)*plotH : 0;
+      yCursor -= h;
+      return '<rect x="'+x+'" y="'+yCursor+'" width="'+barW+'" height="'+Math.max(0,h)+'" fill="'+se.color+'"><title>'+esc(r.label)+' — '+esc(se.label)+': '+fmtMoney0(v)+'</title></rect>';
+    }).join('');
+    var showLabel = (idx%4===0)||idx===n-1;
+    var xlabel = showLabel? '<text x="'+(x+barW/2)+'" y="'+(topPad+plotH+16)+'" text-anchor="middle" class="viz-axis-label">'+esc(r.period)+'</text>' : '';
+    return segs+xlabel;
+  }).join('');
+  var gridLines = '';
+  for(var g=0; g<=3; g++){
+    var gy = topPad + plotH - (g/3)*plotH;
+    var gv = (g/3)*maxTotal;
+    gridLines += '<line x1="'+leftPad+'" y1="'+gy+'" x2="'+(leftPad+plotW)+'" y2="'+gy+'" stroke="var(--chart-grid)" stroke-width="1"></line>'+
+      '<text x="'+(leftPad-8)+'" y="'+(gy+3)+'" text-anchor="end" class="viz-axis-label">'+fmtMoney0(gv)+'</text>';
+  }
+  var legend = '<div class="viz-legend">'+series.map(function(se){
+    return '<span class="viz-legend-item"><span class="viz-legend-swatch" style="background:'+se.color+'"></span>'+esc(se.label)+'</span>';
+  }).join('')+'</div>';
+  return legend+'<div class="viz-wrap"><svg viewBox="0 0 '+width+' '+height+'" width="100%" height="'+height+'" role="img" aria-label="wykres skumulowany w czasie">'+gridLines+bars+'</svg></div>';
+}
+function svgStepLine(rows, key, opts){
+  opts = opts || {};
+  var width = opts.width || 900, height = opts.height || 200;
+  var leftPad = 74, rightPad = 34, topPad = 20, bottomPad = 30;
+  var n = rows.length;
+  if(!n) return '<div class="empty">Brak danych</div>';
+  var plotW = width-leftPad-rightPad, plotH = height-topPad-bottomPad;
+  var maxV = Math.max.apply(null, rows.map(function(r){return Number(r[key])||0;}).concat([1]));
+  var minV = 0;
+  function xAt(i){ return leftPad + (n<=1?0:(i/(n-1))*plotW); }
+  function yAt(v){ return topPad + plotH - ((v-minV)/((maxV-minV)||1))*plotH; }
+  var path = '', stepAnnotation = '';
+  for(var i=0;i<n;i++){
+    var x = xAt(i), y = yAt(Number(rows[i][key])||0);
+    if(i===0){ path += 'M'+x+','+y; }
+    else {
+      var prevY = yAt(Number(rows[i-1][key])||0);
+      path += ' L'+x+','+prevY+' L'+x+','+y;
+      if(!stepAnnotation && Number(rows[i][key])!==Number(rows[i-1][key])){
+        stepAnnotation = '<circle cx="'+x+'" cy="'+y+'" r="4" fill="var(--chart-seq-2)"></circle>'+
+          '<text x="'+x+'" y="'+(y-10)+'" text-anchor="middle" class="viz-value-label" fill="var(--chart-seq-2)">'+esc(rows[i].label)+': '+fmtMoney0(rows[i][key])+'</text>';
+      }
+    }
+  }
+  var gridLines = '';
+  for(var g=0; g<=2; g++){
+    var gy = topPad + plotH - (g/2)*plotH;
+    var gv = minV + (g/2)*(maxV-minV);
+    gridLines += '<line x1="'+leftPad+'" y1="'+gy+'" x2="'+(leftPad+plotW)+'" y2="'+gy+'" stroke="var(--chart-grid)" stroke-width="1"></line>'+
+      '<text x="'+(leftPad-8)+'" y="'+(gy+3)+'" text-anchor="end" class="viz-axis-label">'+fmtMoney0(gv)+'</text>';
+  }
+  var xlabels = '';
+  for(var i=0;i<n;i++){
+    if(i%4===0||i===n-1){
+      xlabels += '<text x="'+xAt(i)+'" y="'+(topPad+plotH+16)+'" text-anchor="middle" class="viz-axis-label">'+esc(rows[i].period)+'</text>';
+    }
+  }
+  var endpoints = '<circle cx="'+xAt(0)+'" cy="'+yAt(Number(rows[0][key])||0)+'" r="3" fill="var(--chart-seq)"></circle>'+
+    '<circle cx="'+xAt(n-1)+'" cy="'+yAt(Number(rows[n-1][key])||0)+'" r="3" fill="var(--chart-seq)"></circle>';
+  return '<div class="viz-wrap"><svg viewBox="0 0 '+width+' '+height+'" width="100%" height="'+height+'" role="img" aria-label="wykres liniowy">'+gridLines+
+    '<path d="'+path+'" fill="none" stroke="var(--chart-seq)" stroke-width="2"></path>'+endpoints+stepAnnotation+xlabels+'</svg></div>';
+}
+function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
+function deptName(id){ var d=byId(STATE.departments,id); return d?d.name:'—'; }
+function projectName(id){ if(id==='ADMIN') return 'Administracja / Centrala'; var p=byId(STATE.projects,id); return p?p.name:'—'; }
+function vendorName(id){ var v=byId(STATE.vendors,id); return v?v.name:'—'; }
+function empName(e){ return e.firstName+' '+e.lastName; }
+
+function monthlyEquivalent(cost){
+  var g = Number(cost.grossAmount)||Number(cost.netAmount)||0;
+  switch(cost.recurrence){
+    case 'miesięczny': return g;
+    case 'kwartalny': return g/3;
+    case 'półroczny': return g/6;
+    case 'roczny': return g/12;
+    default: return 0; // jednorazowy / nieregularny - not part of recurring run-rate
+  }
+}
+function annualEquivalent(cost){ return monthlyEquivalent(cost)*12; }
+
+function totalMonthlyCostEmployee(e){
+  if(e.status==='zakończona współpraca') return 0;
+  var base = Number(e.employerCost)||Number(e.grossSalary)||0;
+  var extra = (Number(e.otherMonthlyCost)||0)+(Number(e.bonus)||0)+(Number(e.car)||0)+(Number(e.phoneCost)||0)+(Number(e.computer)||0)+(Number(e.otherBenefits)||0);
+  return base+extra;
+}
+
+function empAllocPct(e,projectId){
+  if(!e.allocations||!e.allocations.length) return projectId==='ADMIN'?100:0;
+  var a = e.allocations.find(function(x){return x.projectId===projectId;});
+  return a?Number(a.pct)||0:0;
+}
+
+function metrics(){
+  // WAŻNE: wszystkie wyliczenia finansowe (KPI, dashboard, analiza, symulator)
+  // celowo POMIJAJĄ rekordy oznaczone jako DEMO (isDemo=true) — inaczej
+  // przykładowe dane demonstracyjne (widoczne dalej w tabelach z tagiem
+  // "DEMO", żeby dało się je znaleźć i usunąć) zniekształcałyby realne
+  // liczby firmy, dopóki ktoś ręcznie nie usunie danych DEMO w Ustawieniach.
+  var realProjects = STATE.projects.filter(function(p){return !p.isDemo;});
+  var realCosts = STATE.costs.filter(function(c){return !c.isDemo;});
+  var realEmployeesAll = STATE.employees.filter(function(e){return !e.isDemo;});
+
+  var activeEmployees = realEmployeesAll.filter(function(e){return e.status!=='zakończona współpraca';});
+  var monthlyPayroll = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
+  var monthlyExternal = realCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyFinancing = STATE.financings.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+  var monthlyFixedNonPayroll = realCosts.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyFixed = monthlyPayroll+monthlyFixedNonPayroll+monthlyFinancing;
+  var totalBurn = monthlyPayroll+monthlyExternal+monthlyFinancing;
+  var annualRunRate = totalBurn*12;
+
+  // UWAGA: te mapy per-projekt liczone są dla WSZYSTKICH projektów (łącznie
+  // z DEMO), żeby wiersz/podstrona projektu demonstracyjnego nie wywalała
+  // błędu przy odczycie — ale wewnątrz używają już tylko realCosts/
+  // activeEmployees (bez DEMO), więc projekt DEMO i tak wychodzi na zero.
+  // Sumy zbiorcze (totalProjectCost, monthlyRevenue) liczone są WYŁĄCZNIE
+  // po realProjects, żeby DEMO nie zawyżało łącznych KPI.
+  var monthlyProjectCost = STATE.projects.reduce(function(sum,p){
+    var c = realCosts.filter(function(x){return x.projectId===p.id;}).reduce(function(s,x){return s+monthlyEquivalent(x);},0);
+    var emp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
+    sum[p.id] = c+emp; return sum;
+  },{});
+  var totalProjectCost = realProjects.reduce(function(s,p){return s+(monthlyProjectCost[p.id]||0);},0);
+
+  var monthlyProjectRevenue = STATE.projects.reduce(function(sum,p){ sum[p.id] = Number(p.revenueMonthly)||0; return sum; },{});
+  var monthlyRevenue = realProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
+
+  // Portfel wg rodzaju aktywa (PV / BESS / Hybryda / Inne) — przychód i koszt miesięczny.
+  var byAssetType = {};
+  realProjects.forEach(function(p){
+    var t = p.assetType || 'PV';
+    if(!byAssetType[t]) byAssetType[t] = {revenue:0, cost:0, count:0, mwPower:0};
+    byAssetType[t].revenue += monthlyProjectRevenue[p.id]||0;
+    byAssetType[t].cost += monthlyProjectCost[p.id]||0;
+    byAssetType[t].count += 1;
+    byAssetType[t].mwPower += Number(p.mwPower)||0;
+  });
+
+  var unassignedCosts = realCosts.filter(function(c){return !c.projectId;});
+  var monthlyAdminFromCosts = unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyAdminFromEmp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,'ADMIN')/100);},0);
+  var monthlyAdmin = monthlyAdminFromCosts+monthlyAdminFromEmp;
+
+  var deptCost = {};
+  STATE.departments.forEach(function(d){
+    var empC = activeEmployees.filter(function(e){return e.departmentId===d.id;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
+    var costC = realCosts.filter(function(c){return c.departmentId===d.id;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    deptCost[d.id] = {employees:activeEmployees.filter(function(e){return e.departmentId===d.id;}).length, empCost:empC, otherCost:costC, total:empC+costC};
+  });
+
+  function upcomingIn(days){
+    return realCosts.filter(function(c){
+      if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
+      var d = daysUntil(c.dueDate); return d!==null && d>=0 && d<=days;
+    });
+  }
+  var overdue = realCosts.filter(function(c){
+    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
+    var d = daysUntil(c.dueDate); return d!==null && d<0;
+  });
+
+  var potentialSavingsMonthly =
+    realCosts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0) +
+    realEmployeesAll.filter(function(e){return e.excludeFromSimulation;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0) +
+    STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0) +
+    STATE.financings.filter(function(f){return f.excludeFromSimulation;}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+
+  var monthlyProfit = monthlyRevenue - totalBurn;
+
+  // Przyszłe zapotrzebowanie na kapitał per projekt: pozostałe do spłaty
+  // finansowanie (leasingi/kredyty) powiązane z projektem + koszty projektu
+  // jeszcze niezapłacone (planowane/zatwierdzone/do zapłaty), liczone kwotą
+  // brutto (to zapotrzebowanie na kapitał, nie koszt miesięczny/ekwiwalent).
+  var futureCapitalNeed = {};
+  STATE.projects.forEach(function(p){
+    var financingLeft = STATE.financings.filter(function(f){return f.projectId===p.id;})
+      .reduce(function(s,f){return s+(Number(f.remainingBalance)||0);},0);
+    var unpaidCosts = realCosts.filter(function(c){
+      return c.projectId===p.id && c.paymentStatus!=='zapłacony' && c.paymentStatus!=='anulowany';
+    }).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+    futureCapitalNeed[p.id] = financingLeft+unpaidCosts;
+  });
+  var totalFutureCapitalNeed = realProjects.reduce(function(s,p){return s+(futureCapitalNeed[p.id]||0);},0);
+
+  // Przekroczenie budżetu projektu: suma WSZYSTKICH kosztów (brutto) danego
+  // projektu od początku, porównana z zadeklarowanym budżetem całkowitym.
+  var projectBudgetStatus = {};
+  STATE.projects.forEach(function(p){
+    var budget = Number(p.budgetTotal)||0;
+    var spent = realCosts.filter(function(c){return c.projectId===p.id;}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+    projectBudgetStatus[p.id] = {budget:budget, spent:spent, over: budget>0 && spent>budget, pct: budget>0? Math.round(spent/budget*100):null};
+  });
+  var overBudgetProjects = realProjects.filter(function(p){return projectBudgetStatus[p.id].over;});
+
+  return {
+    monthlyPayroll:monthlyPayroll, monthlyExternal:monthlyExternal, monthlyFinancing:monthlyFinancing,
+    monthlyFixed:monthlyFixed, totalBurn:totalBurn, annualRunRate:annualRunRate,
+    monthlyProjectCost:monthlyProjectCost, totalProjectCost:totalProjectCost,
+    monthlyProjectRevenue:monthlyProjectRevenue, monthlyRevenue:monthlyRevenue,
+    monthlyProfit:monthlyProfit, annualProfit:monthlyProfit*12,
+    monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
+    upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
+    potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
+    activeEmployees:activeEmployees,
+    futureCapitalNeed:futureCapitalNeed, totalFutureCapitalNeed:totalFutureCapitalNeed,
+    projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects,
+    byAssetType:byAssetType
+  };
+}
+/* ============================= PROJEKCJA WG WYBRANEGO OKRESU (Dashboard) ============================= */
+var DASH_PERIODS = [
+  {key:'month',label:'Ten miesiąc'},
+  {key:'quarter',label:'Ten kwartał'},
+  {key:'year',label:'Ten rok'},
+  {key:'2y',label:'2 lata do przodu'},
+  {key:'3y',label:'3 lata do przodu'},
+  {key:'5y',label:'5 lat do przodu'},
+  {key:'custom',label:'Wybrany okres'}
+];
+function periodRange(key,customFrom,customTo){
+  var now = new Date(); now.setHours(0,0,0,0);
+  var from, to;
+  if(key==='quarter'){ var q = Math.floor(now.getMonth()/3); from = new Date(now.getFullYear(), q*3, 1); to = new Date(now.getFullYear(), q*3+3, 0); }
+  else if(key==='year'){ from = new Date(now.getFullYear(),0,1); to = new Date(now.getFullYear(),11,31); }
+  else if(key==='2y'){ from = now; to = new Date(now.getFullYear()+2, now.getMonth(), now.getDate()); }
+  else if(key==='3y'){ from = now; to = new Date(now.getFullYear()+3, now.getMonth(), now.getDate()); }
+  else if(key==='5y'){ from = now; to = new Date(now.getFullYear()+5, now.getMonth(), now.getDate()); }
+  else if(key==='custom'){
+    from = customFrom? new Date(customFrom+'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
+    to = customTo? new Date(customTo+'T00:00:00') : new Date(now.getFullYear(), now.getMonth()+1, 0);
+    if(to<from){ var tmp=from; from=to; to=tmp; }
+  }
+  else { from = new Date(now.getFullYear(), now.getMonth(), 1); to = new Date(now.getFullYear(), now.getMonth()+1, 0); } // 'month' (domyślnie)
+  return {from:from, to:to};
+}
+function monthsBetweenDates(from,to){
+  var days = Math.max(0,(to-from)/86400000)+1; // liczba dni włącznie
+  return days/30.4368; // średnia długość miesiąca
+}
+// Projekcja przychodów/kosztów/zysku dla wybranego okresu, w oparciu o
+// bieżący miesięczny "run-rate" (metrics()) pomnożony przez liczbę miesięcy
+// w okresie, plus koszty JEDNORAZOWE/NIEREGULARNE, które faktycznie mają
+// datę (costDate) w tym okresie (nie są liczone w run-rate, więc dodajemy
+// je osobno jako realnie odnotowane pozycje).
+function periodMetrics(key,customFrom,customTo){
+  var r = periodRange(key,customFrom,customTo);
+  var m = metrics();
+  var months = monthsBetweenDates(r.from,r.to);
+  var oneTime = STATE.costs.filter(function(c){
+    if(c.isDemo) return false; // pomiń dane demonstracyjne — patrz metrics()
+    if(monthlyEquivalent(c)>0) return false; // już policzone w run-rate
+    if(!c.costDate) return false;
+    var d = new Date(c.costDate+'T00:00:00');
+    return d>=r.from && d<=r.to;
+  }).reduce(function(s,c){return s+(Number(c.grossAmount)||Number(c.netAmount)||0);},0);
+  var revenue = m.monthlyRevenue*months;
+  var recurringCosts = m.totalBurn*months;
+  var costs = recurringCosts+oneTime;
+  return {from:r.from, to:r.to, months:months, revenue:revenue, recurringCosts:recurringCosts, oneTimeCosts:oneTime, costs:costs, profit:revenue-costs};
+}
+function setDashPeriod(key){
+  DASH_PERIOD = key;
+  try{ localStorage.setItem('ffp_dash_period',key); }catch(e){}
+  render();
+}
+function setDashCustomRange(){
+  var f = document.getElementById('dash-custom-from');
+  var t = document.getElementById('dash-custom-to');
+  DASH_CUSTOM_FROM = f? f.value : '';
+  DASH_CUSTOM_TO = t? t.value : '';
+  try{ localStorage.setItem('ffp_dash_from',DASH_CUSTOM_FROM); localStorage.setItem('ffp_dash_to',DASH_CUSTOM_TO); }catch(e){}
+  render();
+}
+function monthlyEquivalentGeneric(amount,freq){
+  amount = Number(amount)||0;
+  switch(freq){
+    case 'miesięczny': return amount;
+    case 'kwartalny': return amount/3;
+    case 'półroczny': return amount/6;
+    case 'roczny': return amount/12;
+    default: return amount; // contracts default treat as monthly unless specified
+  }
+}
+
+/* ============================= WARSTWA DANYCH (API -> PostgreSQL) ============================= */
+function setSaveStatus(status,message){
+  window.__saveStatus = status;
+  var map = {
+    idle: {text:'✓ Zapisano w PostgreSQL — widoczne na wszystkich urządzeniach', cls:'pill-ok', action:''},
+    saving: {text:'Zapisywanie do bazy…', cls:'pill-muted', action:''},
+    error: {text:'⚠ '+(message||'Błąd zapisu do bazy danych')+' — kliknij, aby odświeżyć', cls:'pill-danger', action:' onclick="location.reload()" style="cursor:pointer"'},
+    loading: {text:'Wczytywanie danych…', cls:'pill-muted', action:''}
+  };
+  var m = map[status]||map.idle;
+  var html = '<span class="pill '+m.cls+'"'+m.action+'>'+m.text+'</span>';
+  ['save-status','save-status-mobile'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.innerHTML = html;
+  });
+  if(status==='error'){ unlockModalSubmit(); }
+}
+window.addEventListener('beforeunload', function(ev){
+  if(window.__saveStatus==='saving'){
+    ev.preventDefault(); ev.returnValue = 'Trwa zapisywanie do bazy danych. Czy na pewno chcesz opuścić stronę?'; return ev.returnValue;
+  }
+});
+// Zabezpieczenie przed podwójnym zapisem: blokuje przycisk "Zapisz" od razu
+// po kliknięciu (np. przy szybkim, wielokrotnym wprowadzaniu danych), żeby
+// nie powstały przypadkowo dwa identyczne wpisy w bazie. Odblokowuje się
+// automatycznie po błędzie zapisu (patrz setSaveStatus powyżej) albo po
+// 15 sekundach jako zabezpieczenie awaryjne.
+function unlockModalSubmit(){
+  var overlay = document.getElementById('modal-overlay');
+  if(!overlay) return;
+  overlay.querySelectorAll('button[type="submit"]').forEach(function(b){
+    if(b.disabled){ b.disabled=false; b.textContent = b.dataset._origText || 'Zapisz'; }
+  });
+}
+document.getElementById('modal-overlay').addEventListener('submit', function(ev){
+  var btn = ev.target.querySelector('button[type="submit"]');
+  if(btn && !btn.disabled){
+    btn.disabled = true;
+    btn.dataset._origText = btn.textContent;
+    btn.textContent = 'Zapisywanie…';
+    setTimeout(function(){ if(btn.isConnected && btn.disabled){ btn.disabled=false; btn.textContent = btn.dataset._origText||'Zapisz'; } }, 15000);
+  }
+}, true);
+
+// Generyczne wywołanie API (fetch -> Next.js Route Handler -> Prisma -> PostgreSQL).
+async function apiCall(method, url, body){
+  setSaveStatus('saving');
+  try{
+    var res = await fetch(url, {
+      method: method,
+      headers: body!==undefined ? {'Content-Type':'application/json'} : undefined,
+      body: body!==undefined ? JSON.stringify(body) : undefined
+    });
+    if(!res.ok){
+      var errBody = null; try{ errBody = await res.json(); }catch(e){}
+      throw new Error((errBody && errBody.message) || ('Błąd serwera (HTTP '+res.status+')'));
+    }
+    setSaveStatus('idle');
+    if(res.status===204) return null;
+    var text = await res.text();
+    return text? JSON.parse(text) : null;
+  }catch(e){
+    setSaveStatus('error', e.message);
+    throw e;
+  }
+}
+async function refreshState(){
+  var res = await fetch('/api/bootstrap', {cache:'no-store'});
+  if(!res.ok) throw new Error('Nie udało się pobrać danych z serwera.');
+  STATE = await res.json();
+}
+function afterMutation(promise){
+  return promise.then(function(){ return refreshState(); }).then(render);
+}
+
+/* ============================= NAV ============================= */
+var NAV = [
+  {key:'dashboard',label:'Dashboard',icon:'📊'},
+  {key:'employees',label:'Pracownicy',icon:'👤'},
+  {key:'projects',label:'Projekty',icon:'🏗️'},
+  {key:'costs',label:'Koszty',icon:'💰'},
+  {key:'fixedcosts',label:'Koszty stałe',icon:'📌'},
+  {key:'contracts',label:'Umowy i abonamenty',icon:'📄'},
+  {key:'financing',label:'Leasingi / kredyty',icon:'🏦'},
+  {key:'vendors',label:'Dostawcy',icon:'🏢'},
+  {key:'payments',label:'Płatności',icon:'📅'},
+  {key:'departments',label:'Działy / centra kosztów',icon:'🗂️'},
+  {key:'analysis',label:'Analiza kosztów',icon:'📈'},
+  {key:'charts',label:'Wykresy',icon:'📉'},
+  {key:'assumptions',label:'Założenia',icon:'🧮'},
+  {key:'simulator',label:'Symulator oszczędności',icon:'✂️'},
+  {key:'documents',label:'Dokumenty',icon:'📎'},
+  {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
+];
+var APP_BUILD_TAG = 'build 2026-09-05-01'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+function renderNav(){
+  var html = NAV.map(function(n){
+    return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
+  }).join('');
+  document.getElementById('nav-list').innerHTML = html;
+  var buildEl = document.getElementById('nav-build-tag');
+  if(!buildEl){
+    var nav = document.getElementById('nav-list');
+    if(nav && nav.parentNode){
+      buildEl = document.createElement('div');
+      buildEl.id = 'nav-build-tag';
+      buildEl.style.cssText = 'padding:10px 14px;font-size:10.5px;color:#8a97a3;opacity:0.7';
+      buildEl.textContent = APP_BUILD_TAG;
+      nav.parentNode.appendChild(buildEl);
+    }
+  }
+}
+function goTab(key){
+  currentTab = key;
+  try{ localStorage.setItem('ffp_tab',key); }catch(e){}
+  closeMobileNav();
+  clearGlobalSearch();
+  render();
+}
+function clearGlobalSearch(){
+  var input = document.getElementById('global-search');
+  if(input) input.value='';
+  searchQuery='';
+  var box = document.getElementById('search-overlay');
+  if(box){ box.innerHTML=''; box.style.display='none'; }
+}
+document.addEventListener('click',function(ev){
+  var box = document.getElementById('search-overlay');
+  var input = document.getElementById('global-search');
+  if(!box||!input) return;
+  if(box.style.display==='block' && ev.target!==input && !box.contains(ev.target)){ clearGlobalSearch(); }
+});
+function openMobileNav(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebar-overlay').classList.add('open'); }
+function closeMobileNav(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-overlay').classList.remove('open'); }
+
+/* ============================= GLOBAL SEARCH ============================= */
+function onGlobalSearch(v){
+  searchQuery = v.trim().toLowerCase();
+  var box = document.getElementById('search-overlay');
+  if(!searchQuery){ box.innerHTML=''; box.style.display='none'; return; }
+  var results = [];
+  STATE.employees.forEach(function(e){ if((empName(e)+e.position+e.email).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Pracownik',label:empName(e)+' — '+e.position,action:"openDetail('employees','"+e.id+"')"}); });
+  STATE.projects.forEach(function(p){ if((p.name+p.code).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Projekt',label:p.name+' ('+p.code+')',action:"openDetail('projects','"+p.id+"')"}); });
+  STATE.vendors.forEach(function(v2){ if((v2.name+v2.serviceType).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Dostawca',label:v2.name,action:"openForm('vendors','"+v2.id+"')"}); });
+  STATE.costs.forEach(function(c){ if((c.name+c.category+c.description).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Koszt',label:c.name+' — '+fmtMoney(c.grossAmount),action:"openForm('costs','"+c.id+"')"}); });
+  STATE.contracts.forEach(function(c){ if((c.name).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Umowa',label:c.name,action:"openForm('contracts','"+c.id+"')"}); });
+  results = results.slice(0,20);
+  box.style.cssText='position:fixed;top:52px;left:50%;transform:translateX(-50%);width:min(500px,92vw);background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.2);z-index:60;max-height:60vh;overflow-y:auto;display:block;';
+  box.innerHTML = results.length ? results.map(function(r){
+    return '<div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="'+r.action+';document.getElementById(\'global-search\').value=\'\';onGlobalSearch(\'\');"><span class="pill pill-muted">'+r.type+'</span> '+esc(r.label)+'</div>';
+  }).join('') : '<div style="padding:14px;color:var(--muted)">Brak wyników</div>';
+}
+
+/* ============================= MODAL ============================= */
+// Autozapis wersji roboczej otwartego formularza do localStorage — zabezpieczenie
+// na wypadek nieoczekiwanego zamknięcia/przeładowania karty w trakcie wpisywania
+// danych (np. przez przeglądarkę mobilną w tle), zanim zdąży się kliknąć "Zapisz".
+// Czyszczone przy normalnym zamknięciu modala (Zapisz / Anuluj / X) — więc
+// "przeżywa" wyłącznie sytuację, w której strona zniknęła bez ostrzeżenia.
+var CURRENT_DRAFT_KEY = null;
+var DRAFT_TTL_MS = 7*24*60*60*1000; // wersje robocze starsze niż 7 dni są ignorowane
+function draftSave(){
+  if(!CURRENT_DRAFT_KEY) return;
+  var f = document.querySelector('#modal form');
+  if(!f) return;
+  try{
+    var fd = new FormData(f); var obj = {};
+    fd.forEach(function(v,k){ obj[k]=v; });
+    localStorage.setItem(CURRENT_DRAFT_KEY, JSON.stringify({savedAt:Date.now(), data:obj}));
+  }catch(e){ /* localStorage niedostępny — po prostu brak autozapisu, bez błędu dla użytkownika */ }
+}
+function draftLoad(key){
+  try{
+    var raw = localStorage.getItem(key);
+    if(!raw) return null;
+    var parsed = JSON.parse(raw);
+    if(!parsed || !parsed.data) return null;
+    if(Date.now()-parsed.savedAt > DRAFT_TTL_MS){ localStorage.removeItem(key); return null; }
+    return parsed;
+  }catch(e){ return null; }
+}
+function draftClear(key){ try{ localStorage.removeItem(key); }catch(e){} }
+function closeModal(){
+  document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal').innerHTML=''; pendingModalSave=null;
+  if(CURRENT_DRAFT_KEY){ draftClear(CURRENT_DRAFT_KEY); CURRENT_DRAFT_KEY=null; }
+}
+function openModalHtml(html){ document.getElementById('modal').innerHTML = html; document.getElementById('modal-overlay').classList.add('open'); }
+
+/* ============================= FIELD SCHEMAS ============================= */
+var STATUS_OPTS_EMP = ['aktywny','urlop','zawieszony','zakończona współpraca'];
+var CONTRACT_TYPE_OPTS = ['umowa o pracę','B2B','zlecenie','dzieło','kontrakt managerski','inne'];
+var CRIT_OPTS = ['krytyczne','ważne','możliwe do zastąpienia','możliwe do outsourcingu','możliwe do redukcji'];
+var PROJECT_STATUS_OPTS = ['development','pozwolenia','RTB','budowa','operacyjny','zawieszony','sprzedany','zamknięty'];
+var ASSET_TYPE_OPTS = ['PV','BESS','Hybryda','Inne'];
+var CONNECTION_STATUS_OPTS = ['nie dotyczy','w przygotowaniu','wniosek złożony','wydane warunki','odmowa'];
+var AGREEMENT_STATUS_OPTS = ['nie dotyczy','w negocjacjach','podpisana','wypowiedziana'];
+var PERMIT_STATUS_OPTS = ['nie dotyczy','w trakcie','uzyskane','odmowa'];
+var ENV_DECISION_STATUS_OPTS = ['nie dotyczy','w trakcie','uzyskana','odmowa','nie wymagana'];
+var ZONING_STATUS_OPTS = ['nie dotyczy','MPZP','warunki zabudowy — w trakcie','warunki zabudowy — uzyskane','brak pokrycia MPZP'];
+var RECURRENCE_OPTS = ['jednorazowy','miesięczny','kwartalny','półroczny','roczny','nieregularny'];
+var PAYMENT_STATUS_OPTS = ['planowany','zatwierdzony','do zapłaty','zapłacony','anulowany'];
+var NECESSITY_OPTS = ['niezbędny','ważny','opcjonalny','do analizy','do redukcji'];
+var FINANCING_TYPE_OPTS = ['leasing operacyjny','leasing finansowy','kredyt inwestycyjny','kredyt obrotowy','pożyczka','inne'];
+
+function projectOptions(includeAdmin){
+  var opts = STATE.projects.map(function(p){return {v:p.id,l:p.name};});
+  if(includeAdmin) opts.unshift({v:'ADMIN',l:'Administracja / Centrala'});
+  return opts;
+}
+function selectHtml(name,options,value,placeholder){
+  var o = (placeholder?'<option value="">'+placeholder+'</option>':'') + options.map(function(op){
+    var v = typeof op==='string'?op:op.v, l = typeof op==='string'?op:op.l;
+    return '<option value="'+esc(v)+'"'+(String(value)===String(v)?' selected':'')+'>'+esc(l)+'</option>';
+  }).join('');
+  return '<select name="'+name+'">'+o+'</select>';
+}
+
+/* ============================= RENDER ROOT ============================= */
+function render(){
+  renderNav();
+  var c = document.getElementById('content');
+  switch(currentTab){
+    case 'dashboard': c.innerHTML = viewDashboard(); break;
+    case 'employees': c.innerHTML = viewEmployees(); break;
+    case 'projects': c.innerHTML = viewProjects(); break;
+    case 'costs': c.innerHTML = viewCosts(false); break;
+    case 'fixedcosts': c.innerHTML = viewCosts(true); break;
+    case 'contracts': c.innerHTML = viewContracts(); break;
+    case 'financing': c.innerHTML = viewFinancing(); break;
+    case 'vendors': c.innerHTML = viewVendors(); break;
+    case 'payments': c.innerHTML = viewPayments(); break;
+    case 'departments': c.innerHTML = viewDepartments(); break;
+    case 'analysis': c.innerHTML = viewAnalysis(); break;
+    case 'charts': c.innerHTML = viewCharts(); break;
+    case 'assumptions': c.innerHTML = viewAssumptions(); break;
+    case 'simulator': c.innerHTML = viewSimulator(); break;
+    case 'documents': c.innerHTML = viewDocuments(); break;
+    case 'settings': c.innerHTML = viewSettings(); break;
+    default:
+      if(currentTab.indexOf('detail:')===0){
+        var parts = currentTab.split(':'); c.innerHTML = viewDetail(parts[1],parts[2]);
+      } else c.innerHTML = viewDashboard();
+  }
+}
+function openDetail(type,id){ currentTab='detail:'+type+':'+id; render(); }
+
+/* ============================= DASHBOARD ============================= */
+function viewDashboard(){
+  var m = metrics();
+  var topCosts = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,10);
+  var byCategory = {};
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
+  var byDept = m.deptCost;
+  var terminable = STATE.contracts.filter(function(c){ var d=daysUntil(c.earliestTerminationDate); return d!==null && d>=0 && d<=90; });
+  var unassignedEmp = STATE.employees.filter(function(e){ return !e.allocations || e.allocations.length===0; });
+
+  function barRows(obj,total,labelFn){
+    var keys = Object.keys(obj);
+    return keys.map(function(k){
+      var v = typeof obj[k]==='object'?obj[k].total:obj[k];
+      var pct = total>0? Math.round(v/total*100):0;
+      return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>'+esc(labelFn(k))+'</span><span class="muted">'+fmtMoney0(v)+' ('+pct+'%)</span></div><div class="progress-bar"><div style="width:'+pct+'%"></div></div></div>';
+    }).join('') || '<div class="empty">Brak danych</div>';
+  }
+
+  var pm = periodMetrics(DASH_PERIOD,DASH_CUSTOM_FROM,DASH_CUSTOM_TO);
+  var periodRangeLabel = fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to));
+
+  return ''+
+  '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Dashboard Prezesa</h2><button class="btn btn-sm" onclick="window.print()">🖶 Eksportuj raport (PDF/druk)</button></div>'+
+  '<div class="page-sub">Stan na '+fmtDate(todayISO())+' • dane aktualizowane na bieżąco</div>'+
+  '<div class="panel">'+
+    '<h3>Wyniki wg okresu</h3>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+
+      DASH_PERIODS.map(function(p){ return '<button class="btn btn-sm'+(DASH_PERIOD===p.key?' btn-primary':'')+'" onclick="setDashPeriod(\''+p.key+'\')">'+p.label+'</button>'; }).join('')+
+    '</div>'+
+    (DASH_PERIOD==='custom'? '<div class="form-row2" style="margin-bottom:10px"><div><label>Od</label><input type="date" id="dash-custom-from" value="'+esc(DASH_CUSTOM_FROM)+'" onchange="setDashCustomRange()"></div><div><label>Do</label><input type="date" id="dash-custom-to" value="'+esc(DASH_CUSTOM_TO)+'" onchange="setDashCustomRange()"></div></div>':'')+
+    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate) + realnie odnotowane koszty jednorazowe z tego okresu. To orientacyjna projekcja, nie gwarancja wyniku.</div>'+
+    '<div class="kpi-grid">'+
+      kpi('Przychód w okresie (projekcja)', fmtMoney0(pm.revenue), true)+
+      kpi('Koszty w okresie (projekcja + jednorazowe)', fmtMoney0(pm.costs), true)+
+      kpi('z tego koszty jednorazowe (realne)', fmtMoney0(pm.oneTimeCosts))+
+      kpi('Zysk w okresie (projekcja)', fmtMoney0(pm.profit), true, pm.profit<0)+
+    '</div>'+
+  '</div>'+
+  '<div class="page-sub" style="margin-top:18px">Poniżej: stałe wskaźniki operacyjne liczone zawsze miesięcznie/rocznie — nie zmieniają się wraz z przełącznikiem okresu powyżej.</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
+    kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
+    kpi('Koszty stałe / mies.', fmtMoney0(m.monthlyFixed))+
+    (STATE.restricted?'':kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll)))+
+    kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
+    kpi('Koszty administracyjne / mies.', fmtMoney0(m.monthlyAdmin))+
+    kpi('Płatności w 7 dni', fmtMoney0(m.upcoming7.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming7.length+' szt.', false, m.upcoming7.length>0)+
+    kpi('Płatności w 30 dni', fmtMoney0(m.upcoming30.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming30.length+' szt.')+
+    kpi('Liczba pracowników', String(m.activeEmployees.length))+
+    kpi('Aktywne projekty', String(STATE.projects.filter(function(p){return ['budowa','operacyjny','pozwolenia','RTB','development'].indexOf(p.status)>=0;}).length))+
+    kpi('Potencjalne oszczędności / mies.', fmtMoney0(m.potentialSavingsMonthly), false, m.potentialSavingsMonthly>0)+
+    kpi('Potencjalne oszczędności / rok', fmtMoney0(m.potentialSavingsAnnual))+
+    kpi('Przyszłe zapotrzebowanie na kapitał (wszystkie projekty)', fmtMoney0(m.totalFutureCapitalNeed), true)+
+  '</div>'+
+  (m.overdue.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Zaległe płatności ('+m.overdue.length+')</h3>'+costsTable(m.overdue,false)+'</div>':'')+
+  (m.overBudgetProjects.length? '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">⚠ Projekty z przekroczonym budżetem ('+m.overBudgetProjects.length+')</h3>'+m.overBudgetProjects.map(function(p){
+    var bs = m.projectBudgetStatus[p.id];
+    return '<div style="margin-bottom:6px"><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span> — budżet '+fmtMoney0(bs.budget)+', wydano '+fmtMoney0(bs.spent)+' ('+bs.pct+'%)</div>';
+  }).join('')+'</div>':'')+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Struktura kosztów według kategorii (miesięcznie)</h3>'+barRows(byCategory, m.monthlyExternal, function(k){return k;})+'</div>'+
+    '<div class="panel"><h3>Struktura kosztów według działów (miesięcznie)</h3>'+barRows(byDept, Object.keys(byDept).reduce(function(s,k){return s+byDept[k].total;},0), function(k){return deptName(k);})+'</div>'+
+  '</div>'+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Struktura kosztów według projektów (miesięcznie)</h3>'+barRows(STATE.projects.filter(function(p){return !p.isDemo;}).reduce(function(o,p){o[p.id]=m.monthlyProjectCost[p.id]||0;return o;},{}), m.totalProjectCost, function(k){return projectName(k);})+'</div>'+
+    '<div class="panel"><h3>Portfel wg rodzaju aktywa</h3>'+(Object.keys(m.byAssetType).length?'<div class="table-wrap"><table><thead><tr><th>Rodzaj</th><th>Projekty</th><th>Moc MW</th><th>Przychód/mies.</th><th>Koszt/mies.</th><th>Zysk/mies.</th></tr></thead><tbody>'+
+      Object.keys(m.byAssetType).map(function(t){
+        var a = m.byAssetType[t];
+        return '<tr><td><span class="pill pill-muted">'+esc(t)+'</span></td><td>'+a.count+'</td><td>'+a.mwPower.toFixed(1)+'</td><td class="right">'+fmtMoney0(a.revenue)+'</td><td class="right">'+fmtMoney0(a.cost)+'</td><td class="right">'+fmtMoney0(a.revenue-a.cost)+'</td></tr>';
+      }).join('')+'</tbody></table></div>':'<div class="empty">Brak projektów</div>')+'</div>'+
+    '<div class="panel"><h3>TOP 10 największych kosztów</h3>'+costsTable(topCosts,false)+'</div>'+
+  '</div>'+
+  '<div class="grid3">'+
+    '<div class="panel"><h3>Najbliższe płatności (30 dni)</h3>'+costsTable(m.upcoming30.slice(0,8),false)+'</div>'+
+    '<div class="panel"><h3>Umowy możliwe do wypowiedzenia (90 dni)</h3>'+(terminable.length? terminable.map(function(c){return '<div style="margin-bottom:8px"><b>'+esc(c.name)+'</b><br><span class="muted">termin: '+fmtDate(c.earliestTerminationDate)+' • '+fmtMoney0(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.</span></div>';}).join(''):'<div class="empty">Brak</div>')+'</div>'+
+    '<div class="panel"><h3>Nieprzypisane</h3><div class="section-title" style="margin-top:0">Koszty bez projektu ('+m.unassignedCosts.length+')</div>'+(m.unassignedCosts.length?fmtMoney0(m.unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0))+'/mies.':'<span class="muted">Brak</span>')+
+    '<div class="section-title">Osoby bez projektu ('+unassignedEmp.length+')</div>'+(unassignedEmp.length? unassignedEmp.map(function(e){return '<div>'+esc(empName(e))+'</div>';}).join(''):'<span class="muted">Brak</span>')+'</div>'+
+  '</div>';
+}
+function kpi(label,value,accent,warn){
+  return '<div class="kpi'+(accent?' accent':'')+(warn?' warn':'')+'"><div class="label">'+esc(label)+'</div><div class="value'+(String(value).length>10?' small':'')+'">'+value+'</div></div>';
+}
+
+/* ============================= COSTS TABLE (shared) ============================= */
+function costsTable(list,showActions){
+  if(!list.length) return '<div class="empty">Brak pozycji</div>';
+  return '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kategoria</th><th>Projekt</th><th>Kwota brutto</th><th>Termin płatności</th><th>Status</th>'+(showActions!==false?'<th></th>':'')+'</tr></thead><tbody>'+
+    list.map(function(c){
+      return '<tr><td>'+esc(c.name)+(c.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(c.category||'—')+'</td><td>'+esc(projectName(c.projectId))+'</td><td class="right">'+fmtMoney(c.grossAmount)+'</td><td>'+fmtDate(c.dueDate)+'</td><td>'+paymentPill(c.paymentStatus)+'</td>'+
+      (showActions!==false?'<td><span class="link" onclick="openForm(\'costs\',\''+c.id+'\')">edytuj</span></td>':'')+
+      '</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+function paymentPill(status){
+  var cls = status==='zapłacony'?'pill-ok':(status==='do zapłaty'?'pill-warn':(status==='anulowany'?'pill-muted':'pill-muted'));
+  return '<span class="pill '+cls+'">'+esc(status||'—')+'</span>';
+}
+function necessityPill(n){
+  var map = {'niezbędny':'pill-ok','ważny':'pill-ok','opcjonalny':'pill-warn','do analizy':'pill-warn','do redukcji':'pill-danger'};
+  return '<span class="pill '+(map[n]||'pill-muted')+'">'+esc(n||'—')+'</span>';
+}
+
+/* ============================= GENERIC CRUD HELPERS ============================= */
+// coll = nazwa kolekcji STATE, identyczna z segmentem REST API (/api/<coll>/<id>).
+function deleteEntity(coll,id,label){
+  if(!confirm('Usunąć pozycję: '+label+'?')) return;
+  afterMutation(apiCall('DELETE','/api/'+coll+'/'+id)).catch(function(e){ alert('Nie udało się usunąć: '+e.message); });
+}
+function exportCsv(rows,headers,filename){
+  var lines = [headers.map(function(h){return h.label;}).join(';')];
+  rows.forEach(function(r){
+    lines.push(headers.map(function(h){ var v=r[h.key]; return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'));
+  });
+  var csv = lines.join('\n');
+  // BOM na początku pliku — bez niego Excel na Windows potrafi błędnie
+  // odczytać polskie znaki (ą, ę, ł, ń itd.) jako krzaki przy otwieraniu CSV.
+  downloadTextFile(filename, '﻿'+csv, 'text/csv;charset=utf-8');
+}
+function downloadTextFile(filename, content, mime){
+  var blob = new Blob([content], {type: mime||'text/plain'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+}
+
+/* ============================= EMPLOYEES ============================= */
+function viewEmployees(){
+  var m = metrics();
+  var restricted = !!STATE.restricted;
+  var list = STATE.employees.filter(applySearchFilter);
+  return '<h2 class="page-title">Pracownicy</h2><div class="page-sub">'+(restricted?'':'Łączny koszt miesięczny: '+fmtMoney0(m.monthlyPayroll)+' • ')+STATE.employees.length+' osób</div>'+
+  '<div class="toolbar"><div class="filters">'+
+    '<select onchange="empFilterDept(this.value)"><option value="">Wszystkie działy</option>'+STATE.departments.map(function(d){return '<option value="'+d.id+'">'+esc(d.name)+'</option>';}).join('')+'</select>'+
+    '<select onchange="empFilterStatus(this.value)"><option value="">Wszystkie statusy</option>'+STATUS_OPTS_EMP.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('')+'</select>'+
+  '</div><div><button class="btn btn-sm" onclick="exportEmployeesCsv()">Eksport CSV</button> <button class="btn btn-primary" onclick="openForm(\'employees\')">+ Dodaj pracownika</button></div></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Imię i nazwisko</th><th>Stanowisko</th><th>Dział</th><th>Forma</th><th>Status</th>'+(restricted?'':'<th>Koszt / mies.</th>')+'<th>Ocena</th><th>Projekty</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(e){
+    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span>'+(e.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(e.position)+'</td><td>'+esc(deptName(e.departmentId))+'</td><td>'+esc(e.contractType)+'</td><td>'+empStatusPill(e.status)+'</td>'+(restricted?'':'<td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'</td>')+'<td>'+necessityPill(e.criticalRating)+'</td><td>'+(e.allocations||[]).map(function(a){return esc(projectName(a.projectId))+' '+a.pct+'%';}).join(', ')+'</td><td><span class="link" onclick="openForm(\'employees\',\''+e.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="9" class="empty">Brak pracowników</td></tr>')+
+  '</tbody></table></div>';
+}
+function empStatusPill(s){
+  var map={'aktywny':'pill-ok','urlop':'pill-warn','zawieszony':'pill-warn','zakończona współpraca':'pill-muted'};
+  return '<span class="pill '+(map[s]||'pill-muted')+'">'+esc(s)+'</span>';
+}
+var empFilters = {dept:'',status:''};
+function empFilterDept(v){ empFilters.dept=v; render(); }
+function empFilterStatus(v){ empFilters.status=v; render(); }
+function applySearchFilter(){ return true; }
+function exportEmployeesCsv(){
+  var restricted = !!STATE.restricted;
+  var headers = [{key:'name',label:'Imię i nazwisko'},{key:'position',label:'Stanowisko'},{key:'dept',label:'Dział'},{key:'status',label:'Status'},{key:'contractType',label:'Forma'}];
+  if(!restricted) headers.push({key:'cost',label:'Koszt miesięczny'});
+  exportCsv(STATE.employees.map(function(e){
+    var row = {name:empName(e),position:e.position,dept:deptName(e.departmentId),status:e.status,contractType:e.contractType};
+    if(!restricted) row.cost = totalMonthlyCostEmployee(e);
+    return row;
+  }), headers,'pracownicy.csv');
+}
+
+function employeeForm(e){
+  e = e || {firstName:'',lastName:'',email:'',phone:'',position:'',departmentId:'',managerId:'',status:'aktywny',contractType:'umowa o pracę',
+    netSalary:'',grossSalary:'',employerCost:'',otherMonthlyCost:0,bonus:0,car:0,phoneCost:0,computer:0,otherBenefits:0,
+    responsibilities:'',justification:'',keyTasks:'',allocations:[],criticalRating:'ważne',presidentNotes:'',excludeFromSimulation:false};
+  var isNew = !e.id;
+  var restricted = !!STATE.restricted;
+  window.__allocDraft = (e.allocations||[]).slice();
+  // Dla kont z ograniczonym dostępem pola wynagrodzeń są ukryte (input
+  // type="hidden" zachowuje istniejącą wartość, żeby zapis formularza przez
+  // taką osobę NIE wyzerował wynagrodzenia — patrz lib/access.ts).
+  var costFields = restricted
+    ? ['netSalary','grossSalary','employerCost','bonus','car','phoneCost','computer','otherBenefits','otherMonthlyCost'].map(function(k){
+        return '<input type="hidden" name="'+k+'" value="'+(e[k]===undefined||e[k]===null?'':e[k])+'">';
+      }).join('')
+    : '<div class="section-title">Koszt</div>'+
+      '<div class="form-row2"><div><label>Wynagrodzenie netto</label><input type="number" step="0.01" name="netSalary" value="'+e.netSalary+'"></div><div><label>Wynagrodzenie brutto</label><input type="number" step="0.01" name="grossSalary" value="'+e.grossSalary+'"></div></div>'+
+      '<div class="form-row2"><div><label>Pełny koszt pracodawcy</label><input type="number" step="0.01" name="employerCost" value="'+e.employerCost+'"></div><div><label>Premie / mies.</label><input type="number" step="0.01" name="bonus" value="'+e.bonus+'"></div></div>'+
+      '<div class="form-row2"><div><label>Samochód (ryczałt)</label><input type="number" step="0.01" name="car" value="'+e.car+'"></div><div><label>Telefon (koszt)</label><input type="number" step="0.01" name="phoneCost" value="'+e.phoneCost+'"></div></div>'+
+      '<div class="form-row2"><div><label>Komputer / sprzęt</label><input type="number" step="0.01" name="computer" value="'+e.computer+'"></div><div><label>Inne benefity / mies.</label><input type="number" step="0.01" name="otherBenefits" value="'+e.otherBenefits+'"></div></div>'+
+      '<label>Inne koszty miesięczne</label><input type="number" step="0.01" name="otherMonthlyCost" value="'+e.otherMonthlyCost+'">';
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy pracownik':'Edytuj pracownika')+'</h3>'+
+  '<form id="entity-form" onsubmit="return saveEmployee(event,\''+(e.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Imię</label><input name="firstName" value="'+esc(e.firstName)+'" required></div><div><label>Nazwisko</label><input name="lastName" value="'+esc(e.lastName)+'" required></div></div>'+
+  '<div class="form-row2"><div><label>Służbowy e-mail</label><input type="email" name="email" value="'+esc(e.email)+'"></div><div><label>Telefon</label><input name="phone" value="'+esc(e.phone)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Stanowisko</label><input name="position" value="'+esc(e.position)+'" required></div><div><label>Dział</label>'+selectHtml('departmentId',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),e.departmentId,'—')+'</div></div>'+
+  '<div class="form-row2"><div><label>Status</label>'+selectHtml('status',STATUS_OPTS_EMP,e.status)+'</div><div><label>Forma współpracy</label>'+selectHtml('contractType',CONTRACT_TYPE_OPTS,e.contractType)+'</div></div>'+
+  costFields+
+  '<div class="section-title">Odpowiedzialność</div>'+
+  '<label>Za co odpowiada?</label><textarea class="textarea-lg" name="responsibilities">'+esc(e.responsibilities)+'</textarea>'+
+  '<label>Dlaczego ta osoba jest potrzebna spółce?</label><textarea class="textarea-lg" name="justification">'+esc(e.justification)+'</textarea>'+
+  '<label>Kluczowe zadania (każde w nowej linii)</label><textarea class="textarea-lg" name="keyTasks">'+esc(e.keyTasks)+'</textarea>'+
+  '<div class="section-title">Przypisanie do projektów</div>'+
+  '<div id="alloc-list"></div>'+
+  '<button type="button" class="btn btn-sm" onclick="addAllocRow()">+ dodaj przypisanie</button>'+
+  '<div class="section-title">Ocena stanowiska</div>'+
+  '<div class="form-row2"><div><label>Ocena</label>'+selectHtml('criticalRating',CRIT_OPTS,e.criticalRating)+'</div><div><label style="margin-top:24px"><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(e.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze redukcji</label></div></div>'+
+  '<label>Uwagi Prezesa</label><textarea name="presidentNotes">'+esc(e.presidentNotes)+'</textarea>'+
+  '<div class="modal-actions">'+(e.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'employees\',\''+e.id+'\',\''+esc(empName(e))+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function renderAllocRows(){
+  var el = document.getElementById('alloc-list'); if(!el) return;
+  var opts = projectOptions(true);
+  el.innerHTML = window.__allocDraft.map(function(a,i){
+    return '<div class="alloc-row">'+selectHtml('alloc_p_'+i,opts,a.projectId)+'<input type="number" min="0" max="100" placeholder="%" value="'+a.pct+'" onchange="window.__allocDraft['+i+'].pct=this.value">'+
+    '<button type="button" class="btn btn-sm btn-icon" onclick="removeAllocRow('+i+')">✕</button></div>';
+  }).join('');
+  el.querySelectorAll('select').forEach(function(sel,i){ sel.onchange=function(){ window.__allocDraft[i].projectId=this.value; }; });
+}
+function addAllocRow(){ window.__allocDraft.push({projectId:'ADMIN',pct:0}); renderAllocRows(); }
+function removeAllocRow(i){ window.__allocDraft.splice(i,1); renderAllocRows(); }
+function saveEmployee(ev,id){
+  ev.preventDefault();
+  var f = new FormData(ev.target);
+  var obj = {firstName:f.get('firstName'),lastName:f.get('lastName'),email:f.get('email'),phone:f.get('phone'),
+    position:f.get('position'),departmentId:f.get('departmentId'),status:f.get('status'),contractType:f.get('contractType'),
+    netSalary:f.get('netSalary'),grossSalary:f.get('grossSalary'),employerCost:f.get('employerCost'),otherMonthlyCost:f.get('otherMonthlyCost'),
+    bonus:f.get('bonus'),car:f.get('car'),phoneCost:f.get('phoneCost'),computer:f.get('computer'),otherBenefits:f.get('otherBenefits'),
+    responsibilities:f.get('responsibilities'),justification:f.get('justification'),keyTasks:f.get('keyTasks'),
+    allocations:window.__allocDraft.filter(function(a){return a.projectId;}),
+    criticalRating:f.get('criticalRating'),presidentNotes:f.get('presidentNotes'),excludeFromSimulation:f.get('excludeFromSimulation')==='on'};
+  var url = id? '/api/employees/'+id : '/api/employees';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać pracownika: '+e.message); });
+  return false;
+}
+
+/* ============================= PROJECTS ============================= */
+function viewProjects(){
+  var m = metrics();
+  return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód łączny: '+fmtMoney0(m.monthlyRevenue)+'/mies. • przyszłe zapotrzebowanie na kapitał: '+fmtMoney0(m.totalFutureCapitalNeed)+'</div>'+
+  '<div class="toolbar"><div><button class="btn btn-sm" onclick="exportProjectsCsv()">Eksport CSV</button></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Rodzaj</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th>Przychód / mies.</th><th>Zysk / mies.</th><th>Budżet</th><th></th></tr></thead><tbody>'+
+  (STATE.projects.length?STATE.projects.map(function(p){
+    var cost = m.monthlyProjectCost[p.id]||0, rev = Number(p.revenueMonthly)||0, profit = rev-cost;
+    var bs = m.projectBudgetStatus[p.id];
+    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td><span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(cost)+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(rev):'—')+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(profit):'—')+'</td><td>'+(bs.budget>0?'<span class="pill '+(bs.over?'pill-danger':'pill-ok')+'">'+bs.pct+'%</span>':'—')+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="10" class="empty">Brak projektów</td></tr>')+
+  '</tbody></table></div>';
+}
+function exportProjectsCsv(){
+  var m = metrics();
+  exportCsv(STATE.projects.map(function(p){
+    var bs = m.projectBudgetStatus[p.id];
+    return {name:p.name,code:p.code,assetType:p.assetType,status:p.status,mw:p.mwPower,location:p.location,
+      cost:m.monthlyProjectCost[p.id]||0, revenue:p.revenueMonthly, capex:p.capex, budget:bs.budget, spent:bs.spent,
+      futureCapital:m.futureCapitalNeed[p.id]||0};
+  }),[{key:'name',label:'Nazwa'},{key:'code',label:'Kod'},{key:'assetType',label:'Rodzaj'},{key:'status',label:'Status'},{key:'mw',label:'Moc MW'},{key:'location',label:'Lokalizacja'},
+    {key:'cost',label:'Koszt/mies.'},{key:'revenue',label:'Przychód/mies.'},{key:'capex',label:'CAPEX'},{key:'budget',label:'Budżet'},{key:'spent',label:'Wydano'},{key:'futureCapital',label:'Przyszłe zapotrzebowanie na kapitał'}],
+    'projekty.csv');
+}
+function projectStatusPill(s){
+  var map={'operacyjny':'pill-ok','budowa':'pill-ok','sprzedany':'pill-muted','zamknięty':'pill-muted','zawieszony':'pill-danger'};
+  return '<span class="pill '+(map[s]||'pill-warn')+'">'+esc(s||'—')+'</span>';
+}
+function projectForm(p){
+  p = p || {name:'',code:'',spv:'',location:'',mwPower:'',revenueMonthly:'',gridOperator:'',energyBuyer:'',assetType:'PV',capex:'',budgetTotal:'',requestedPowerMW:'',grantedPowerMW:'',connectionConditionsStatus:'nie dotyczy',connectionAgreementStatus:'nie dotyczy',permitsStatus:'nie dotyczy',environmentalDecisionStatus:'nie dotyczy',zoningStatus:'nie dotyczy',status:'development',owner:'',startDate:'',endDate:'',description:''};
+  var isNew = !p.id;
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy projekt':'Edytuj projekt')+'</h3>'+
+  '<form onsubmit="return saveProject(event,\''+(p.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Nazwa</label><input name="name" value="'+esc(p.name)+'" required></div><div><label>Kod projektu</label><input name="code" value="'+esc(p.code)+'"></div></div>'+
+  '<div class="form-row2"><div><label>SPV</label><input name="spv" value="'+esc(p.spv)+'"></div><div><label>Lokalizacja</label><input name="location" value="'+esc(p.location)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Moc (MW)</label><input type="number" step="0.01" name="mwPower" value="'+p.mwPower+'"></div><div><label>Status</label>'+selectHtml('status',PROJECT_STATUS_OPTS,p.status)+'</div></div>'+
+  '<div class="form-row2"><div><label>Rodzaj aktywa</label>'+selectHtml('assetType',ASSET_TYPE_OPTS,p.assetType)+'</div><div><label>Przychód miesięczny (orientacyjny)</label><input type="number" step="0.01" name="revenueMonthly" value="'+p.revenueMonthly+'"></div></div>'+
+  '<div class="section-title">CAPEX i budżet</div>'+
+  '<div class="form-row2"><div><label>CAPEX — nakład inwestycyjny</label><input type="number" step="0.01" min="0" name="capex" value="'+p.capex+'"></div><div><label>Budżet całkowity (zatwierdzony)</label><input type="number" step="0.01" min="0" name="budgetTotal" value="'+p.budgetTotal+'"></div></div>'+
+  '<div class="section-title">Przyłącze do sieci</div>'+
+  '<div class="form-row2"><div><label>Operator sieci (OSD)</label><input name="gridOperator" value="'+esc(p.gridOperator)+'" placeholder="np. Tauron Dystrybucja"></div><div><label>Odbiorca energii / pośrednik zakupu</label><input name="energyBuyer" value="'+esc(p.energyBuyer)+'" placeholder="np. spółka obrotu, PPA"></div></div>'+
+  '<div class="form-row2"><div><label>Moc wnioskowana (MW)</label><input type="number" step="0.01" min="0" name="requestedPowerMW" value="'+p.requestedPowerMW+'"></div><div><label>Moc przyznana (MW)</label><input type="number" step="0.01" min="0" name="grantedPowerMW" value="'+p.grantedPowerMW+'"></div></div>'+
+  '<div class="form-row2"><div><label>Status warunków przyłączenia</label>'+selectHtml('connectionConditionsStatus',CONNECTION_STATUS_OPTS,p.connectionConditionsStatus)+'</div><div><label>Status umowy przyłączeniowej</label>'+selectHtml('connectionAgreementStatus',AGREEMENT_STATUS_OPTS,p.connectionAgreementStatus)+'</div></div>'+
+  '<div class="section-title">Ryzyko prawne i regulacyjne</div>'+
+  '<div class="form-row2"><div><label>Status pozwoleń (budowlane itp.)</label>'+selectHtml('permitsStatus',PERMIT_STATUS_OPTS,p.permitsStatus)+'</div><div><label>Decyzja środowiskowa</label>'+selectHtml('environmentalDecisionStatus',ENV_DECISION_STATUS_OPTS,p.environmentalDecisionStatus)+'</div></div>'+
+  '<div class="form-row2"><div><label>MPZP / warunki zabudowy</label>'+selectHtml('zoningStatus',ZONING_STATUS_OPTS,p.zoningStatus)+'</div><div></div></div>'+
+  '<div class="section-title">Pozostałe</div>'+
+  '<div class="form-row2"><div><label>Osoba odpowiedzialna</label><input name="owner" value="'+esc(p.owner)+'"></div><div></div></div>'+
+  '<div class="form-row2"><div><label>Data rozpoczęcia</label><input type="date" name="startDate" value="'+esc(p.startDate)+'"></div><div><label>Planowana data zakończenia</label><input type="date" name="endDate" value="'+esc(p.endDate)+'"></div></div>'+
+  '<label>Opis</label><textarea class="textarea-lg" name="description">'+esc(p.description)+'</textarea>'+
+  '<div class="modal-actions">'+(p.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'projects\',\''+p.id+'\',\''+esc(p.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveProject(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {name:f.get('name'),code:f.get('code'),spv:f.get('spv'),location:f.get('location'),mwPower:f.get('mwPower'),revenueMonthly:f.get('revenueMonthly'),gridOperator:f.get('gridOperator'),energyBuyer:f.get('energyBuyer'),assetType:f.get('assetType'),capex:f.get('capex'),budgetTotal:f.get('budgetTotal'),requestedPowerMW:f.get('requestedPowerMW'),grantedPowerMW:f.get('grantedPowerMW'),connectionConditionsStatus:f.get('connectionConditionsStatus'),connectionAgreementStatus:f.get('connectionAgreementStatus'),permitsStatus:f.get('permitsStatus'),environmentalDecisionStatus:f.get('environmentalDecisionStatus'),zoningStatus:f.get('zoningStatus'),status:f.get('status'),owner:f.get('owner'),startDate:f.get('startDate'),endDate:f.get('endDate'),description:f.get('description')};
+  var url = id? '/api/projects/'+id : '/api/projects';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać projektu: '+e.message); });
+  return false;
+}
+
+/* ============================= DETAIL VIEWS (project / employee) ============================= */
+function viewDetail(type,id){
+  if(type==='projects') return projectDetail(byId(STATE.projects,id));
+  if(type==='employees') return employeeDetail(byId(STATE.employees,id));
+  return '<div class="empty">Nie znaleziono</div>';
+}
+function projectDetail(p){
+  if(!p) return '<div class="empty">Nie znaleziono projektu</div>';
+  var m = metrics();
+  var costs = STATE.costs.filter(function(c){return c.projectId===p.id;});
+  var emps = STATE.employees.filter(function(e){return empAllocPct(e,p.id)>0;});
+  var extCost = costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var empCost = emps.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
+  var fixedCost = costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var oneTimeCost = costs.filter(function(c){return c.recurrence==='jednorazowy'||c.recurrence==='nieregularny';}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+  var sinceStart = costs.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0)+oneTimeCost*0; // sum of all recorded gross amounts as "since start"
+  var annualProfit = p.revenueMonthly!==''? (Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0))*12 : null;
+  var capex = Number(p.capex)||0;
+  var paybackYears = (capex>0 && annualProfit>0)? (capex/annualProfit) : null;
+  var roiPct = (capex>0 && annualProfit!==null)? (annualProfit/capex*100) : null;
+  var bs = m.projectBudgetStatus[p.id];
+  var futureCapital = m.futureCapitalNeed[p.id]||0;
+  return '<span class="link no-print" onclick="goTab(\'projects\')">← Projekty</span>'+
+  '<h2 class="page-title">'+esc(p.name)+' <span class="pill pill-muted">'+esc(p.code||'')+'</span> <span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></h2>'+
+  '<div class="page-sub">SPV: '+esc(p.spv||'—')+' • '+esc(p.location||'—')+' • '+esc(p.mwPower||'—')+' MW • '+projectStatusPill(p.status)+'</div>'+
+  '<div class="page-sub">Operator sieci: '+esc(p.gridOperator||'—')+' • Odbiorca energii / pośrednik zakupu: '+esc(p.energyBuyer||'—')+'</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Przychód miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)):'—',true)+
+    kpi('Zysk miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0)):'—',true)+
+    kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
+    kpi('Koszt od początku projektu',fmtMoney0(sinceStart))+
+    (STATE.restricted?'':kpi('Koszt pracowników',fmtMoney0(empCost)))+
+    kpi('Koszt zewnętrzny',fmtMoney0(extCost))+
+    kpi('Koszt stały',fmtMoney0(fixedCost))+
+    kpi('Koszt jednorazowy',fmtMoney0(oneTimeCost))+
+    kpi('Przyszłe zapotrzebowanie na kapitał',fmtMoney0(futureCapital),true,futureCapital>0)+
+  '</div>'+
+  '<div class="panel'+(bs.over?' ':'')+'"'+(bs.over?' style="border-color:var(--danger)"':'')+'><h3'+(bs.over?' style="color:var(--danger)"':'')+'>Budżet vs. wykonanie'+(bs.over?' ⚠ przekroczony':'')+'</h3>'+
+    (bs.budget>0? '<div>Budżet całkowity: '+fmtMoney0(bs.budget)+' • Wydano dotychczas: '+fmtMoney0(bs.spent)+' ('+bs.pct+'%)</div><div class="progress-bar" style="margin-top:8px"><div style="width:'+Math.min(bs.pct,100)+'%;'+(bs.over?'background:var(--danger)':'')+'"></div></div>' : '<div class="empty">Brak zadeklarowanego budżetu całkowitego dla tego projektu.</div>')+
+  '</div>'+
+  '<div class="panel"><h3>Orientacyjny ROI / okres zwrotu <span class="muted" style="font-weight:400;font-size:11.5px">(uproszczony szacunek, nie pełny IRR/DCF)</span></h3>'+
+    (capex>0? '<div class="kpi-grid">'+
+      kpi('CAPEX',fmtMoney0(capex))+
+      kpi('Roczny zysk (projekcja)',annualProfit!==null?fmtMoney0(annualProfit):'—',false,annualProfit!==null&&annualProfit<0)+
+      kpi('Uproszczony ROI / rok',roiPct!==null?roiPct.toFixed(1)+'%':'—')+
+      kpi('Uproszczony okres zwrotu',paybackYears!==null?paybackYears.toFixed(1)+' lat':'—')+
+    '</div><div class="muted" style="margin-top:6px">Wyliczenie: CAPEX / roczny zysk projekcji, bez dyskontowania przepływów pieniężnych — do wstępnej orientacji, nie do decyzji inwestycyjnej.</div>'
+    : '<div class="empty">Uzupełnij CAPEX w edycji projektu, aby zobaczyć szacunek.</div>')+
+  '</div>'+
+  '<div class="panel"><h3>Przyłącze, pozwolenia i ryzyko regulacyjne</h3>'+
+    '<div class="grid2">'+
+      '<div><div class="section-title" style="margin-top:0">Przyłącze do sieci</div>'+
+      '<div>Moc wnioskowana: '+esc(p.requestedPowerMW||'—')+' MW • Moc przyznana: '+esc(p.grantedPowerMW||'—')+' MW</div>'+
+      '<div>Warunki przyłączenia: '+esc(p.connectionConditionsStatus||'—')+'</div>'+
+      '<div>Umowa przyłączeniowa: '+esc(p.connectionAgreementStatus||'—')+'</div></div>'+
+      '<div><div class="section-title" style="margin-top:0">Pozwolenia i środowisko</div>'+
+      '<div>Pozwolenia: '+esc(p.permitsStatus||'—')+'</div>'+
+      '<div>Decyzja środowiskowa: '+esc(p.environmentalDecisionStatus||'—')+'</div>'+
+      '<div>MPZP / warunki zabudowy: '+esc(p.zoningStatus||'—')+'</div></div>'+
+    '</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Opis</h3><div>'+esc(p.description||'—')+'</div></div>'+
+  '<div class="panel"><div class="toolbar"><h3 style="margin:0">Koszty projektu</h3><button class="btn btn-sm btn-primary" onclick="openForm(\'costs\',null,{projectId:\''+p.id+'\'})">+ dodaj koszt</button></div>'+costsTable(costs)+'</div>'+
+  '<div class="panel"><h3>Osoby pracujące przy projekcie</h3>'+(emps.length?'<div class="table-wrap"><table><thead><tr><th>Osoba</th><th>Stanowisko</th><th>% czasu</th>'+(STATE.restricted?'':'<th>Koszt przypisany</th>')+'</tr></thead><tbody>'+emps.map(function(e){
+    var pct = empAllocPct(e,p.id);
+    return '<tr><td><span class="link" onclick="openDetail(\'employees\',\''+e.id+'\')">'+esc(empName(e))+'</span></td><td>'+esc(e.position)+'</td><td>'+pct+'%</td>'+(STATE.restricted?'':'<td class="right">'+fmtMoney(totalMonthlyCostEmployee(e)*pct/100)+'</td>')+'</tr>';
+  }).join('')+'</tbody></table></div>':'<div class="empty">Brak przypisanych osób</div>')+'</div>'+
+  '<button class="btn" onclick="openForm(\'projects\',\''+p.id+'\')">Edytuj projekt</button>';
+}
+function employeeDetail(e){
+  if(!e) return '<div class="empty">Nie znaleziono pracownika</div>';
+  return '<span class="link" onclick="goTab(\'employees\')">← Pracownicy</span>'+
+  '<h2 class="page-title">'+esc(empName(e))+'</h2>'+
+  '<div class="page-sub">'+esc(e.position)+' • '+esc(deptName(e.departmentId))+' • '+empStatusPill(e.status)+'</div>'+
+  '<div class="kpi-grid">'+(STATE.restricted?'':kpi('Całkowity koszt miesięczny',fmtMoney0(totalMonthlyCostEmployee(e)),true))+kpi('Forma współpracy',e.contractType)+kpi('Ocena stanowiska',e.criticalRating)+'</div>'+
+  '<div class="grid2">'+
+  '<div class="panel"><h3>Za co odpowiada</h3><div>'+esc(e.responsibilities||'—')+'</div></div>'+
+  '<div class="panel"><h3>Dlaczego ta osoba jest potrzebna</h3><div>'+esc(e.justification||'—')+'</div></div>'+
+  '</div>'+
+  '<div class="panel"><h3>Kluczowe zadania</h3>'+(e.keyTasks?'<ul>'+e.keyTasks.split('\n').filter(Boolean).map(function(t){return '<li>'+esc(t)+'</li>';}).join('')+'</ul>':'<div class="empty">Brak</div>')+'</div>'+
+  '<div class="panel"><h3>Projekty</h3>'+((e.allocations||[]).length?'<ul>'+e.allocations.map(function(a){return '<li>'+esc(projectName(a.projectId))+' — '+a.pct+'%</li>';}).join('')+'</ul>':'<div class="empty">Brak przypisań</div>')+'</div>'+
+  (e.presidentNotes?'<div class="panel"><h3>Uwagi Prezesa</h3><div>'+esc(e.presidentNotes)+'</div></div>':'')+
+  '<button class="btn" onclick="openForm(\'employees\',\''+e.id+'\')">Edytuj</button>';
+}
+
+/* ============================= COSTS (register) ============================= */
+var costFilters = {project:'',dept:'',category:'',status:''};
+function viewCosts(fixedOnly){
+  var list = STATE.costs.filter(function(c){
+    if(fixedOnly && !c.isFixed) return false;
+    if(costFilters.project && c.projectId!==costFilters.project) return false;
+    if(costFilters.dept && c.departmentId!==costFilters.dept) return false;
+    if(costFilters.category && c.category!==costFilters.category) return false;
+    if(costFilters.status && c.paymentStatus!==costFilters.status) return false;
+    return true;
+  });
+  var total = list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+  var totalMonthly = list.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  return '<h2 class="page-title">'+(fixedOnly?'Koszty stałe':'Rejestr kosztów')+'</h2>'+
+  '<div class="page-sub">'+list.length+' pozycji • suma brutto: '+fmtMoney0(total)+' • ekwiwalent miesięczny (cykliczne): '+fmtMoney0(totalMonthly)+'</div>'+
+  '<div class="toolbar"><div class="filters">'+
+    selectFilter('project',projectOptions(true),'Wszystkie projekty','costFilterChange')+
+    selectFilter('dept',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),'Wszystkie działy','costFilterChange')+
+    selectFilter('category',STATE.costCategories,'Wszystkie kategorie','costFilterChange')+
+    selectFilter('status',PAYMENT_STATUS_OPTS,'Wszystkie statusy','costFilterChange')+
+  '</div><div><button class="btn btn-sm" onclick="exportCostsCsv('+(fixedOnly?'true':'false')+')">Eksport CSV</button> <button class="btn btn-primary" onclick="openForm(\'costs\''+(fixedOnly?',null,{isFixed:true}':'')+')">+ Dodaj koszt</button></div></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kategoria</th><th>Dostawca</th><th>Projekt / Dział</th><th>Netto</th><th>Brutto</th><th>Cykl</th><th>Termin</th><th>Status</th><th>Ocena</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(c){
+    return '<tr><td>'+esc(c.name)+(c.isDemo?'<span class="demo-tag">DEMO</span>':'')+'<div class="muted" style="font-size:11px">'+esc(c.docNumber||'')+'</div></td><td>'+esc(c.category||'—')+'</td><td>'+esc(vendorName(c.vendorId))+'</td><td>'+esc(c.projectId?projectName(c.projectId):deptName(c.departmentId))+'</td><td class="right">'+fmtMoney(c.netAmount)+'</td><td class="right">'+fmtMoney(c.grossAmount)+'</td><td>'+esc(c.recurrence)+'</td><td>'+fmtDate(c.dueDate)+'</td><td>'+paymentPill(c.paymentStatus)+'</td><td>'+necessityPill(c.necessity)+'</td><td><span class="link" onclick="openForm(\'costs\',\''+c.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="11" class="empty">Brak kosztów</td></tr>')+
+  '</tbody></table></div>';
+}
+function selectFilter(key,options,placeholder,fn){
+  var o = '<option value="">'+placeholder+'</option>'+options.map(function(op){
+    var v=typeof op==='string'?op:op.v, l=typeof op==='string'?op:op.l;
+    return '<option value="'+esc(v)+'"'+(costFilters[key]===v?' selected':'')+'>'+esc(l)+'</option>';
+  }).join('');
+  return '<select onchange="'+fn+'(\''+key+'\',this.value)">'+o+'</select>';
+}
+function costFilterChange(key,val){ costFilters[key]=val; render(); }
+function exportCostsCsv(fixedOnly){
+  var list = STATE.costs.filter(function(c){return !fixedOnly||c.isFixed;});
+  exportCsv(list.map(function(c){return {name:c.name,category:c.category,vendor:vendorName(c.vendorId),net:c.netAmount,gross:c.grossAmount,recurrence:c.recurrence,due:fmtDate(c.dueDate),status:c.paymentStatus};}),
+    [{key:'name',label:'Nazwa'},{key:'category',label:'Kategoria'},{key:'vendor',label:'Dostawca'},{key:'net',label:'Netto'},{key:'gross',label:'Brutto'},{key:'recurrence',label:'Cykliczność'},{key:'due',label:'Termin płatności'},{key:'status',label:'Status'}],
+    fixedOnly?'koszty_stale.csv':'koszty.csv');
+}
+function costForm(c,defaults){
+  c = c || Object.assign({name:'',description:'',vendorId:'',netAmount:'',vat:23,grossAmount:'',currency:'PLN',category:STATE.costCategories[0],subcategory:'',departmentId:'',projectId:'',costCenter:'',costDate:todayISO(),invoiceDate:'',dueDate:'',paymentStatus:'planowany',recurrence:'jednorazowy',docNumber:'',notes:'',necessity:'do analizy',isFixed:false,excludeFromSimulation:false,budgetMonthly:'',documentLink:''},defaults||{});
+  var isNew = !c.id;
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(isNew?'Nowy koszt':'Edytuj koszt')+'</h3>'+
+  '<form onsubmit="return saveCost(event,\''+(c.id||'')+'\')">'+
+  '<label>Nazwa</label><input name="name" value="'+esc(c.name)+'" required>'+
+  '<label>Opis</label><input name="description" value="'+esc(c.description)+'">'+
+  '<div class="form-row2"><div><label>Dostawca</label>'+selectHtml('vendorId',STATE.vendors.map(function(v){return {v:v.id,l:v.name};}),c.vendorId,'—')+'</div><div><label>Numer dokumentu</label><input name="docNumber" value="'+esc(c.docNumber)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Kwota netto</label><input type="number" step="0.01" name="netAmount" value="'+c.netAmount+'" oninput="autoGross(this)"></div><div><label>VAT %</label><input type="number" step="1" name="vat" value="'+c.vat+'" oninput="autoGross(this)"></div></div>'+
+  '<div class="form-row2"><div><label>Kwota brutto</label><input type="number" step="0.01" name="grossAmount" value="'+c.grossAmount+'"></div><div><label>Waluta</label>'+selectHtml('currency',['PLN','EUR','USD'],c.currency)+'</div></div>'+
+  '<div class="form-row2"><div><label>Kategoria</label>'+selectHtml('category',STATE.costCategories,c.category)+'</div><div><label>Podkategoria</label><input name="subcategory" value="'+esc(c.subcategory)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Dział</label>'+selectHtml('departmentId',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),c.departmentId,'—')+'</div><div><label>Projekt</label>'+selectHtml('projectId',STATE.projects.map(function(p){return {v:p.id,l:p.name};}),c.projectId,'— (koszt centrali)')+'</div></div>'+
+  '<div class="form-row2"><div><label>Centrum kosztów</label>'+selectHtml('costCenter',STATE.costCenters,c.costCenter,'—')+'</div><div><label>Cykliczność</label>'+selectHtml('recurrence',RECURRENCE_OPTS,c.recurrence)+'</div></div>'+
+  '<div class="form-row2"><div><label>Data kosztu</label><input type="date" name="costDate" value="'+esc(c.costDate)+'"></div><div><label>Data faktury</label><input type="date" name="invoiceDate" value="'+esc(c.invoiceDate)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Termin płatności</label><input type="date" name="dueDate" value="'+esc(c.dueDate)+'"></div><div><label>Status płatności</label>'+selectHtml('paymentStatus',PAYMENT_STATUS_OPTS,c.paymentStatus)+'</div></div>'+
+  '<div class="form-row2"><div><label>Budżet miesięczny (plan)</label><input type="number" step="0.01" name="budgetMonthly" value="'+c.budgetMonthly+'"></div><div><label>Ocena konieczności</label>'+selectHtml('necessity',NECESSITY_OPTS,c.necessity)+'</div></div>'+
+  '<div class="form-row2"><div><label><input type="checkbox" style="width:auto" name="isFixed" '+(c.isFixed?'checked':'')+'> Koszt stały</label></div><div><label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(c.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze</label></div></div>'+
+  '<label>Link do dokumentu</label><input name="documentLink" value="'+esc(c.documentLink)+'">'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(c.notes)+'</textarea>'+
+  '<div class="modal-actions">'+(c.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'costs\',\''+c.id+'\',\''+esc(c.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button>'+(isNew?'<button type="button" class="btn" onclick="saveCostAndNew(this)">Zapisz i dodaj kolejny</button>':'')+'<button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function autoGross(el){
+  var form = el.closest('form');
+  var net = parseFloat(form.netAmount.value)||0, vat = parseFloat(form.vat.value)||0;
+  if(net>0) form.grossAmount.value = (net*(1+vat/100)).toFixed(2);
+}
+function collectCostForm(form){
+  var f = new FormData(form);
+  return {name:f.get('name'),description:f.get('description'),vendorId:f.get('vendorId'),netAmount:f.get('netAmount'),vat:f.get('vat'),grossAmount:f.get('grossAmount'),currency:f.get('currency'),
+    category:f.get('category'),subcategory:f.get('subcategory'),departmentId:f.get('departmentId'),projectId:f.get('projectId'),costCenter:f.get('costCenter'),
+    costDate:f.get('costDate'),invoiceDate:f.get('invoiceDate'),dueDate:f.get('dueDate'),paymentStatus:f.get('paymentStatus'),recurrence:f.get('recurrence'),
+    docNumber:f.get('docNumber'),notes:f.get('notes'),necessity:f.get('necessity'),isFixed:f.get('isFixed')==='on',excludeFromSimulation:f.get('excludeFromSimulation')==='on',
+    budgetMonthly:f.get('budgetMonthly'),documentLink:f.get('documentLink')};
+}
+function saveCost(ev,id){
+  ev.preventDefault();
+  var obj = collectCostForm(ev.target);
+  var url = id? '/api/costs/'+id : '/api/costs';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać kosztu: '+e.message); });
+  return false;
+}
+// "Zapisz i dodaj kolejny": przyspiesza seryjne wpisywanie wielu kosztów —
+// zapisuje bieżący koszt, a potem od razu otwiera nowy, pusty formularz
+// z zachowanym dostawcą/projektem/kategorią/działem/datą (najczęściej
+// powtarzające się pola przy wpisywaniu kilku kosztów z rzędu).
+function saveCostAndNew(btn){
+  if(btn.disabled) return;
+  var form = btn.closest('form');
+  var obj = collectCostForm(form);
+  if(!obj.name){ alert('Podaj nazwę kosztu.'); return; }
+  btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Zapisywanie…';
+  afterMutation(apiCall('POST','/api/costs',obj)).then(function(){
+    if(CURRENT_DRAFT_KEY){ draftClear(CURRENT_DRAFT_KEY); }
+    openForm('costs', null, {
+      vendorId:obj.vendorId, projectId:obj.projectId, category:obj.category, subcategory:obj.subcategory,
+      departmentId:obj.departmentId, costCenter:obj.costCenter, costDate:obj.costDate, recurrence:obj.recurrence,
+      necessity:obj.necessity, isFixed:obj.isFixed, currency:obj.currency, vat:obj.vat
+    });
+  }).catch(function(e){ btn.disabled=false; btn.textContent=orig; alert('Nie udało się zapisać kosztu: '+e.message); });
+}
+
+/* ============================= CONTRACTS ============================= */
+function viewContracts(){
+  var list = STATE.contracts;
+  return '<h2 class="page-title">Umowy i abonamenty</h2><div class="page-sub">'+list.length+' umów • suma miesięcznie: '+fmtMoney0(list.reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0))+'</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'contracts\')">+ Dodaj umowę</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kontrahent</th><th>Koszt / mies.</th><th>Koszt / rok</th><th>Wypowiedzenie od</th><th>Auto-przedłużenie</th><th>Oszczędność po wypowiedzeniu</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(c){
+    var mo = monthlyEquivalentGeneric(c.amount,c.frequency);
+    return '<tr><td>'+esc(c.name)+'</td><td>'+esc(vendorName(c.vendorId))+'</td><td class="right">'+fmtMoney(mo)+'</td><td class="right">'+fmtMoney(mo*12)+'</td><td>'+fmtDate(c.earliestTerminationDate)+'</td><td>'+(c.autoRenew?'<span class="pill pill-warn">TAK</span>':'<span class="pill pill-muted">NIE</span>')+'</td><td class="right">'+fmtMoney(mo*12)+'/rok</td><td><span class="link" onclick="openForm(\'contracts\',\''+c.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="8" class="empty">Brak umów</td></tr>')+
+  '</tbody></table></div>';
+}
+function contractForm(c){
+  c = c || {vendorId:'',name:'',description:'',amount:'',netGross:'brutto',frequency:'miesięczny',startDate:'',endDate:'',noticePeriodDays:30,earliestTerminationDate:'',autoRenew:false,owner:'',projectId:'',documentLink:'',notes:'',excludeFromSimulation:false};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(c.id?'Edytuj umowę':'Nowa umowa')+'</h3>'+
+  '<form onsubmit="return saveContract(event,\''+(c.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Kontrahent</label>'+selectHtml('vendorId',STATE.vendors.map(function(v){return {v:v.id,l:v.name};}),c.vendorId,'—')+'</div><div><label>Nazwa umowy</label><input name="name" value="'+esc(c.name)+'" required></div></div>'+
+  '<label>Opis</label><input name="description" value="'+esc(c.description)+'">'+
+  '<div class="form-row2"><div><label>Koszt</label><input type="number" step="0.01" name="amount" value="'+c.amount+'"></div><div><label>Netto/Brutto</label>'+selectHtml('netGross',['netto','brutto'],c.netGross)+'</div></div>'+
+  '<div class="form-row2"><div><label>Częstotliwość</label>'+selectHtml('frequency',RECURRENCE_OPTS,c.frequency)+'</div><div><label>Projekt</label>'+selectHtml('projectId',STATE.projects.map(function(p){return {v:p.id,l:p.name};}),c.projectId,'—')+'</div></div>'+
+  '<div class="form-row2"><div><label>Data rozpoczęcia</label><input type="date" name="startDate" value="'+esc(c.startDate)+'"></div><div><label>Data zakończenia</label><input type="date" name="endDate" value="'+esc(c.endDate)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Okres wypowiedzenia (dni)</label><input type="number" name="noticePeriodDays" value="'+c.noticePeriodDays+'"></div><div><label>Najwcześniejsza data wypowiedzenia</label><input type="date" name="earliestTerminationDate" value="'+esc(c.earliestTerminationDate)+'"></div></div>'+
+  '<div class="form-row2"><div><label><input type="checkbox" style="width:auto" name="autoRenew" '+(c.autoRenew?'checked':'')+'> Automatyczne przedłużenie</label></div><div><label>Osoba odpowiedzialna</label><input name="owner" value="'+esc(c.owner)+'"></div></div>'+
+  '<label>Link do dokumentu</label><input name="documentLink" value="'+esc(c.documentLink)+'">'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(c.notes)+'</textarea>'+
+  '<label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(c.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze oszczędności</label>'+
+  '<div class="modal-actions">'+(c.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'contracts\',\''+c.id+'\',\''+esc(c.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveContract(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {vendorId:f.get('vendorId'),name:f.get('name'),description:f.get('description'),amount:f.get('amount'),netGross:f.get('netGross'),frequency:f.get('frequency'),
+    projectId:f.get('projectId'),startDate:f.get('startDate'),endDate:f.get('endDate'),noticePeriodDays:f.get('noticePeriodDays'),earliestTerminationDate:f.get('earliestTerminationDate'),
+    autoRenew:f.get('autoRenew')==='on',owner:f.get('owner'),documentLink:f.get('documentLink'),notes:f.get('notes'),excludeFromSimulation:f.get('excludeFromSimulation')==='on'};
+  var url = id? '/api/contracts/'+id : '/api/contracts';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać umowy: '+e.message); });
+  return false;
+}
+
+/* ============================= FINANCING ============================= */
+function viewFinancing(){
+  var list = STATE.financings;
+  var totalMo = list.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+  return '<h2 class="page-title">Leasingi / kredyty</h2><div class="page-sub">'+list.length+' pozycji • rata łącznie: '+fmtMoney0(totalMo)+'/mies.</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'financing\')">+ Dodaj finansowanie</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Bank / leasingodawca</th><th>Przedmiot</th><th>Rodzaj</th><th>Rata / mies.</th><th>Pozostałe raty</th><th>Saldo pozostałe</th><th>Następna rata</th><th></th></tr></thead><tbody>'+
+  (list.length?list.map(function(f){
+    return '<tr><td>'+esc(f.lender)+'</td><td>'+esc(f.subject)+'</td><td>'+esc(f.type)+'</td><td class="right">'+fmtMoney(f.monthlyPayment)+'</td><td>'+esc(f.remainingInstallments||'—')+' / '+esc(f.numInstallments||'—')+'</td><td class="right">'+fmtMoney(f.remainingBalance)+'</td><td>'+fmtDate(f.nextPaymentDate)+'</td><td><span class="link" onclick="openForm(\'financing\',\''+f.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="8" class="empty">Brak leasingów / kredytów</td></tr>')+
+  '</tbody></table></div>';
+}
+function financingForm(fi){
+  fi = fi || {lender:'',subject:'',type:'leasing operacyjny',initialAmount:'',remainingBalance:'',monthlyPayment:'',numInstallments:'',remainingInstallments:'',nextPaymentDate:'',endDate:'',interestRate:'',projectId:'',notes:'',excludeFromSimulation:false};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(fi.id?'Edytuj finansowanie':'Nowe finansowanie')+'</h3>'+
+  '<form onsubmit="return saveFinancing(event,\''+(fi.id||'')+'\')">'+
+  '<div class="form-row2"><div><label>Bank / leasingodawca</label><input name="lender" value="'+esc(fi.lender)+'" required></div><div><label>Przedmiot</label><input name="subject" value="'+esc(fi.subject)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Rodzaj</label>'+selectHtml('type',FINANCING_TYPE_OPTS,fi.type)+'</div><div><label>Projekt</label>'+selectHtml('projectId',STATE.projects.map(function(p){return {v:p.id,l:p.name};}),fi.projectId,'—')+'</div></div>'+
+  '<div class="form-row2"><div><label>Kwota początkowa</label><input type="number" step="0.01" name="initialAmount" value="'+fi.initialAmount+'"></div><div><label>Pozostałe saldo</label><input type="number" step="0.01" name="remainingBalance" value="'+fi.remainingBalance+'"></div></div>'+
+  '<div class="form-row2"><div><label>Rata miesięczna</label><input type="number" step="0.01" name="monthlyPayment" value="'+fi.monthlyPayment+'"></div><div><label>Oprocentowanie %</label><input type="number" step="0.01" name="interestRate" value="'+fi.interestRate+'"></div></div>'+
+  '<div class="form-row2"><div><label>Liczba rat</label><input type="number" name="numInstallments" value="'+fi.numInstallments+'"></div><div><label>Pozostałe raty</label><input type="number" name="remainingInstallments" value="'+fi.remainingInstallments+'"></div></div>'+
+  '<div class="form-row2"><div><label>Data następnej raty</label><input type="date" name="nextPaymentDate" value="'+esc(fi.nextPaymentDate)+'"></div><div><label>Data końca</label><input type="date" name="endDate" value="'+esc(fi.endDate)+'"></div></div>'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(fi.notes)+'</textarea>'+
+  '<label><input type="checkbox" style="width:auto" name="excludeFromSimulation" '+(fi.excludeFromSimulation?'checked':'')+'> Uwzględnij w symulatorze oszczędności</label>'+
+  '<div class="modal-actions">'+(fi.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'financings\',\''+fi.id+'\',\''+esc(fi.lender)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveFinancing(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {lender:f.get('lender'),subject:f.get('subject'),type:f.get('type'),initialAmount:f.get('initialAmount'),remainingBalance:f.get('remainingBalance'),
+    monthlyPayment:f.get('monthlyPayment'),numInstallments:f.get('numInstallments'),remainingInstallments:f.get('remainingInstallments'),nextPaymentDate:f.get('nextPaymentDate'),
+    endDate:f.get('endDate'),interestRate:f.get('interestRate'),projectId:f.get('projectId'),notes:f.get('notes'),excludeFromSimulation:f.get('excludeFromSimulation')==='on'};
+  var url = id? '/api/financings/'+id : '/api/financings';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać finansowania: '+e.message); });
+  return false;
+}
+
+/* ============================= VENDORS ============================= */
+function viewVendors(){
+  return '<h2 class="page-title">Dostawcy</h2><div class="page-sub">'+STATE.vendors.length+' dostawców</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'vendors\')">+ Dodaj dostawcę</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Typ usług</th><th>Kontakt</th><th>Koszt / mies.</th><th>Koszt / rok</th><th></th></tr></thead><tbody>'+
+  (STATE.vendors.length?STATE.vendors.map(function(v){
+    var costsV = STATE.costs.filter(function(c){return c.vendorId===v.id;});
+    var mo = costsV.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    return '<tr><td><span class="link" onclick="openVendorDetail(\''+v.id+'\')">'+esc(v.name)+'</span>'+(v.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(v.serviceType||'—')+'</td><td>'+esc(v.contactPerson||v.email||'—')+'</td><td class="right">'+fmtMoney(mo)+'</td><td class="right">'+fmtMoney(mo*12)+'</td><td><span class="link" onclick="openForm(\'vendors\',\''+v.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="6" class="empty">Brak dostawców</td></tr>')+
+  '</tbody></table></div>';
+}
+function openVendorDetail(id){
+  var v = byId(STATE.vendors,id); if(!v) return;
+  var costsV = STATE.costs.filter(function(c){return c.vendorId===id;});
+  openModalHtml('<button class="close-x" onclick="closeModal()">✕</button><h3>'+esc(v.name)+'</h3><div class="muted">'+esc(v.serviceType||'')+'</div><div class="section-title">Historia kosztów</div>'+costsTable(costsV)+'<div class="modal-actions"><button class="btn" onclick="closeModal()">Zamknij</button><button class="btn btn-primary" onclick="openForm(\'vendors\',\''+v.id+'\')">Edytuj</button></div>');
+}
+function vendorForm(v){
+  v = v || {name:'',nip:'',contactPerson:'',phone:'',email:'',serviceType:'',notes:''};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(v.id?'Edytuj dostawcę':'Nowy dostawcę')+'</h3>'+
+  '<form onsubmit="return saveVendor(event,\''+(v.id||'')+'\')">'+
+  '<label>Nazwa</label><input name="name" value="'+esc(v.name)+'" required>'+
+  '<div class="form-row2"><div><label>NIP</label><input name="nip" value="'+esc(v.nip)+'"></div><div><label>Typ usług</label><input name="serviceType" value="'+esc(v.serviceType)+'"></div></div>'+
+  '<div class="form-row2"><div><label>Osoba kontaktowa</label><input name="contactPerson" value="'+esc(v.contactPerson)+'"></div><div><label>Telefon</label><input name="phone" value="'+esc(v.phone)+'"></div></div>'+
+  '<label>E-mail</label><input type="email" name="email" value="'+esc(v.email)+'">'+
+  '<label>Uwagi</label><textarea name="notes">'+esc(v.notes)+'</textarea>'+
+  '<div class="modal-actions">'+(v.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'vendors\',\''+v.id+'\',\''+esc(v.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveVendor(ev,id){
+  ev.preventDefault(); var f = new FormData(ev.target);
+  var obj = {name:f.get('name'),nip:f.get('nip'),contactPerson:f.get('contactPerson'),phone:f.get('phone'),email:f.get('email'),serviceType:f.get('serviceType'),notes:f.get('notes')};
+  var url = id? '/api/vendors/'+id : '/api/vendors';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać dostawcy: '+e.message); });
+  return false;
+}
+
+/* ============================= PAYMENTS ============================= */
+function viewPayments(){
+  var groups = {zalegle:[],dzisiaj:[],d7:[],d14:[],d30:[],pozniej:[]};
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){
+    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany'||!c.dueDate) return;
+    var d = daysUntil(c.dueDate);
+    if(d<0) groups.zalegle.push(c);
+    else if(d===0) groups.dzisiaj.push(c);
+    else if(d<=7) groups.d7.push(c);
+    else if(d<=14) groups.d14.push(c);
+    else if(d<=30) groups.d30.push(c);
+    else groups.pozniej.push(c);
+  });
+  function section(title,list,color){
+    return '<div class="panel"'+(color?' style="border-color:'+color+'"':'')+'><h3'+(color?' style="color:'+color+'"':'')+'>'+title+' ('+list.length+') — '+fmtMoney0(list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+'</h3>'+costsTable(list)+'</div>';
+  }
+  return '<h2 class="page-title">Płatności</h2><div class="page-sub">Terminarz zobowiązań spółki</div>'+
+  section('⚠ Zaległe',groups.zalegle,'var(--danger)')+
+  section('Dzisiaj',groups.dzisiaj,'var(--warn)')+
+  section('W 7 dni',groups.d7)+
+  section('W 14 dni',groups.d14)+
+  section('W 30 dni',groups.d30)+
+  section('Później',groups.pozniej);
+}
+
+/* ============================= DEPARTMENTS ============================= */
+function viewDepartments(){
+  var m = metrics();
+  return '<h2 class="page-title">Działy / centra kosztów</h2>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openDeptForm()">+ Dodaj dział</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Dział</th><th>Pracownicy</th><th>Koszt pracowników / mies.</th><th>Inne koszty / mies.</th><th>Koszt łączny / mies.</th><th>Koszt roczny</th><th></th></tr></thead><tbody>'+
+  STATE.departments.map(function(d){
+    var dc = m.deptCost[d.id]||{employees:0,empCost:0,otherCost:0,total:0};
+    return '<tr><td>'+esc(d.name)+'</td><td>'+dc.employees+'</td><td class="right">'+fmtMoney(dc.empCost)+'</td><td class="right">'+fmtMoney(dc.otherCost)+'</td><td class="right"><b>'+fmtMoney(dc.total)+'</b></td><td class="right">'+fmtMoney(dc.total*12)+'</td><td><span class="link" onclick="openDeptForm(\''+d.id+'\')">edytuj</span> <span class="link btn-danger" onclick="deleteDept(\''+d.id+'\')">usuń</span></td></tr>';
+  }).join('')+
+  '</tbody></table></div>';
+}
+function openDeptForm(id){
+  var d = id?byId(STATE.departments,id):{name:''};
+  openModalHtml('<button class="close-x" onclick="closeModal()">✕</button><h3>'+(id?'Edytuj dział':'Nowy dział')+'</h3><form onsubmit="return saveDept(event,\''+(id||'')+'\')"><label>Nazwa działu</label><input name="name" value="'+esc(d.name)+'" required><div class="modal-actions"><button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div></form>');
+}
+function saveDept(ev,id){
+  ev.preventDefault(); var f=new FormData(ev.target); var name=f.get('name');
+  var url = id? '/api/departments/'+id : '/api/departments';
+  afterMutation(apiCall(id?'PUT':'POST', url, {name:name})).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać działu: '+e.message); });
+  return false;
+}
+function deleteDept(id){
+  if(!confirm('Usunąć dział?')) return;
+  afterMutation(apiCall('DELETE','/api/departments/'+id)).catch(function(e){ alert('Nie udało się usunąć działu: '+e.message); });
+}
+
+/* ============================= ANALYSIS ============================= */
+function viewAnalysis(){
+  var m = metrics();
+  // Analiza pomija dane DEMO (spójnie z metrics()) — inaczej przykładowy
+  // rekord demonstracyjny mieszałby się z realnymi liczbami w zestawieniach.
+  var realCostsA = STATE.costs.filter(function(c){return !c.isDemo;});
+  var realEmployeesA = STATE.employees.filter(function(e){return !e.isDemo;});
+  var top20 = realCostsA.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
+  var top20fixed = realCostsA.filter(function(c){return c.isFixed;}).slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
+  function groupSum(keyFn,labelFn){
+    var g={};
+    realCostsA.forEach(function(c){ var k=keyFn(c); g[k]=(g[k]||0)+monthlyEquivalent(c); });
+    return Object.keys(g).map(function(k){return {label:labelFn(k),value:g[k]};}).sort(function(a,b){return b.value-a.value;});
+  }
+  function table(rows){
+    var total = rows.reduce(function(s,r){return s+r.value;},0);
+    return '<table><thead><tr><th>Pozycja</th><th class="right">Kwota / mies.</th><th class="right">%</th></tr></thead><tbody>'+
+    rows.map(function(r){return '<tr><td>'+esc(r.label)+'</td><td class="right">'+fmtMoney(r.value)+'</td><td class="right">'+(total?Math.round(r.value/total*100):0)+'%</td></tr>';}).join('')+
+    '</tbody></table>';
+  }
+  var byEmp = realEmployeesA.map(function(e){return {label:empName(e),value:totalMonthlyCostEmployee(e)};}).sort(function(a,b){return b.value-a.value;});
+  var byVendor = groupSum(function(c){return c.vendorId||'brak';}, function(k){return k==='brak'?'Brak dostawcy':vendorName(k);});
+  return '<h2 class="page-title">Analiza kosztów</h2><div class="page-sub">Cash burn: '+fmtMoney0(m.totalBurn)+'/mies. • Run-rate roczny: '+fmtMoney0(m.annualRunRate)+'</div>'+
+  '<div class="kpi-grid">'+kpi('Miesięczny cash burn',fmtMoney0(m.totalBurn),true)+kpi('Roczny run-rate',fmtMoney0(m.annualRunRate),true)+kpi('Koszty stałe',fmtMoney0(m.monthlyFixed))+kpi('Koszty zmienne/zewnętrzne',fmtMoney0(m.monthlyExternal))+'</div>'+
+  '<div class="grid2">'+
+  '<div class="panel"><h3>TOP 20 największych kosztów</h3>'+costsTable(top20)+'</div>'+
+  '<div class="panel"><h3>TOP 20 największych kosztów stałych</h3>'+costsTable(top20fixed)+'</div>'+
+  '</div><div class="grid2">'+
+  '<div class="panel"><h3>Koszt wg kategorii</h3>'+table(groupSum(function(c){return c.category||'Inne';},function(k){return k;}))+'</div>'+
+  '<div class="panel"><h3>Koszt wg projektu</h3>'+table(STATE.projects.filter(function(p){return !p.isDemo;}).map(function(p){return {label:projectName(p.id),value:m.monthlyProjectCost[p.id]||0};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
+  '</div>'+(STATE.restricted?
+  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'
+  :'<div class="grid2">'+
+  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
+  '<div class="panel"><h3>Koszt wg pracownika</h3>'+table(byEmp)+'</div>'+
+  '</div>')+
+  '<div class="panel"><h3>Koszt wg dostawcy</h3>'+table(byVendor)+'</div>';
+}
+
+/* ============================= WYKRESY ============================= */
+// Zakładka dodana na prośbę Prezesa — "wypadkowa raportowa" z najważniejszych
+// liczb: przychód i koszty wg projektu/kategorii (dane rzeczywiste z bazy) oraz
+// harmonogram kosztów stałych i profil produkcji z Założeń (dane referencyjne
+// od kontrolera — patrz zakładka "Założenia").
+function viewCharts(){
+  var m = metrics();
+  var fc = STATE.fixedCostSchedule || {monthlySchedule:[]};
+  var a = STATE.assumptions || {};
+  var revByProject = STATE.projects.filter(function(p){return !p.isDemo && p.revenueMonthly!=='' && p.revenueMonthly!=null;})
+    .map(function(p){return {label:p.name, value:Number(p.revenueMonthly)||0};})
+    .sort(function(x,y){return y.value-x.value;});
+  var byCategory = {};
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
+  var costByCategory = Object.keys(byCategory).map(function(k){return {label:k, value:byCategory[k]};}).sort(function(x,y){return y.value-x.value;});
+  var months = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+  var pp = a.productionProfile || {};
+  var ppItems = months.map(function(mo){ return {label:mo, value:(Number(pp[mo])||0)*100}; });
+
+  return '<h2 class="page-title">Wykresy</h2>'+
+  '<div class="page-sub">Najważniejsze liczby z dashboardu i Założeń w formie wykresów — stan na '+fmtDate(todayISO())+'.</div>'+
+  '<div class="panel"><h3>Przychód miesięczny wg projektu (rzeczywiste dane)</h3>'+
+    (revByProject.length? svgBarChart(revByProject,{color:'var(--chart-seq)'}) : '<div class="empty">Brak projektów z wpisanym przychodem miesięcznym</div>')+
+  '</div>'+
+  '<div class="panel"><h3>Koszty miesięczne wg kategorii (rzeczywiste dane)</h3>'+
+    (costByCategory.length? svgBarChart(costByCategory,{color:'var(--chart-seq-2)'}) : '<div class="empty">Brak danych</div>')+
+  '</div>'+
+  '<div class="panel"><h3>Koszty stałe — harmonogram miesięczny 2026–2028 (dane kontrolera)</h3>'+
+    '<div class="muted" style="margin-bottom:8px">Suma kosztów stałych rośnie z '+fmtMoney0((fc.monthlySchedule&&fc.monthlySchedule[0])?fc.monthlySchedule[0].suma:0)+'/mies. do '+fmtMoney0((fc.monthlySchedule&&fc.monthlySchedule.length)?fc.monthlySchedule[fc.monthlySchedule.length-1].suma:0)+'/mies. — szczegóły i założenia w zakładce „Założenia”.</div>'+
+    svgStepLine(fc.monthlySchedule||[], 'suma')+
+  '</div>'+
+  '<div class="panel"><h3>Koszty stałe — struktura wg kategorii w czasie (dane kontrolera)</h3>'+
+    svgStackedBarChart(fc.monthlySchedule||[], [
+      {key:'wynagrodzenia',label:'Wynagrodzenia',color:'var(--chart-1)'},
+      {key:'uslugi',label:'Usługi',color:'var(--chart-2)'},
+      {key:'biuro',label:'Koszty Biura/Giełdowe',color:'var(--chart-3)'},
+      {key:'najem',label:'Najem lokalu',color:'var(--chart-4)'}
+    ])+
+  '</div>'+
+  '<div class="panel"><h3>Roczny rozkład produkcji FV (założenia)</h3>'+
+    svgBarChart(ppItems,{color:'var(--chart-seq)', formatValue:function(v){return v.toFixed(0)+'%';}})+
+  '</div>';
+}
+
+/* ============================= ZAŁOŻENIA ============================= */
+// Założenia finansowe i harmonogram kosztów stałych — wprowadzone na
+// podstawie arkusza kontrolera "CF Farmy.xlsx" (wrzesień 2026). Założenia są
+// edytowalne (zapis: PUT /api/settings). Harmonogram kosztów stałych to dane
+// REFERENCYJNE — celowo NIE są wliczane automatycznie do bieżących
+// wskaźników dashboardu (Koszty pracowników / mies. itp.), żeby uniknąć
+// podwójnego liczenia z danymi już wprowadzonymi w Pracownikach/Kosztach.
+// Do potwierdzenia z kontrolerem: czy pozycje osobowe poniżej (Michał, Maciek,
+// Natalia, Marek, Grzegorz Woźniak) mają już odpowiedniki w module Pracownicy.
+function viewAssumptions(){
+  var a = STATE.assumptions || {};
+  var fc = STATE.fixedCostSchedule || {lineItems:[], monthlySchedule:[]};
+  var kot = a.kosztyObslugiTechnicznej || {};
+  return '<h2 class="page-title">Założenia finansowe</h2>'+
+  '<div class="page-sub">Źródło: '+esc(a.source||'—')+'</div>'+
+  '<div class="panel"><h3>Ceny energii i parametry podstawowe</h3>'+
+    '<form id="assumptions-form" onsubmit="return saveAssumptions(event)">'+
+    '<div class="form-row2"><div><label>Cena energii — Giełda (zł/MWh)</label><input type="number" step="0.01" name="cenaEnergiiGielda" value="'+(a.cenaEnergiiGielda!=null?a.cenaEnergiiGielda:'')+'"></div>'+
+    '<div><label>Cena energii — Spółdzielnia/Klaster (zł/MWh)</label><input type="number" step="0.01" name="cenaEnergiiSpoldzielnia" value="'+(a.cenaEnergiiSpoldzielnia!=null?a.cenaEnergiiSpoldzielnia:'')+'"></div></div>'+
+    '<div class="form-row2"><div><label>Podatek od budowli — wartość inwestycji do opodatkowania (zł/MW)</label><input type="number" step="0.01" name="podatekOdBudowliWartoscInwestycji" value="'+(a.podatekOdBudowliWartoscInwestycji!=null?a.podatekOdBudowliWartoscInwestycji:'')+'"></div>'+
+    '<div><label>Podatek od budowli — oprocentowanie</label><input type="number" step="0.0001" name="podatekOdBudowliOprocentowanie" value="'+(a.podatekOdBudowliOprocentowanie!=null?a.podatekOdBudowliOprocentowanie:'')+'"></div></div>'+
+    '<div class="form-row2"><div><label>Podatek od nieruchomości (zł/MW)</label><input type="number" step="0.01" name="podatekOdNieruchomosci" value="'+(a.podatekOdNieruchomosci!=null?a.podatekOdNieruchomosci:'')+'"></div>'+
+    '<div><label>Średni koszt dzierżawy (zł/ha)</label><input type="number" step="0.01" name="sredniKosztDzierzawy" value="'+(a.sredniKosztDzierzawy!=null?a.sredniKosztDzierzawy:'')+'"></div></div>'+
+    '<div class="form-row2"><div><label>Ubezpieczenie majątkowe (zł/MW)</label><input type="number" step="0.01" name="ubezpieczenieMajatkowe" value="'+(a.ubezpieczenieMajatkowe!=null?a.ubezpieczenieMajatkowe:'')+'"></div>'+
+    '<div><label>Ubezpieczenie OC (zł)</label><input type="number" step="0.01" name="ubezpieczenieOC" value="'+(a.ubezpieczenieOC!=null?a.ubezpieczenieOC:'')+'"></div></div>'+
+    '<div class="form-row2"><div><label>Kurs EUR</label><input type="number" step="0.0001" name="kursEUR" value="'+(a.kursEUR!=null?a.kursEUR:'')+'"></div>'+
+    '<div><label>Inflacja</label><input type="number" step="0.0001" name="inflacja" value="'+(a.inflacja!=null?a.inflacja:'')+'"></div></div>'+
+    '<div class="section-title">Koszty obsługi technicznej wg wielkości farmy (zł/MW/mies.)</div>'+
+    '<div class="form-row2"><div><label>Farmy do 1 MW</label><input type="number" step="0.01" name="kot_1MW" value="'+(kot['1MW']!=null?kot['1MW']:'')+'"></div>'+
+    '<div><label>Farmy do 2 MW</label><input type="number" step="0.01" name="kot_2MW" value="'+(kot['2MW']!=null?kot['2MW']:'')+'"></div></div>'+
+    '<div class="form-row2"><div><label>Farmy do 3 MW</label><input type="number" step="0.01" name="kot_3MW" value="'+(kot['3MW']!=null?kot['3MW']:'')+'"></div>'+
+    '<div><label>Farmy do 4 MW</label><input type="number" step="0.01" name="kot_4MW" value="'+(kot['4MW']!=null?kot['4MW']:'')+'"></div></div>'+
+    '<button class="btn btn-primary" type="submit" style="margin-top:10px">Zapisz założenia</button>'+
+    '</form>'+
+  '</div>'+
+  '<div class="panel"><h3>Koszty stałe — pozycje (dane kontrolera, '+esc(fc.asOfLabel||'—')+')</h3>'+
+    '<div class="muted" style="margin-bottom:8px">Źródło: '+esc(fc.source||'—')+'. To dane referencyjne/budżetowe od kontrolera — celowo NIE są automatycznie wliczane do bieżących wskaźników dashboardu, żeby uniknąć podwójnego liczenia z danymi już wprowadzonymi w module Pracownicy/Koszty. Jeśli poniższe pozycje osobowe (Michał, Maciek, Natalia, Marek, Grzegorz Woźniak) mają już odpowiedniki w Pracownikach, proszę potwierdzić z kontrolerem, żeby uniknąć podwójnego liczenia.</div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Pozycja</th><th class="right">Bieżące / mies.</th><th class="right">Za 12 mies.</th><th>Komentarz</th></tr></thead><tbody>'+
+    (fc.lineItems||[]).map(function(li){
+      return '<tr><td>'+esc(li.name)+'</td><td class="right">'+fmtMoney0(li.current)+'</td><td class="right">'+fmtMoney0(li.future12m)+'</td><td class="muted" style="font-size:12px">'+esc(li.note||'')+'</td></tr>';
+    }).join('')+
+    '<tr style="font-weight:700"><td>SUMA</td><td class="right">'+fmtMoney0((fc.lineItems||[]).reduce(function(s,li){return s+(Number(li.current)||0);},0))+'</td><td class="right">'+fmtMoney0((fc.lineItems||[]).reduce(function(s,li){return s+(Number(li.future12m)||0);},0))+'</td><td></td></tr>'+
+    '</tbody></table></div>'+
+  '</div>';
+}
+function saveAssumptions(ev){
+  ev.preventDefault();
+  var fd = new FormData(ev.target);
+  function num(name){ var v = fd.get(name); return v===null||v===''? 0 : Number(v); }
+  var updated = Object.assign({}, STATE.assumptions||{}, {
+    cenaEnergiiGielda: num('cenaEnergiiGielda'),
+    cenaEnergiiSpoldzielnia: num('cenaEnergiiSpoldzielnia'),
+    podatekOdBudowliWartoscInwestycji: num('podatekOdBudowliWartoscInwestycji'),
+    podatekOdBudowliOprocentowanie: num('podatekOdBudowliOprocentowanie'),
+    podatekOdNieruchomosci: num('podatekOdNieruchomosci'),
+    sredniKosztDzierzawy: num('sredniKosztDzierzawy'),
+    ubezpieczenieMajatkowe: num('ubezpieczenieMajatkowe'),
+    ubezpieczenieOC: num('ubezpieczenieOC'),
+    kursEUR: num('kursEUR'),
+    inflacja: num('inflacja'),
+    kosztyObslugiTechnicznej: {
+      '1MW': num('kot_1MW'), '2MW': num('kot_2MW'), '3MW': num('kot_3MW'), '4MW': num('kot_4MW')
+    }
+  });
+  afterMutation(apiCall('PUT','/api/settings',{key:'assumptions',value:updated}))
+    .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+  return false;
+}
+
+/* ============================= SIMULATOR ============================= */
+function viewSimulator(){
+  var m = metrics();
+  var newTotal = m.totalBurn - m.potentialSavingsMonthly;
+  var pct = m.totalBurn>0? Math.round(m.potentialSavingsMonthly/m.totalBurn*100):0;
+  var selCosts = STATE.costs.filter(function(c){return c.excludeFromSimulation;});
+  var selEmp = STATE.employees.filter(function(e){return e.excludeFromSimulation;});
+  var selContracts = STATE.contracts.filter(function(c){return c.excludeFromSimulation;});
+  var selFin = STATE.financings.filter(function(f){return f.excludeFromSimulation;});
+  return '<h2 class="page-title">Symulator oszczędności</h2><div class="page-sub">Zaznacz koszty, pracowników, umowy lub leasingi do redukcji, aby zobaczyć wpływ na budżet spółki.</div>'+
+  '<div class="grid3">'+
+    kpi('Obecny koszt miesięczny',fmtMoney0(m.totalBurn),true)+
+    kpi('Planowane redukcje / mies.',fmtMoney0(m.potentialSavingsMonthly))+
+    kpi('Nowy koszt miesięczny',fmtMoney0(newTotal),true)+
+  '</div>'+
+  '<div class="grid3">'+
+    kpi('Oszczędność roczna',fmtMoney0(m.potentialSavingsAnnual))+
+    kpi('Procent redukcji',pct+'%')+
+    kpi('Nowy koszt roczny',fmtMoney0(newTotal*12))+
+  '</div>'+
+  '<div class="panel"><h3>Zaznaczeni pracownicy do redukcji</h3>'+(selEmp.length?'<table><tbody>'+selEmp.map(function(e){return '<tr><td>'+esc(empName(e))+'</td><td>'+esc(e.position)+'</td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'/mies.</td><td><span class="link" onclick="toggleSimEmp(\''+e.id+'\')">usuń z symulacji</span></td></tr>';}).join('')+'</tbody></table>':'<div class="empty">Brak — oznacz pracownika w jego karcie „Uwzględnij w symulatorze”.</div>')+'</div>'+
+  '<div class="panel"><h3>Zaznaczone koszty / abonamenty do redukcji</h3>'+(selCosts.length?costsTable(selCosts):'<div class="empty">Brak — oznacz koszt jako „Uwzględnij w symulatorze” w formularzu kosztu.</div>')+'</div>'+
+  (selContracts.length?'<div class="panel"><h3>Zaznaczone umowy do wypowiedzenia</h3>'+selContracts.map(function(c){return '<div>'+esc(c.name)+' — '+fmtMoney(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.</div>';}).join('')+'</div>':'')+
+  (selFin.length?'<div class="panel"><h3>Zaznaczone leasingi / kredyty do zakończenia</h3>'+selFin.map(function(f){return '<div>'+esc(f.lender)+' — '+fmtMoney(f.monthlyPayment)+'/mies.</div>';}).join('')+'</div>':'')+
+  '<div class="panel"><h3>Wszystkie pozycje — szybkie zaznaczanie</h3><div class="section-title" style="margin-top:0">Pracownicy</div><table><tbody>'+
+  STATE.employees.map(function(e){return '<tr><td><label><input type="checkbox" style="width:auto" '+(e.excludeFromSimulation?'checked':'')+' onchange="toggleSimEmp(\''+e.id+'\')"> '+esc(empName(e))+'</label></td><td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'</td></tr>';}).join('')+
+  '</tbody></table><div class="section-title">Koszty</div><table><tbody>'+
+  STATE.costs.map(function(c){return '<tr><td><label><input type="checkbox" style="width:auto" '+(c.excludeFromSimulation?'checked':'')+' onchange="toggleSimCost(\''+c.id+'\')"> '+esc(c.name)+'</label></td><td class="right">'+fmtMoney(monthlyEquivalent(c))+'</td></tr>';}).join('')+
+  '</tbody></table></div>';
+}
+function toggleSimEmp(id){
+  var e = byId(STATE.employees,id); if(!e) return;
+  var obj = Object.assign({}, e, {excludeFromSimulation: !e.excludeFromSimulation});
+  afterMutation(apiCall('PUT','/api/employees/'+id, obj)).catch(function(e2){ alert('Nie udało się zaktualizować: '+e2.message); });
+}
+function toggleSimCost(id){
+  var c = byId(STATE.costs,id); if(!c) return;
+  var obj = Object.assign({}, c, {excludeFromSimulation: !c.excludeFromSimulation});
+  afterMutation(apiCall('PUT','/api/costs/'+id, obj)).catch(function(e2){ alert('Nie udało się zaktualizować: '+e2.message); });
+}
+
+/* ============================= DOCUMENTS ============================= */
+function viewDocuments(){
+  return '<h2 class="page-title">Dokumenty</h2><div class="page-sub">'+STATE.documents.length+' dokumentów (linki)</div>'+
+  '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'documents\')">+ Dodaj dokument</button></div>'+
+  '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Rodzaj</th><th>Data</th><th>Link</th><th>Opis</th><th></th></tr></thead><tbody>'+
+  (STATE.documents.length?STATE.documents.map(function(d){
+    return '<tr><td>'+esc(d.name)+'</td><td>'+esc(d.docType||'—')+'</td><td>'+fmtDate(d.date)+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank" rel="noopener">otwórz</a>':'—')+'</td><td>'+esc(d.description||'')+'</td><td><span class="link" onclick="openForm(\'documents\',\''+d.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="6" class="empty">Brak dokumentów. Docelowo dokumenty będą przechowywane w SharePoint / Microsoft 365.</td></tr>')+
+  '</tbody></table></div>';
+}
+function documentForm(d){
+  d = d || {name:'',link:'',docType:'',date:todayISO(),description:''};
+  return '<button class="close-x" onclick="closeModal()">✕</button><h3>'+(d.id?'Edytuj dokument':'Nowy dokument')+'</h3>'+
+  '<form onsubmit="return saveDocument(event,\''+(d.id||'')+'\')">'+
+  '<label>Nazwa dokumentu</label><input name="name" value="'+esc(d.name)+'" required>'+
+  '<label>Link (np. SharePoint / OneDrive)</label><input name="link" value="'+esc(d.link)+'">'+
+  '<div class="form-row2"><div><label>Rodzaj</label><input name="docType" value="'+esc(d.docType)+'"></div><div><label>Data</label><input type="date" name="date" value="'+esc(d.date)+'"></div></div>'+
+  '<label>Opis</label><textarea name="description">'+esc(d.description)+'</textarea>'+
+  '<div class="modal-actions">'+(d.id?'<button type="button" class="btn btn-danger" onclick="deleteEntity(\'documents\',\''+d.id+'\',\''+esc(d.name)+'\');closeModal();">Usuń</button>':'')+'<button type="button" class="btn" onclick="closeModal()">Anuluj</button><button type="submit" class="btn btn-primary">Zapisz</button></div>'+
+  '</form>';
+}
+function saveDocument(ev,id){
+  ev.preventDefault(); var f=new FormData(ev.target);
+  var obj = {name:f.get('name'),link:f.get('link'),docType:f.get('docType'),date:f.get('date'),description:f.get('description'),externalSource:'',externalId:'',sharePointUrl:'',documentUrl:f.get('link')};
+  var url = id? '/api/documents/'+id : '/api/documents';
+  afterMutation(apiCall(id?'PUT':'POST', url, obj)).then(closeModal)
+    .catch(function(e){ alert('Nie udało się zapisać dokumentu: '+e.message); });
+  return false;
+}
+
+/* ============================= SETTINGS ============================= */
+function viewSettings(){
+  ensureBackupsLoaded();
+  var hasDemo = STATE.employees.some(function(e){return e.isDemo;})||STATE.projects.some(function(p){return p.isDemo;})||STATE.costs.some(function(c){return c.isDemo;})||STATE.vendors.some(function(v){return v.isDemo;});
+  return '<h2 class="page-title">Ustawienia / słowniki</h2>'+
+  '<div class="panel"><h3>Gdzie przechowywane są dane</h3><div class="muted">Dane FFP Cost Control są zapisywane WYŁĄCZNIE w bazie PostgreSQL (przez Prisma ORM i API tej aplikacji) i widoczne dla każdego, kto otworzy tę aplikację — niezależnie od urządzenia i przeglądarki. Status ostatniego zapisu widać w pasku górnym. Pełne szczegóły (gdzie fizycznie stoi baza, jak wygląda backup, jak wdrożyć aplikację ponownie) znajdują się w pliku README repozytorium.</div>'+
+  '<div class="section-title">Ręczna kopia zapasowa (JSON) — dodatkowe zabezpieczenie</div>'+
+  '<button class="btn btn-sm" onclick="exportBackupJson()">Pobierz kopię zapasową (.json)</button> '+
+  '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
+  '</div>'+
+  '<div class="panel"><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3>'+
+  '<div class="muted">System sam zapisuje pełny stan danych co kilka godzin. Poniżej lista ostatnich punktów — możesz cofnąć się do dowolnego z nich jednym kliknięciem, albo pobrać go jako plik.</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
+  '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
+  '</div>'+
+  '<div class="grid2">'+
+  '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
+  '<div class="panel"><h3>Centra kosztów</h3>'+dictList('costCenters')+'</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Waluta domyślna</h3>'+selectHtml('currency',['PLN','EUR','USD'],STATE.currency)+' <button class="btn btn-sm" onclick="setCurrency()">Zapisz</button></div>'+
+  '<div class="panel"><h3>Dane demonstracyjne</h3><div class="muted">Aplikacja zawiera kilka przykładowych rekordów oznaczonych jako DEMO, ułatwiających sprawdzenie działania.</div>'+
+  (hasDemo?'<button class="btn btn-danger" style="margin-top:10px" onclick="removeDemoData()">Usuń wszystkie dane DEMO</button>':'<div class="muted" style="margin-top:8px">Brak danych DEMO w systemie.</div>')+'</div>'+
+  '<div class="panel"><h3>Dziennik zmian (audyt)</h3><div class="muted">Kto i kiedy tworzył, edytował lub usuwał dane w systemie — login odczytywany z logowania (Kamil / Jerzy / Grzegorz).</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="ensureChangelogLoaded(true)">Odśwież</button></div>'+
+  '<div id="changelog-list">'+renderChangelogList()+'</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Integracje (przygotowane na przyszłość)</h3><div class="muted">Microsoft Entra ID (logowanie firmowe), SharePoint, OneDrive, Outlook — pola techniczne (externalSource, externalId, sharePointUrl, documentUrl) są już przygotowane w modelu danych (tabela Document). Integracja zostanie wdrożona w kolejnym etapie.</div></div>';
+}
+var CHANGELOG_LIST = null;
+function ensureChangelogLoaded(force){
+  if(CHANGELOG_LIST!==null && !force) return;
+  CHANGELOG_LIST = 'loading';
+  fetch('/api/changelog?limit=200').then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){ CHANGELOG_LIST = data.entries||[]; if(currentTab==='settings'){ var el=document.getElementById('changelog-list'); if(el) el.innerHTML = renderChangelogList(); } })
+    .catch(function(){ CHANGELOG_LIST = []; if(currentTab==='settings'){ var el=document.getElementById('changelog-list'); if(el) el.innerHTML = renderChangelogList(); } });
+}
+function renderChangelogList(){
+  if(CHANGELOG_LIST===null){ ensureChangelogLoaded(); return '<div class="muted">Wczytywanie…</div>'; }
+  if(CHANGELOG_LIST==='loading') return '<div class="muted">Wczytywanie…</div>';
+  if(!CHANGELOG_LIST.length) return '<div class="empty">Brak wpisów w dzienniku zmian.</div>';
+  var actionLabel = {create:'utworzenie',update:'edycja',delete:'usunięcie'};
+  return '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Użytkownik</th><th>Obiekt</th><th>Akcja</th><th>Opis</th></tr></thead><tbody>'+
+    CHANGELOG_LIST.map(function(e){
+      return '<tr><td>'+fmtBackupDate(e.createdAt)+'</td><td>'+esc(e.user)+'</td><td>'+esc(e.entity)+'</td><td>'+esc(actionLabel[e.action]||e.action)+'</td><td>'+esc(e.summary||'—')+'</td></tr>';
+    }).join('')+
+  '</tbody></table></div>';
+}
+function dictList(key){
+  return '<div id="dict-'+key+'">'+STATE[key].map(function(v,i){
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px"><span style="flex:1">'+esc(v)+'</span><span class="link" onclick="removeDictItem(\''+key+'\','+i+')">usuń</span></div>';
+  }).join('')+'</div><div style="display:flex;gap:6px;margin-top:8px"><input id="new-'+key+'" placeholder="Nowa pozycja"><button class="btn btn-sm" onclick="addDictItem(\''+key+'\')">Dodaj</button></div>';
+}
+function addDictItem(key){
+  var el = document.getElementById('new-'+key); var v = el.value.trim();
+  if(!v) return;
+  var newList = STATE[key].concat([v]);
+  afterMutation(apiCall('PUT','/api/settings',{key:key,value:newList})).then(function(){ el.value=''; })
+    .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function removeDictItem(key,i){
+  var newList = STATE[key].slice(); newList.splice(i,1);
+  afterMutation(apiCall('PUT','/api/settings',{key:key,value:newList})).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function setCurrency(){
+  var sel = document.querySelector('#content select[name=currency]');
+  afterMutation(apiCall('PUT','/api/settings',{key:'currency',value:sel.value})).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function removeDemoData(){
+  if(!confirm('Usunąć wszystkie dane DEMO z aplikacji?')) return;
+  afterMutation(apiCall('DELETE','/api/demo')).catch(function(e){ alert('Nie udało się usunąć danych DEMO: '+e.message); });
+}
+function exportBackupJson(){
+  var json = JSON.stringify(STATE, null, 2);
+  downloadTextFile('ffp-cost-control-backup-'+todayISO()+'.json', json, 'application/json');
+}
+function importBackupJsonFile(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var data;
+    try{
+      data = JSON.parse(reader.result);
+      if(!data || typeof data!=='object') throw new Error('bad format');
+    }catch(e){ alert('Nieprawidłowy plik kopii zapasowej.'); input.value=''; return; }
+    if(!confirm('Zastąpić WSZYSTKIE obecne dane w bazie PostgreSQL danymi z pliku kopii zapasowej? Tej operacji nie można cofnąć.')){ input.value=''; return; }
+    afterMutation(apiCall('POST','/api/restore', data))
+      .then(function(){ alert('Przywrócono dane z kopii zapasowej.'); })
+      .catch(function(e){ alert('Nie udało się przywrócić kopii: '+e.message); });
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+/* --------- Automatyczne kopie zapasowe / punkty przywracania --------- */
+var BACKUPS_LIST = null; // null = jeszcze nie wczytano, 'loading' = w trakcie, [] / [...] = gotowe
+
+function ensureBackupsLoaded(force){
+  if(BACKUPS_LIST!==null && !force) return;
+  BACKUPS_LIST = 'loading';
+  fetch('/api/admin/backups').then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(list){ BACKUPS_LIST = list; if(currentTab==='settings') render(); })
+    .catch(function(){ BACKUPS_LIST = []; if(currentTab==='settings') render(); });
+}
+function fmtBackupDate(iso){
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  function p2(n){ return (n<10?'0':'')+n; }
+  return p2(d.getDate())+'.'+p2(d.getMonth()+1)+'.'+d.getFullYear()+' '+p2(d.getHours())+':'+p2(d.getMinutes());
+}
+function renderBackupsList(){
+  if(BACKUPS_LIST===null || BACKUPS_LIST==='loading'){
+    return '<div class="muted">Wczytywanie listy kopii…</div>';
+  }
+  if(!BACKUPS_LIST.length){
+    return '<div class="muted">Brak zapisanych kopii — pierwsza automatyczna kopia pojawi się w ciągu kilku godzin, albo utwórz ją teraz przyciskiem powyżej.</div>';
+  }
+  return '<table><thead><tr><th>Data i godzina</th><th>Typ</th><th>Pracownicy</th><th>Projekty</th><th>Koszty</th><th>Dostawcy</th><th></th></tr></thead><tbody>'+
+    BACKUPS_LIST.map(function(b){
+      return '<tr><td>'+fmtBackupDate(b.createdAt)+'</td>'+
+        '<td>'+(b.kind==='manual'?'ręczna':'automatyczna')+'</td>'+
+        '<td>'+b.counts.employees+'</td><td>'+b.counts.projects+'</td><td>'+b.counts.costs+'</td><td>'+b.counts.vendors+'</td>'+
+        '<td style="white-space:nowrap"><span class="link" onclick="downloadBackupPoint(\''+b.id+'\')">pobierz</span> · <span class="link" style="color:#b91c1c" onclick="restoreBackupPoint(\''+b.id+'\')">przywróć</span></td></tr>';
+    }).join('')+
+    '</tbody></table>';
+}
+function createManualBackupNow(){
+  apiCall('POST','/api/admin/backups').then(function(){ ensureBackupsLoaded(true); alert('Utworzono kopię zapasową.'); })
+    .catch(function(e){ alert('Nie udało się utworzyć kopii: '+e.message); });
+}
+function downloadBackupPoint(id){
+  fetch('/api/admin/backups/'+id).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){
+    downloadTextFile('ffp-cost-control-backup-'+id+'.json', JSON.stringify(data,null,2), 'application/json');
+  }).catch(function(e){ alert('Nie udało się pobrać kopii: '+e.message); });
+}
+function restoreBackupPoint(id){
+  if(!confirm('Przywrócić dane do tego punktu? WSZYSTKIE obecne dane w bazie zostaną zastąpione danymi z tej kopii. Tej operacji nie można cofnąć.')) return;
+  afterMutation(apiCall('POST','/api/admin/backups/'+id+'/restore'))
+    .then(function(){ alert('Przywrócono dane do wybranego punktu.'); })
+    .catch(function(e){ alert('Nie udało się przywrócić kopii: '+e.message); });
+}
+
+/* ============================= FORM DISPATCH ============================= */
+var ENTITY_STATE_KEY = {employees:'employees',projects:'projects',costs:'costs',contracts:'contracts',financing:'financings',vendors:'vendors',documents:'documents'};
+function openForm(entity,id,defaults){
+  var stateKey = ENTITY_STATE_KEY[entity]||entity;
+  var item = id?byId(STATE[stateKey],id):null;
+  var html;
+  if(entity==='employees') html = employeeForm(item);
+  else if(entity==='projects') html = projectForm(item);
+  else if(entity==='costs') html = costForm(item,defaults);
+  else if(entity==='contracts') html = contractForm(item);
+  else if(entity==='financing') html = financingForm(item);
+  else if(entity==='vendors') html = vendorForm(item);
+  else if(entity==='documents') html = documentForm(item);
+  else return;
+  openModalHtml(html);
+  if(entity==='employees') renderAllocRows();
+
+  CURRENT_DRAFT_KEY = 'ffp_draft_'+entity+'_'+(id||'new');
+  var draft = draftLoad(CURRENT_DRAFT_KEY);
+  if(draft){
+    var savedDate = new Date(draft.savedAt);
+    var p2=function(n){return (n<10?'0':'')+n;};
+    var whenStr = p2(savedDate.getDate())+'.'+p2(savedDate.getMonth()+1)+'.'+savedDate.getFullYear()+' '+p2(savedDate.getHours())+':'+p2(savedDate.getMinutes());
+    if(confirm('Znaleziono niezapisaną wersję roboczą tego formularza z '+whenStr+' (np. po nieoczekiwanym zamknięciu karty). Przywrócić ją?')){
+      var f = document.querySelector('#modal form');
+      if(f){
+        Object.keys(draft.data).forEach(function(k){
+          var el = f.elements.namedItem(k);
+          if(!el) return;
+          if(el.type==='checkbox'){ el.checked = (draft.data[k]==='on'); }
+          else { el.value = draft.data[k]; }
+        });
+      }
+    } else {
+      draftClear(CURRENT_DRAFT_KEY);
+    }
+  }
+}
+
+/* ============================= INIT ============================= */
+document.getElementById('modal-overlay').addEventListener('input', draftSave);
+document.getElementById('modal-overlay').addEventListener('change', draftSave);
+async function boot(){
+  setSaveStatus('loading');
+  try{
+    await refreshState();
+    BOOTED = true;
+    render();
+    setSaveStatus('idle');
+  }catch(e){
+    document.getElementById('content').innerHTML = '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">Nie udało się połączyć z bazą danych</h3><div>'+esc(e.message)+'</div><button class="btn" style="margin-top:10px" onclick="boot()">Spróbuj ponownie</button></div>';
+    setSaveStatus('error','Brak połączenia z bazą');
+  }
+}
+boot();
+</script>
