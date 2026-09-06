@@ -111,11 +111,15 @@ tr:hover td{background:var(--accent-bg);}
 .badge-count{background:var(--accent);color:#fff;border-radius:10px;font-size:10px;padding:0 6px;margin-left:auto;}
 .progress-bar{height:8px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--border);}
 .progress-bar>div{height:100%;background:var(--accent);}
-.viz-wrap{width:100%;overflow-x:auto;}
-.viz-wrap svg{display:block;}
-.viz-legend{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px;font-size:12px;color:var(--muted);}
-.viz-legend-item{display:flex;align-items:center;gap:6px;}
-.viz-legend-swatch{width:10px;height:10px;border-radius:2px;flex:none;}
+.viz-wrap{width:100%;overflow-x:auto;display:flex;align-items:center;gap:32px;flex-wrap:wrap;padding:6px 2px;}
+.viz-wrap svg{display:block;flex:none;filter:drop-shadow(0 1px 2px rgba(20,30,40,.06));}
+.viz-legend{display:flex;flex-direction:column;gap:3px;margin:0;font-size:13px;color:var(--text);flex:1 1 240px;min-width:220px;}
+.viz-legend-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;transition:background .15s ease;}
+.viz-legend-item:hover{background:var(--accent-bg);}
+.viz-legend-swatch{width:11px;height:11px;border-radius:50%;flex:none;box-shadow:0 0 0 3px color-mix(in srgb, var(--swatch-color, var(--muted)) 16%, transparent);}
+.viz-legend-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.viz-legend-pct{color:var(--muted);font-variant-numeric:tabular-nums;flex:none;}
+.viz-legend-value{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:10px;}
 .viz-axis-label{fill:var(--chart-label);font-size:10.5px;}
 .viz-value-label{fill:var(--text);font-size:10.5px;font-weight:600;}
 .viz-note{margin-top:14px;padding-top:6px;border-top:1px dashed var(--border);}
@@ -333,8 +337,8 @@ function svgStepLine(rows, key, opts){
 // duża liczba (opts.centerValue) z podpisem (opts.centerLabel).
 function svgDonutChart(items, opts){
   opts = opts || {};
-  var size = opts.size || 260;
-  var cx = size/2, cy = size/2, r = size*0.32, strokeW = size*0.16;
+  var size = opts.size || 220;
+  var cx = size/2, cy = size/2, r = size*0.34, strokeW = size*0.135;
   var circumference = 2*Math.PI*r;
   var total = items.reduce(function(s,it){return s+(Number(it.value)||0);},0);
   if(!items.length || total<=0) return '<div class="empty">Brak danych — uzupełnij akcjonariuszy poniżej.</div>';
@@ -345,26 +349,34 @@ function svgDonutChart(items, opts){
   var restCount = sorted.slice(4).length;
   var slices = top.map(function(it,idx){return {label:it.label, value:Number(it.value)||0, color:palette[idx]};});
   if(restCount>0) slices.push({label:'Pozostali ('+restCount+')', value:restSum, color:'var(--chart-other)'});
+  // mała przerwa wizualna między segmentami (miękki, "oddychający" wykres
+  // zamiast twardo stykających się wycinków) — kilka px odjęte z dash,
+  // z minimalnym floorem żeby bardzo małe udziały wciąż były widoczne.
+  var gap = Math.min(4, circumference*0.01);
   var cum = 0;
   var arcs = slices.map(function(s){
     var pct = s.value/total;
-    var dash = pct*circumference;
+    var rawDash = pct*circumference;
+    var dash = Math.max(rawDash-gap, rawDash*0.85);
     var offset = -cum*circumference;
     cum += pct;
-    return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+s.color+'" stroke-width="'+strokeW+'" '+
-      'stroke-dasharray="'+dash+' '+(circumference-dash)+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+cx+' '+cy+')">'+
+    return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+s.color+'" stroke-width="'+strokeW+'" stroke-linecap="round" '+
+      'stroke-dasharray="'+dash+' '+(circumference-dash)+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+cx+' '+cy+')" class="viz-donut-arc">'+
       '<title>'+esc(s.label)+': '+Math.round(s.value).toLocaleString('pl-PL')+' akcji ('+(pct*100).toFixed(1)+'%)</title></circle>';
   }).join('');
   var legend = '<div class="viz-legend">'+slices.map(function(s){
     var pct = total>0? (s.value/total*100):0;
-    return '<div class="viz-legend-item"><span class="viz-legend-swatch" style="background:'+s.color+'"></span>'+esc(s.label)+' — '+pct.toFixed(1)+'% ('+Math.round(s.value).toLocaleString('pl-PL')+' akcji)</div>';
+    return '<div class="viz-legend-item"><span class="viz-legend-swatch" style="background:'+s.color+';--swatch-color:'+s.color+'"></span>'+
+      '<span class="viz-legend-name">'+esc(s.label)+'</span>'+
+      '<span class="viz-legend-pct">'+pct.toFixed(1)+'%</span>'+
+      '<span class="viz-legend-value">'+Math.round(s.value).toLocaleString('pl-PL')+' akcji</span></div>';
   }).join('')+'</div>';
   var centerValue = opts.centerValue!=null? opts.centerValue : Math.round(total).toLocaleString('pl-PL');
   var centerLabel = opts.centerLabel || 'akcji ogółem';
   return '<div class="viz-wrap"><svg viewBox="0 0 '+size+' '+size+'" width="'+size+'" height="'+size+'" role="img" aria-label="wykres kołowy akcjonariatu" style="max-width:100%">'+
     arcs+
-    '<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-size:'+(size*0.09)+'px;font-weight:700;fill:var(--text)">'+centerValue+'</text>'+
-    '<text x="'+cx+'" y="'+(cy+16)+'" text-anchor="middle" class="viz-axis-label">'+esc(centerLabel)+'</text>'+
+    '<text x="'+cx+'" y="'+(cy-3)+'" text-anchor="middle" style="font-size:'+(size*0.1)+'px;font-weight:700;fill:var(--text)">'+centerValue+'</text>'+
+    '<text x="'+cx+'" y="'+(cy+17)+'" text-anchor="middle" class="viz-axis-label">'+esc(centerLabel)+'</text>'+
     '</svg>'+legend+'</div>';
 }
 function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
@@ -743,7 +755,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-06-07 (akcjonariat - dane realne)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-06-08 (wykres akcjonariatu - design)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
