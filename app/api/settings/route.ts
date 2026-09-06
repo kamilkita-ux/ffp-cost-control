@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logChange } from "@/lib/audit";
 
-const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assumptions", "fixedCostSchedule"]);
+const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assumptions", "fixedCostSchedule", "shareholderStructure"]);
 
-// PUT /api/settings  { key: "currency" | "costCategories" | "costCenters" | "assumptions" | "fixedCostSchedule", value: ... }
+// PUT /api/settings  { key: "currency" | "costCategories" | "costCenters" | "assumptions" | "fixedCostSchedule" | "shareholderStructure", value: ... }
 // Proste słowniki (kategorie kosztów, centra kosztów) i ustawienia (waluta)
 // trzymane jako klucz -> wartość JSON — nie potrzebują osobnych tabel.
 // "assumptions" i "fixedCostSchedule" to założenia finansowe i harmonogram
 // kosztów stałych od kontrolera (domyślne wartości: patrz app/api/bootstrap) —
-// edytowalne z modułu "Założenia".
+// edytowalne z modułu "Założenia". "shareholderStructure" to kurs akcji,
+// liczba akcji, wycena aktywów i lista akcjonariuszy — edytowalne z modułu
+// "Akcjonariat".
 export async function PUT(req: Request) {
   const body = await req.json();
   const key = String(body?.key ?? "");
