@@ -1,0 +1,32 @@
+name: CI
+
+# Siatka bezpieczeństwa dla wgrywania plików przez GitHub Web UI (bez
+# automatycznego "git push" z tej sesji) — każdy commit na main jest
+# automatycznie budowany i sprawdzany pod kątem typów. Jeśli coś jest
+# zepsute, będzie to widoczne jako czerwony "X" przy commicie na GitHubie
+# (zakładka "Actions"), zanim ktokolwiek zdąży zauważyć błąd na żywej
+# stronie. Railway i tak wdroży zmianę niezależnie od wyniku tego joba —
+# to tylko wczesne ostrzeżenie, nie blokada.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npx next build
+        env:
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci_placeholder"
