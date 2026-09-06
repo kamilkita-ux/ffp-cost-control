@@ -10,7 +10,7 @@
      (spójny z akcentem aplikacji) do wykresów jednoserowych/wielkości. */
   --chart-seq:#0f6e4f; --chart-seq-2:#eb6834;
   --chart-1:#2a78d6; --chart-2:#eb6834; --chart-3:#1baf7a; --chart-4:#eda100;
-  --chart-grid:#dde3e8; --chart-label:#6b7a87;
+  --chart-grid:#dde3e8; --chart-label:#6b7a87; --chart-other:#8b98a3;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -19,7 +19,7 @@
     --danger:#e5766a; --danger-bg:#3a1f1c; --warn:#e0b463; --warn-bg:#3a2f14; --ok:#4fce9a;
     --chart-seq:#2fae7f; --chart-seq-2:#d95926;
     --chart-1:#3987e5; --chart-2:#d95926; --chart-3:#199e70; --chart-4:#c98500;
-    --chart-grid:#2a343c; --chart-label:#93a1ac;
+    --chart-grid:#2a343c; --chart-label:#93a1ac; --chart-other:#6b7783;
   }
 }
 :root[data-theme="dark"]{
@@ -28,7 +28,7 @@
   --danger:#e5766a; --danger-bg:#3a1f1c; --warn:#e0b463; --warn-bg:#3a2f14; --ok:#4fce9a;
   --chart-seq:#2fae7f; --chart-seq-2:#d95926;
   --chart-1:#3987e5; --chart-2:#d95926; --chart-3:#199e70; --chart-4:#c98500;
-  --chart-grid:#2a343c; --chart-label:#93a1ac;
+  --chart-grid:#2a343c; --chart-label:#93a1ac; --chart-other:#6b7783;
 }
 *{box-sizing:border-box;}
 html,body{height:100%;}
@@ -326,6 +326,46 @@ function svgStepLine(rows, key, opts){
     '<circle cx="'+xAt(n-1)+'" cy="'+yAt(Number(rows[n-1][key])||0)+'" r="3" fill="var(--chart-seq)"></circle>';
   return '<div class="viz-wrap"><svg viewBox="0 0 '+width+' '+height+'" width="100%" height="'+height+'" role="img" aria-label="wykres liniowy">'+gridLines+
     '<path d="'+path+'" fill="none" stroke="var(--chart-seq)" stroke-width="2"></path>'+endpoints+stepAnnotation+xlabels+'</svg></div>';
+}
+// Wykres kołowy (donut) — struktura akcjonariatu. Maks. 4 kategorie z palety
+// kategorialnej (--chart-1..4), reszta zwijana w szarą pozycję "Pozostali"
+// (nigdy nie generujemy 5. koloru "na oko" — patrz skill dataviz). W środku
+// duża liczba (opts.centerValue) z podpisem (opts.centerLabel).
+function svgDonutChart(items, opts){
+  opts = opts || {};
+  var size = opts.size || 260;
+  var cx = size/2, cy = size/2, r = size*0.32, strokeW = size*0.16;
+  var circumference = 2*Math.PI*r;
+  var total = items.reduce(function(s,it){return s+(Number(it.value)||0);},0);
+  if(!items.length || total<=0) return '<div class="empty">Brak danych — uzupełnij akcjonariuszy poniżej.</div>';
+  var sorted = items.slice().sort(function(a,b){return (Number(b.value)||0)-(Number(a.value)||0);});
+  var palette = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)'];
+  var top = sorted.slice(0,4);
+  var restSum = sorted.slice(4).reduce(function(s,it){return s+(Number(it.value)||0);},0);
+  var restCount = sorted.slice(4).length;
+  var slices = top.map(function(it,idx){return {label:it.label, value:Number(it.value)||0, color:palette[idx]};});
+  if(restCount>0) slices.push({label:'Pozostali ('+restCount+')', value:restSum, color:'var(--chart-other)'});
+  var cum = 0;
+  var arcs = slices.map(function(s){
+    var pct = s.value/total;
+    var dash = pct*circumference;
+    var offset = -cum*circumference;
+    cum += pct;
+    return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+s.color+'" stroke-width="'+strokeW+'" '+
+      'stroke-dasharray="'+dash+' '+(circumference-dash)+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 '+cx+' '+cy+')">'+
+      '<title>'+esc(s.label)+': '+Math.round(s.value).toLocaleString('pl-PL')+' akcji ('+(pct*100).toFixed(1)+'%)</title></circle>';
+  }).join('');
+  var legend = '<div class="viz-legend">'+slices.map(function(s){
+    var pct = total>0? (s.value/total*100):0;
+    return '<div class="viz-legend-item"><span class="viz-legend-swatch" style="background:'+s.color+'"></span>'+esc(s.label)+' — '+pct.toFixed(1)+'% ('+Math.round(s.value).toLocaleString('pl-PL')+' akcji)</div>';
+  }).join('')+'</div>';
+  var centerValue = opts.centerValue!=null? opts.centerValue : Math.round(total).toLocaleString('pl-PL');
+  var centerLabel = opts.centerLabel || 'akcji ogółem';
+  return '<div class="viz-wrap"><svg viewBox="0 0 '+size+' '+size+'" width="'+size+'" height="'+size+'" role="img" aria-label="wykres kołowy akcjonariatu" style="max-width:100%">'+
+    arcs+
+    '<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" style="font-size:'+(size*0.09)+'px;font-weight:700;fill:var(--text)">'+centerValue+'</text>'+
+    '<text x="'+cx+'" y="'+(cy+16)+'" text-anchor="middle" class="viz-axis-label">'+esc(centerLabel)+'</text>'+
+    '</svg>'+legend+'</div>';
 }
 function byId(arr,id){ return arr.find(function(x){return x.id===id;}); }
 function deptName(id){ var d=byId(STATE.departments,id); return d?d.name:'—'; }
@@ -698,11 +738,12 @@ var NAV = [
   {key:'analysis',label:'Analiza kosztów',icon:'📈'},
   {key:'charts',label:'Wykresy',icon:'📉'},
   {key:'assumptions',label:'Założenia',icon:'🧮'},
+  {key:'shareholders',label:'Akcjonariat',icon:'🥧'},
   {key:'simulator',label:'Symulator oszczędności',icon:'✂️'},
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-06-05 (harmonogram przychodow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-06-07 (akcjonariat - dane realne)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -843,6 +884,7 @@ function render(){
     case 'analysis': c.innerHTML = viewAnalysis(); break;
     case 'charts': c.innerHTML = viewCharts(); break;
     case 'assumptions': c.innerHTML = viewAssumptions(); break;
+    case 'shareholders': c.innerHTML = viewShareholders(); renderShareholderRows(); break;
     case 'simulator': c.innerHTML = viewSimulator(); break;
     case 'documents': c.innerHTML = viewDocuments(); break;
     case 'settings': c.innerHTML = viewSettings(); break;
@@ -913,6 +955,25 @@ function viewDashboard(){
         kpi('① Zysk dziś', fmtMoney0(m.monthlyProfit)+'/mies.', true, m.monthlyProfit<0)+
         kpi('② Przychód docelowy po wybudowaniu wszystkich projektów (założenie z kart projektów)', fmtMoney0(targetRevenue)+'/mies.')+
         (future12mFixed>0? kpi('③ Koszty stałe za 12 mies. — estymacja kontrolera (referencyjne, Założenia)', fmtMoney0(future12mFixed)+'/mies.') : '')+
+      '</div>'+
+    '</div>';
+  })()+
+  (function(){
+    // Wycena spółki (na prośbę Kamila, 2026-09-06) — kapitalizacja giełdowa
+    // obok wyceny księgowej aktywów, żeby łatwo skorelować wskaźnik C/WK.
+    // Szczegóły i edycja: zakładka "Akcjonariat". Bez danych (kurs/liczba
+    // akcji nieuzupełnione) panel się nie pokazuje, żeby nie sugerować zer.
+    var s = STATE.shareholderStructure;
+    if(!s || (!Number(s.sharePrice) && !Number(s.totalShares) && !Number(s.bookValueAssets))) return '';
+    var marketCap = (Number(s.sharePrice)||0)*(Number(s.totalShares)||0);
+    var pbv = (Number(s.bookValueAssets)||0)>0? marketCap/Number(s.bookValueAssets) : null;
+    return '<div class="panel">'+
+      '<h3>Wycena spółki</h3>'+
+      '<div class="muted" style="margin-bottom:10px">Kurs: '+fmtMoney0(Number(s.sharePrice)||0)+'/akcję • '+Math.round(Number(s.totalShares)||0).toLocaleString('pl-PL')+' akcji ogółem'+(s.asOfLabel?' • stan na '+esc(s.asOfLabel):'')+'. Szczegóły i akcjonariat: zakładka „Akcjonariat".</div>'+
+      '<div class="kpi-grid">'+
+        kpi('Kapitalizacja giełdowa', fmtMoney0(marketCap), true)+
+        kpi('Wycena księgowa aktywów', fmtMoney0(Number(s.bookValueAssets)||0))+
+        kpi('Wskaźnik C/WK', pbv!=null? pbv.toFixed(2)+'x' : '—')+
       '</div>'+
     '</div>';
   })()+
@@ -1679,6 +1740,83 @@ function saveAssumptions(ev){
   afterMutation(apiCall('PUT','/api/settings',{key:'assumptions',value:updated}))
     .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
   return false;
+}
+
+/* ============================= AKCJONARIAT ============================= */
+// Struktura akcjonariatu, kurs akcji i wycena aktywów — na prośbę Kamila
+// (2026-09-06). WAŻNE: wartości domyślne to zera/pusta lista — nikt jeszcze
+// nie podał realnego kursu, liczby akcji ani listy akcjonariuszy, więc
+// pokazujemy to wprost jako "do uzupełnienia", zamiast zgadywać liczby.
+// Kapitalizacja giełdowa i wskaźnik C/WK (cena/wartość księgowa) liczone są
+// tu w interfejsie z bieżących pól (kurs × liczba akcji), nie trzymane
+// osobno w bazie — żeby nie mogły się rozjechać z tym, co widać w formularzu.
+function viewShareholders(){
+  var s = STATE.shareholderStructure || {sharePrice:0, totalShares:0, bookValueAssets:0, shareholders:[], asOfLabel:''};
+  window.__shareholderDraft = (s.shareholders||[]).map(function(h){return {name:h.name||'', shares:Number(h.shares)||0};});
+  var marketCap = (Number(s.sharePrice)||0) * (Number(s.totalShares)||0);
+  var pbv = (Number(s.bookValueAssets)||0)>0? marketCap/Number(s.bookValueAssets) : null;
+  return '<h2 class="page-title">Akcjonariat</h2>'+
+  '<div class="page-sub">Farmy Fotowoltaiki Polska S.A. • NewConnect'+(s.asOfLabel? ' • stan na '+esc(s.asOfLabel):'')+'</div>'+
+  (!s.totalShares && !s.sharePrice && !(s.shareholders||[]).length?
+    '<div class="panel" style="border-color:var(--warn)"><div class="muted">Brak jeszcze danych — uzupełnij kurs akcji, liczbę akcji i akcjonariuszy poniżej.</div></div>' : '')+
+  '<div class="panel"><h3>Wycena i kapitalizacja</h3>'+
+    '<form id="shareholder-value-form" onsubmit="return saveShareholderValue(event)">'+
+    '<div class="form-row2"><div><label>Kurs akcji (zł)</label><input type="number" step="0.01" min="0" name="sharePrice" value="'+(s.sharePrice||0)+'"></div>'+
+    '<div><label>Liczba akcji ogółem</label><input type="number" step="1" min="0" name="totalShares" value="'+(s.totalShares||0)+'"></div></div>'+
+    '<div class="form-row2"><div><label>Wycena księgowa aktywów spółki (zł)</label><input type="number" step="0.01" min="0" name="bookValueAssets" value="'+(s.bookValueAssets||0)+'"></div>'+
+    '<div><label>Stan na (data/opis)</label><input type="text" name="asOfLabel" value="'+esc(s.asOfLabel||'')+'" placeholder="np. 06.09.2026"></div></div>'+
+    '<button class="btn btn-primary" type="submit" style="margin-top:10px">Zapisz wycenę</button>'+
+    '</form>'+
+    '<div class="kpi-grid" style="margin-top:14px">'+
+      kpi('Kapitalizacja giełdowa', fmtMoney0(marketCap), true)+
+      kpi('Wycena księgowa aktywów', fmtMoney0(Number(s.bookValueAssets)||0))+
+      kpi('Wskaźnik C/WK (kapitalizacja / wycena aktywów)', pbv!=null? pbv.toFixed(2)+'x' : '—')+
+    '</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Struktura akcjonariatu</h3>'+
+    svgDonutChart((s.shareholders||[]).map(function(h){return {label:h.name||'—', value:Number(h.shares)||0};}), {centerValue:Math.round(Number(s.totalShares)||0).toLocaleString('pl-PL'), centerLabel:'akcji ogółem'})+
+  '</div>'+
+  '<div class="panel"><h3>Akcjonariusze</h3>'+
+    '<div id="shareholder-rows"></div>'+
+    '<button type="button" class="btn btn-sm" onclick="addShareholderRow()">+ dodaj akcjonariusza</button> '+
+    '<button type="button" class="btn btn-primary btn-sm" onclick="saveShareholderList()">Zapisz akcjonariuszy</button>'+
+  '</div>';
+}
+function renderShareholderRows(){
+  var el = document.getElementById('shareholder-rows'); if(!el) return;
+  var total = window.__shareholderDraft.reduce(function(s,h){return s+(Number(h.shares)||0);},0);
+  el.innerHTML = (window.__shareholderDraft.length? '' : '<div class="empty">Brak akcjonariuszy — dodaj pierwszego.</div>')+
+    window.__shareholderDraft.map(function(h,i){
+      var pct = total>0? (Number(h.shares)||0)/total*100 : 0;
+      return '<div class="form-row2" style="align-items:center;margin-bottom:6px">'+
+        '<input type="text" placeholder="Nazwa akcjonariusza" value="'+esc(h.name)+'" onchange="window.__shareholderDraft['+i+'].name=this.value">'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+        '<input type="number" min="0" step="1" placeholder="Liczba akcji" value="'+h.shares+'" onchange="window.__shareholderDraft['+i+'].shares=Number(this.value)||0;renderShareholderRows()">'+
+        '<span class="muted" style="min-width:52px">'+pct.toFixed(1)+'%</span>'+
+        '<button type="button" class="btn btn-sm btn-icon" onclick="removeShareholderRow('+i+')">✕</button>'+
+        '</div></div>';
+    }).join('');
+}
+function addShareholderRow(){ window.__shareholderDraft.push({name:'',shares:0}); renderShareholderRows(); }
+function removeShareholderRow(i){ window.__shareholderDraft.splice(i,1); renderShareholderRows(); }
+function saveShareholderValue(ev){
+  ev.preventDefault();
+  var fd = new FormData(ev.target);
+  function num(name){ var v=fd.get(name); return v===null||v===''?0:Number(v); }
+  var updated = Object.assign({}, STATE.shareholderStructure||{}, {
+    sharePrice: num('sharePrice'), totalShares: num('totalShares'), bookValueAssets: num('bookValueAssets'),
+    asOfLabel: fd.get('asOfLabel')||'', shareholders: (STATE.shareholderStructure&&STATE.shareholderStructure.shareholders)||[]
+  });
+  afterMutation(apiCall('PUT','/api/settings',{key:'shareholderStructure',value:updated}))
+    .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+  return false;
+}
+function saveShareholderList(){
+  var updated = Object.assign({}, STATE.shareholderStructure||{}, {
+    shareholders: window.__shareholderDraft.filter(function(h){return h.name;})
+  });
+  afterMutation(apiCall('PUT','/api/settings',{key:'shareholderStructure',value:updated}))
+    .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
 }
 
 /* ============================= SIMULATOR ============================= */
