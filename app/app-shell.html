@@ -535,10 +535,54 @@ function periodMetrics(key,customFrom,customTo){
     var d = new Date(c.costDate+'T00:00:00');
     return d>=r.from && d<=r.to;
   }).reduce(function(s,c){return s+(Number(c.grossAmount)||Number(c.netAmount)||0);},0);
-  var revenue = m.monthlyRevenue*months;
-  var recurringCosts = m.totalBurn*months;
+
+  // Projekcja miesiąc-po-miesiącu: tam, gdzie harmonogram kontrolera
+  // (Założenia -> revenueMonthlySchedule / monthlySchedule, arkusz
+  // "CF Farmy.xlsx") obejmuje dany miesiąc, używamy jego wartości (żeby
+  // odzwierciedlić planowane uruchomienia kolejnych farm — przychód rośnie
+  // skokowo, koszty rosną tylko nieznacznie, zgodnie z założeniami
+  // kontrolera). Poza zakresem harmonogramu (przed dziś lub po grudniu
+  // 2028) — dla miesięcy PRZED zakresem używamy dzisiejszego, bieżącego
+  // run-rate (m.monthlyRevenue/m.totalBurn), a dla miesięcy PO zakresie
+  // powtarzamy jego ostatnią znaną wartość (bez zgadywania dalszego wzrostu).
+  var fc = STATE.fixedCostSchedule || {};
+  var revSchedule = fc.revenueMonthlySchedule || [];
+  var costSchedule = fc.monthlySchedule || [];
+  var revMap = {}, costMap = {};
+  revSchedule.forEach(function(e){ revMap[e.period] = Number(e.suma)||0; });
+  costSchedule.forEach(function(e){ costMap[e.period] = Number(e.suma)||0; });
+  var revKeys = Object.keys(revMap).sort();
+  var costKeys = Object.keys(costMap).sort();
+  var usedSchedule = revKeys.length>0;
+  function scheduledOrFallback(map, keys, periodKey, fallbackFlat){
+    if(map.hasOwnProperty(periodKey)) return map[periodKey];
+    if(!keys.length) return fallbackFlat;
+    if(periodKey < keys[0]) return fallbackFlat; // przed zakresem harmonogramu — dzisiejszy run-rate
+    return map[keys[keys.length-1]]; // po zakresie harmonogramu — powtórz ostatnią znaną wartość
+  }
+  var revenue = 0, recurringCosts = 0;
+  if(usedSchedule){
+    var cur = new Date(r.from.getFullYear(), r.from.getMonth(), 1);
+    var lastMonthStart = new Date(r.to.getFullYear(), r.to.getMonth(), 1);
+    while(cur<=lastMonthStart){
+      var monthStart = new Date(cur.getFullYear(),cur.getMonth(),1);
+      var monthEnd = new Date(cur.getFullYear(),cur.getMonth()+1,0);
+      var overlapStart = monthStart>r.from? monthStart : r.from;
+      var overlapEnd = monthEnd<r.to? monthEnd : r.to;
+      var daysInMonth = Math.round((monthEnd-monthStart)/86400000)+1;
+      var overlapDays = Math.max(0, Math.round((overlapEnd-overlapStart)/86400000)+1);
+      var frac = daysInMonth>0? overlapDays/daysInMonth : 0;
+      var periodKey = cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
+      revenue += scheduledOrFallback(revMap, revKeys, periodKey, m.monthlyRevenue)*frac;
+      recurringCosts += scheduledOrFallback(costMap, costKeys, periodKey, m.totalBurn)*frac;
+      cur.setMonth(cur.getMonth()+1);
+    }
+  } else {
+    revenue = m.monthlyRevenue*months;
+    recurringCosts = m.totalBurn*months;
+  }
   var costs = recurringCosts+oneTime;
-  return {from:r.from, to:r.to, months:months, revenue:revenue, recurringCosts:recurringCosts, oneTimeCosts:oneTime, costs:costs, profit:revenue-costs};
+  return {from:r.from, to:r.to, months:months, revenue:revenue, recurringCosts:recurringCosts, oneTimeCosts:oneTime, costs:costs, profit:revenue-costs, usedSchedule:usedSchedule};
 }
 function setDashPeriod(key){
   DASH_PERIOD = key;
@@ -658,7 +702,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-06-04 (trzy stany portfela)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-06-05 (harmonogram przychodow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -841,7 +885,7 @@ function viewDashboard(){
       DASH_PERIODS.map(function(p){ return '<button class="btn btn-sm'+(DASH_PERIOD===p.key?' btn-primary':'')+'" onclick="setDashPeriod(\''+p.key+'\')">'+p.label+'</button>'; }).join('')+
     '</div>'+
     (DASH_PERIOD==='custom'? '<div class="form-row2" style="margin-bottom:10px"><div><label>Od</label><input type="date" id="dash-custom-from" value="'+esc(DASH_CUSTOM_FROM)+'" onchange="setDashCustomRange()"></div><div><label>Do</label><input type="date" id="dash-custom-to" value="'+esc(DASH_CUSTOM_TO)+'" onchange="setDashCustomRange()"></div></div>':'')+
-    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate) + realnie odnotowane koszty jednorazowe z tego okresu. Nie zakłada uruchomienia żadnych nowych projektów w tym czasie (patrz panel „Trzy stany portfela" poniżej dla scenariusza po wybudowaniu). To orientacyjna projekcja, nie gwarancja wyniku.</div>'+
+    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • '+(pm.usedSchedule? 'Projekcja wg harmonogramu założeń kontrolera (Założenia — arkusz CF Farmy.xlsx): przychód i koszty stałe rosną skokowo wraz z planowanym uruchamianiem kolejnych farm, miesiąc po miesiącu do grudnia 2028; poza tym zakresem — bieżący run-rate.' : 'Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate).')+' + realnie odnotowane koszty jednorazowe z tego okresu. To orientacyjna projekcja oparta na założeniach kontrolera co do tempa uruchamiania kolejnych farm, nie gwarancja wyniku.</div>'+
     '<div class="kpi-grid">'+
       kpi('Przychód w okresie (projekcja)', fmtMoney0(pm.revenue), true)+
       kpi('Koszty w okresie (projekcja + jednorazowe)', fmtMoney0(pm.costs), true)+
