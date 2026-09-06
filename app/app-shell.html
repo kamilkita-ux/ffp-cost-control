@@ -658,7 +658,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-05-03 (przychod tylko operacyjne)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-06-04 (trzy stany portfela)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -841,7 +841,7 @@ function viewDashboard(){
       DASH_PERIODS.map(function(p){ return '<button class="btn btn-sm'+(DASH_PERIOD===p.key?' btn-primary':'')+'" onclick="setDashPeriod(\''+p.key+'\')">'+p.label+'</button>'; }).join('')+
     '</div>'+
     (DASH_PERIOD==='custom'? '<div class="form-row2" style="margin-bottom:10px"><div><label>Od</label><input type="date" id="dash-custom-from" value="'+esc(DASH_CUSTOM_FROM)+'" onchange="setDashCustomRange()"></div><div><label>Do</label><input type="date" id="dash-custom-to" value="'+esc(DASH_CUSTOM_TO)+'" onchange="setDashCustomRange()"></div></div>':'')+
-    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate) + realnie odnotowane koszty jednorazowe z tego okresu. To orientacyjna projekcja, nie gwarancja wyniku.</div>'+
+    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate) + realnie odnotowane koszty jednorazowe z tego okresu. Nie zakłada uruchomienia żadnych nowych projektów w tym czasie (patrz panel „Trzy stany portfela" poniżej dla scenariusza po wybudowaniu). To orientacyjna projekcja, nie gwarancja wyniku.</div>'+
     '<div class="kpi-grid">'+
       kpi('Przychód w okresie (projekcja)', fmtMoney0(pm.revenue), true)+
       kpi('Koszty w okresie (projekcja + jednorazowe)', fmtMoney0(pm.costs), true)+
@@ -849,6 +849,29 @@ function viewDashboard(){
       kpi('Zysk w okresie (projekcja)', fmtMoney0(pm.profit), true, pm.profit<0)+
     '</div>'+
   '</div>'+
+  (function(){
+    // Trzy stany portfela (na prośbę Kamila, 2026-09-06): projekcja run-rate
+    // powyżej celowo NIE zakłada uruchomienia nowych projektów w okresie —
+    // dla dłuższych horyzontów (2/3/5 lat) to bywa mylące, bo w rzeczywistości
+    // kolejne farmy (Wylewa i inne) mają w tym czasie ruszyć. Zamiast zgadywać
+    // DOKŁADNY miesiąc uruchomienia każdej z nich (te daty nie są jeszcze
+    // wprowadzone w kartach projektów), pokazujemy obok siebie 3 niezależne,
+    // jasno opisane stany — bez mieszania ich w jedną "projekcję czasową".
+    var targetRevenue = m.monthlyRevenue + m.monthlyRevenueProjected;
+    var fc = STATE.fixedCostSchedule || {lineItems:[]};
+    var future12mFixed = (fc.lineItems||[]).reduce(function(s,li){return s+(Number(li.future12m)||0);},0);
+    return '<div class="panel">'+
+      '<h3>Trzy stany portfela</h3>'+
+      '<div class="muted" style="margin-bottom:10px">Stan faktyczny dziś, stan docelowy po wybudowaniu wszystkich projektów (na podstawie przychodu wpisanego w kartach projektów) i osobno — referencyjna estymacja kosztów stałych za 12 mies. wg założeń kontrolera. Celowo pokazywane osobno, żeby nie sugerować fałszywej precyzji co do dat uruchomienia.</div>'+
+      '<div class="kpi-grid">'+
+        kpi('① Przychód dziś (projekty operacyjne)', fmtMoney0(m.monthlyRevenue)+'/mies.', true)+
+        kpi('① Koszt dziś (bieżący run-rate)', fmtMoney0(m.totalBurn)+'/mies.', true)+
+        kpi('① Zysk dziś', fmtMoney0(m.monthlyProfit)+'/mies.', true, m.monthlyProfit<0)+
+        kpi('② Przychód docelowy po wybudowaniu wszystkich projektów (założenie z kart projektów)', fmtMoney0(targetRevenue)+'/mies.')+
+        (future12mFixed>0? kpi('③ Koszty stałe za 12 mies. — estymacja kontrolera (referencyjne, Założenia)', fmtMoney0(future12mFixed)+'/mies.') : '')+
+      '</div>'+
+    '</div>';
+  })()+
   '<div class="page-sub" style="margin-top:18px">Poniżej: stałe wskaźniki operacyjne liczone zawsze miesięcznie/rocznie — nie zmieniają się wraz z przełącznikiem okresu powyżej.</div>'+
   '<div class="kpi-grid">'+
     kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
