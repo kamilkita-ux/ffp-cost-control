@@ -97,6 +97,45 @@ const DEFAULT_FIXED_COST_SCHEDULE = {
     { period: "2028-10", label: "Październik 2028", wynagrodzenia: 156638.4, uslugi: 38000, biuro: 10000, najem: 10000, suma: 214638.4 },
     { period: "2028-11", label: "Listopad 2028", wynagrodzenia: 156638.4, uslugi: 38000, biuro: 10000, najem: 10000, suma: 214638.4 },
     { period: "2028-12", label: "Grudzień 2028", wynagrodzenia: 156638.4, uslugi: 38000, biuro: 10000, najem: 10000, suma: 214638.4 }
+  ],
+  // Harmonogram PRZYCHODÓW — z arkusza kontrolera "CF Farmy.xlsx", zakładka
+  // "CF Miesięczny" (suma przychodów wszystkich projektów wg zakładanego
+  // uruchomienia — Miejsce Piastowe już działa, kolejne wg planu rozwoju).
+  // UWAGA: to ZAŁOŻENIE kontrolera co do tempa uruchamiania kolejnych farm,
+  // nie dane z kart projektów w module Projekty — używane WYŁĄCZNIE w
+  // projekcji okresowej na Dashboardzie (Wyniki wg okresu) dla miesięcy,
+  // które ten harmonogram obejmuje (2026-08 do 2028-12); poza tym zakresem
+  // projekcja wraca do bieżącego, płaskiego run-rate.
+  revenueMonthlySchedule: [
+    { period: "2026-08", label: "Sierpień 2026", suma: 74800 },
+    { period: "2026-09", label: "Wrzesień 2026", suma: 61200 },
+    { period: "2026-10", label: "Październik 2026", suma: 54400 },
+    { period: "2026-11", label: "Listopad 2026", suma: 27200 },
+    { period: "2026-12", label: "Grudzień 2026", suma: 20400 },
+    { period: "2027-01", label: "Styczeń 2027", suma: 14008 },
+    { period: "2027-02", label: "Luty 2027", suma: 21012 },
+    { period: "2027-03", label: "Marzec 2027", suma: 84048 },
+    { period: "2027-04", label: "Kwiecień 2027", suma: 154088 },
+    { period: "2027-05", label: "Maj 2027", suma: 196112 },
+    { period: "2027-06", label: "Czerwiec 2027", suma: 182104 },
+    { period: "2027-07", label: "Lipiec 2027", suma: 196112 },
+    { period: "2027-08", label: "Sierpień 2027", suma: 154088 },
+    { period: "2027-09", label: "Wrzesień 2027", suma: 126072 },
+    { period: "2027-10", label: "Październik 2027", suma: 112064 },
+    { period: "2027-11", label: "Listopad 2027", suma: 56032 },
+    { period: "2027-12", label: "Grudzień 2027", suma: 42024 },
+    { period: "2028-01", label: "Styczeń 2028", suma: 28856.48 },
+    { period: "2028-02", label: "Luty 2028", suma: 43284.72 },
+    { period: "2028-03", label: "Marzec 2028", suma: 115425.92 },
+    { period: "2028-04", label: "Kwiecień 2028", suma: 316254.29 },
+    { period: "2028-05", label: "Maj 2028", suma: 402505.46 },
+    { period: "2028-06", label: "Czerwiec 2028", suma: 373755.07 },
+    { period: "2028-07", label: "Lipiec 2028", suma: 654999.66 },
+    { period: "2028-08", label: "Sierpień 2028", suma: 514642.59 },
+    { period: "2028-09", label: "Wrzesień 2028", suma: 421071.21 },
+    { period: "2028-10", label: "Październik 2028", suma: 374285.52 },
+    { period: "2028-11", label: "Listopad 2028", suma: 187142.76 },
+    { period: "2028-12", label: "Grudzień 2028", suma: 140357.07 }
   ]
 };
 
