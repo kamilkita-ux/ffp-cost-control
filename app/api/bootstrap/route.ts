@@ -147,11 +147,19 @@ const DEFAULT_FIXED_COST_SCHEDULE = {
 // (cena/wartość księgowa) liczone są w interfejsie z tych pól, nie trzymane
 // tu jako osobna wartość, żeby nie rozjeżdżały się z inputami po edycji.
 const DEFAULT_SHAREHOLDER_STRUCTURE = {
-  asOfLabel: "",
-  sharePrice: 0, // zł/akcję — bieżący kurs z NewConnect, wpisywany ręcznie
-  totalShares: 0, // liczba akcji ogółem
-  bookValueAssets: 0, // wycena księgowa aktywów spółki, zł
-  shareholders: [] as { name: string; shares: number }[] // lista akcjonariuszy: nazwa + liczba akcji
+  asOfLabel: "", // uzupełnić: data aktualności struktury akcjonariatu
+  sharePrice: 0, // zł/akcję — bieżący kurs z NewConnect, do uzupełnienia
+  totalShares: 33260017, // suma z podanej struktury akcjonariatu
+  bookValueAssets: 0, // wycena księgowa aktywów spółki, zł — do uzupełnienia
+  shareholders: [
+    { name: "Theo Investment Sp. z o.o.", shares: 6612452 },
+    { name: "Berg Holding S.A.", shares: 5966494 },
+    { name: "Evercon Sp. z o.o.", shares: 5488002 },
+    { name: "Grupa TMT Sp. z o.o.", shares: 5317389 },
+    { name: "Dariusz Cisak", shares: 2533000 },
+    { name: "Biolabinvest Sp. z o.o.", shares: 2500607 },
+    { name: "Pozostali (free float, poniżej 5%)", shares: 4842073 }
+  ] as { name: string; shares: number }[] // lista akcjonariuszy: nazwa + liczba akcji
 };
 
 // GET /api/bootstrap — pełny odczyt danych do hydratacji interfejsu (STATE).
