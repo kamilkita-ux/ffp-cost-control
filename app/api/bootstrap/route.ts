@@ -139,6 +139,21 @@ const DEFAULT_FIXED_COST_SCHEDULE = {
   ]
 };
 
+// Struktura akcjonariatu / wycena spółki — WARTOŚCI DOMYŚLNE SĄ PUSTE (0),
+// bo nie mamy jeszcze realnych danych (kurs akcji, liczba akcji, lista
+// akcjonariuszy, wycena księgowa aktywów) — Kamil zapowiedział, że poda je
+// zespół. Edytowalne z modułu "Akcjonariat" (zapis: PUT /api/settings,
+// key="shareholderStructure"). Kapitalizacja giełdowa i wskaźnik C/WK
+// (cena/wartość księgowa) liczone są w interfejsie z tych pól, nie trzymane
+// tu jako osobna wartość, żeby nie rozjeżdżały się z inputami po edycji.
+const DEFAULT_SHAREHOLDER_STRUCTURE = {
+  asOfLabel: "",
+  sharePrice: 0, // zł/akcję — bieżący kurs z NewConnect, wpisywany ręcznie
+  totalShares: 0, // liczba akcji ogółem
+  bookValueAssets: 0, // wycena księgowa aktywów spółki, zł
+  shareholders: [] as { name: string; shares: number }[] // lista akcjonariuszy: nazwa + liczba akcji
+};
+
 // GET /api/bootstrap — pełny odczyt danych do hydratacji interfejsu (STATE).
 // To jedyny endpoint typu "odczytaj wszystko" — wszystkie zapisy idą przez
 // dedykowane endpointy CRUD per encja (patrz app/api/<encja>/route.ts).
@@ -183,6 +198,7 @@ export async function GET(req: Request) {
     currency: settingsMap.currency ?? "PLN",
     assumptions: settingsMap.assumptions ?? DEFAULT_ASSUMPTIONS,
     fixedCostSchedule: settingsMap.fixedCostSchedule ?? DEFAULT_FIXED_COST_SCHEDULE,
+    shareholderStructure: settingsMap.shareholderStructure ?? DEFAULT_SHAREHOLDER_STRUCTURE,
     currentUser: currentLogin(req),
     restricted: isRestrictedUser(req)
   });
