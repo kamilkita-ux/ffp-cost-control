@@ -146,6 +146,29 @@ tr:hover td{background:var(--accent-bg);}
 @media(max-width:820px){
   #save-status-mobile{display:block;}
 }
+/* Dolny pasek nawigacji na telefonie/tablecie — "działa jak apka", nie
+   tylko przeglądarkowy dashboard z samym hamburgerem. Tylko 4 najczęściej
+   używane sekcje + "Więcej" otwierające dotychczasowe menu boczne z resztą
+   (Umowy, Leasingi, Dostawcy, Płatności, Działy, Analiza, Wykresy,
+   Założenia, Akcjonariat, Symulator, Dokumenty, Ustawienia). Na desktopie
+   w ogóle się nie pokazuje — tam jest menu boczne jak dotychczas. */
+#mobile-tabbar{display:none;}
+@media(max-width:820px){
+  #mobile-tabbar{
+    display:flex; position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:var(--panel); border-top:1px solid var(--border);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -2px 10px rgba(20,30,40,.06);
+  }
+  #main{padding-bottom:64px;}
+}
+#mobile-tabbar .mt-item{
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+  padding:5px 2px; border-radius:8px; color:var(--muted); font-size:10.5px;
+  cursor:pointer; user-select:none;
+}
+#mobile-tabbar .mt-item .mt-icon{font-size:18px;}
+#mobile-tabbar .mt-item.active{color:var(--accent);font-weight:600;}
 /* Baner "dodaj do ekranu głównego" (PWA) — cichy, dyskretny, jednorazowy
    do odrzucenia na stałe; patrz JS na końcu pliku (installBannerInit). */
 #install-banner{
@@ -191,6 +214,7 @@ tr:hover td{background:var(--accent-bg);}
     <div id="content"><div class="empty" style="padding:40px;text-align:center">Ładowanie danych z bazy PostgreSQL…</div></div>
   </div>
 </div>
+<div id="mobile-tabbar" class="no-print"></div>
 <div id="modal-overlay" class="no-print" onclick="if(event.target===this)closeModal()">
   <div id="modal"></div>
 </div>
@@ -815,7 +839,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-07-04 (konta uzytkownikow + baner instalacji + info offline)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-07-05 (dolny pasek nawigacji na telefonie)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -832,6 +856,27 @@ function renderNav(){
       nav.parentNode.appendChild(buildEl);
     }
   }
+  renderMobileTabbar();
+}
+// 4 najczęściej używane sekcje na dole ekranu (telefon/tablet) + "Więcej"
+// otwierające dotychczasowe menu boczne z resztą sekcji — patrz komentarz
+// przy CSS #mobile-tabbar. Aktywna sekcja spoza tej czwórki podświetla
+// "Więcej", żeby zawsze było widać, gdzie się jest.
+var MOBILE_TABS = [
+  {key:'dashboard', label:'Dashboard', icon:'📊'},
+  {key:'projects', label:'Projekty', icon:'🏗️'},
+  {key:'costs', label:'Koszty', icon:'💰'},
+  {key:'employees', label:'Pracownicy', icon:'👤'}
+];
+function renderMobileTabbar(){
+  var bar = document.getElementById('mobile-tabbar');
+  if(!bar) return;
+  var isKnownTab = MOBILE_TABS.some(function(t){ return t.key===currentTab; });
+  var html = MOBILE_TABS.map(function(t){
+    return '<div class="mt-item'+(currentTab===t.key?' active':'')+'" onclick="goTab(\''+t.key+'\')"><span class="mt-icon">'+t.icon+'</span>'+t.label+'</div>';
+  }).join('');
+  html += '<div class="mt-item'+(!isKnownTab?' active':'')+'" onclick="openMobileNav()"><span class="mt-icon">☰</span>Więcej</div>';
+  bar.innerHTML = html;
 }
 function goTab(key){
   currentTab = key;
