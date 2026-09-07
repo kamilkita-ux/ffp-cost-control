@@ -1,10 +1,18 @@
 import { prisma } from "./prisma";
+import { getVerifiedSession } from "./access";
 
-// Odczytuje login użytkownika z nagłówka Basic Auth (ten sam login, którym
-// zalogował się do aplikacji — Kamil / Jerzy / Grzegorz). To NIE jest pełny
-// system kont — tylko podpisywanie wpisów w dzienniku zmian tym, kto był
-// zalogowany w danym żądaniu.
-export function currentUser(req: Request): string {
+// Odczytuje login użytkownika, który wykonał żądanie — do podpisywania
+// wpisów w dzienniku zmian. Sprawdza Basic Auth (Kamil / Jerzy / Grzegorz —
+// tak działało to od początku) ORAZ, jeśli nagłówka Basic Auth nie ma,
+// sesję z systemu kont (AUTH_MODE=accounts).
+//
+// UWAGA — naprawione 2026-09-08 (audyt logowania zmian): przed tą zmianą
+// funkcja sprawdzała WYŁĄCZNIE nagłówek Basic Auth. Po przełączeniu na
+// AUTH_MODE=accounts każdy wpis w dzienniku zmian (kto/kiedy/co) zapisywałby
+// się jako "nieznany", bo accounts-mode nie wysyła nagłówka Basic Auth —
+// dziennik zmian straciłby swoją podstawową wartość (rozliczalność: kto
+// dokonał zmiany) dokładnie w momencie przejścia na docelowy system kont.
+export async function currentUser(req: Request): Promise<string> {
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Basic ")) {
     try {
@@ -15,9 +23,11 @@ export function currentUser(req: Request): string {
         if (user) return user;
       }
     } catch {
-      // ignoruj błędne nagłówki — zaloguj jako "nieznany"
+      // ignoruj błędne nagłówki, spróbuj sesji kont poniżej
     }
   }
+  const session = await getVerifiedSession(req);
+  if (session) return session.username;
   return "nieznany";
 }
 
@@ -33,7 +43,7 @@ export async function logChange(
   try {
     await prisma.changeLog.create({
       data: {
-        user: currentUser(req),
+        user: await currentUser(req),
         entity,
         entityId: entityId || undefined,
         action,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildSnapshot } from "@/lib/snapshot";
 import { isAdminCaller } from "@/lib/access";
+import { logChange } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
   const created = await prisma.backup.create({
     data: { kind: "manual", data: snapshot as any }
   });
+  await logChange(req, "backup", created.id, "create", "Utworzono ręczną kopię zapasową");
   return NextResponse.json(
     { id: created.id, createdAt: created.createdAt, kind: created.kind },
     { status: 201 }

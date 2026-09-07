@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { restoreSnapshot } from "@/lib/restoreData";
 import { isAdminCaller } from "@/lib/access";
+import { logChange } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -23,5 +24,6 @@ export async function POST(req: Request, { params }: Ctx) {
   } catch (err: any) {
     return NextResponse.json({ error: "restore_failed", message: String(err?.message || err) }, { status: 500 });
   }
+  await logChange(req, "database", id, "update", "Przywrócono bazę z punktu backupu (panel administracyjny)");
   return NextResponse.json({ ok: true });
 }
