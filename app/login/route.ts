@@ -66,7 +66,11 @@ export async function GET() {
   var err = document.getElementById('err');
   var btn = document.getElementById('submitBtn');
   var params = new URLSearchParams(window.location.search);
-  var next = params.get('next') || '/';
+  var rawNext = params.get('next') || '/';
+  // Tylko ścieżka względna w obrębie tej appki (nigdy zewnętrzny adres) —
+  // "next" pochodzi z parametru URL, którego treść mógł ustawić ktokolwiek
+  // linkujący do strony logowania, nie tylko middleware.ts.
+  var next = (rawNext.indexOf('/') === 0 && rawNext.indexOf('//') !== 0) ? rawNext : '/';
   form.addEventListener('submit', function(e){
     e.preventDefault();
     err.style.display = 'none';
