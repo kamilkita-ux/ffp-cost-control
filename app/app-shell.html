@@ -146,6 +146,50 @@ tr:hover td{background:var(--accent-bg);}
 @media(max-width:820px){
   #save-status-mobile{display:block;}
 }
+/* Dolny pasek nawigacji na telefonie/tablecie — "działa jak apka", nie
+   tylko przeglądarkowy dashboard z samym hamburgerem. Tylko 4 najczęściej
+   używane sekcje + "Więcej" otwierające dotychczasowe menu boczne z resztą
+   (Umowy, Leasingi, Dostawcy, Płatności, Działy, Analiza, Wykresy,
+   Założenia, Akcjonariat, Symulator, Dokumenty, Ustawienia). Na desktopie
+   w ogóle się nie pokazuje — tam jest menu boczne jak dotychczas. */
+#mobile-tabbar{display:none;}
+@media(max-width:820px){
+  #mobile-tabbar{
+    display:flex; position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:var(--panel); border-top:1px solid var(--border);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -2px 10px rgba(20,30,40,.06);
+  }
+  #main{padding-bottom:64px;}
+}
+#mobile-tabbar .mt-item{
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+  padding:5px 2px; border-radius:8px; color:var(--muted); font-size:10.5px;
+  cursor:pointer; user-select:none;
+}
+#mobile-tabbar .mt-item .mt-icon{font-size:18px;}
+#mobile-tabbar .mt-item.active{color:var(--accent);font-weight:600;}
+/* Baner "dodaj do ekranu głównego" (PWA) — cichy, dyskretny, jednorazowy
+   do odrzucenia na stałe; patrz JS na końcu pliku (installBannerInit). */
+#install-banner{
+  display:none; position:fixed; left:12px; right:12px; bottom:12px; z-index:60;
+  background:var(--accent-dark); color:#fff; border-radius:12px;
+  box-shadow:0 6px 20px rgba(10,20,15,.25); padding:12px 14px;
+  align-items:center; gap:12px; font-size:13px; max-width:460px; margin:0 auto;
+}
+#install-banner.show{display:flex;}
+#install-banner .ib-icon{width:32px;height:32px;border-radius:8px;flex:none;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;}
+#install-banner .ib-text{flex:1;line-height:1.35;}
+#install-banner .ib-actions{display:flex;gap:8px;flex:none;align-items:center;}
+#install-banner button{border:none;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;}
+#install-banner .ib-add{background:#fff;color:var(--accent-dark);font-weight:600;}
+#install-banner .ib-close{background:transparent;color:#cfe8dc;padding:7px 8px;}
+#install-hint-detail{display:none;position:fixed;left:12px;right:12px;bottom:78px;z-index:60;background:#fff;color:var(--text);border-radius:12px;box-shadow:0 6px 20px rgba(10,20,15,.2);padding:14px 16px;font-size:13px;max-width:460px;margin:0 auto;line-height:1.5;}
+#install-hint-detail.show{display:block;}
+/* Pasek "brak połączenia" — appka ma dawać znać, gdy dane mogą być
+   nieaktualne/zmiany się nie zapiszą, tak jak apka na telefonie. */
+#offline-banner{display:none;position:sticky;top:0;z-index:55;background:var(--warn-bg);color:var(--warn);border-bottom:1px solid #f0ddb0;padding:6px 14px;font-size:12.5px;text-align:center;font-weight:600;}
+#offline-banner.show{display:block;}
 </style>
 <div id="app">
   <div id="sidebar-overlay" class="no-print" onclick="closeMobileNav()"></div>
@@ -155,10 +199,12 @@ tr:hover td{background:var(--accent-bg);}
     <div id="nav-list"></div>
   </div>
   <div id="main">
+    <div id="offline-banner" class="no-print">Brak połączenia z internetem — dane mogą być nieaktualne, zmiany się nie zapiszą.</div>
     <div id="topbar" class="no-print">
       <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
       <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
       <div class="spacer"></div>
+      <div id="account-status" class="hide-mobile" style="display:none"></div>
       <div id="save-status" class="hide-mobile"></div>
       <button class="btn btn-primary hide-mobile" onclick="openForm('costs')">+ Koszt</button>
       <button class="btn hide-mobile" onclick="openForm('employees')">+ Pracownik</button>
@@ -169,10 +215,23 @@ tr:hover td{background:var(--accent-bg);}
     <div id="content"><div class="empty" style="padding:40px;text-align:center">Ładowanie danych z bazy PostgreSQL…</div></div>
   </div>
 </div>
+<div id="mobile-tabbar" class="no-print"></div>
 <div id="modal-overlay" class="no-print" onclick="if(event.target===this)closeModal()">
   <div id="modal"></div>
 </div>
 <div id="search-overlay"></div>
+<div id="install-banner" class="no-print">
+  <div class="ib-icon">☀</div>
+  <div class="ib-text">Dodaj FFP Cost Control do ekranu głównego — otwiera się od razu, jak aplikacja.</div>
+  <div class="ib-actions">
+    <button class="ib-add" id="install-banner-add" onclick="installBannerAction()">Dodaj</button>
+    <button class="ib-close" onclick="installBannerDismiss()" title="Zamknij">✕</button>
+  </div>
+</div>
+<div id="install-hint-detail">
+  Na iPhone/iPadzie: stuknij ikonę <b>Udostępnij</b> (kwadrat ze strzałką) na dole ekranu w Safari, a potem wybierz <b>„Dodaj do ekranu początkowego”</b>.
+  <div style="text-align:right;margin-top:10px"><button class="btn" style="padding:5px 12px" onclick="document.getElementById('install-hint-detail').classList.remove('show')">Zrozumiałem</button></div>
+</div>
 
 <script>
 /* =============================================================================
@@ -781,7 +840,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-07-01 (ukrycie wynagrodzen - restricted)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-07-07 (poprawka cache powloki PWA)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -798,6 +857,27 @@ function renderNav(){
       nav.parentNode.appendChild(buildEl);
     }
   }
+  renderMobileTabbar();
+}
+// 4 najczęściej używane sekcje na dole ekranu (telefon/tablet) + "Więcej"
+// otwierające dotychczasowe menu boczne z resztą sekcji — patrz komentarz
+// przy CSS #mobile-tabbar. Aktywna sekcja spoza tej czwórki podświetla
+// "Więcej", żeby zawsze było widać, gdzie się jest.
+var MOBILE_TABS = [
+  {key:'dashboard', label:'Dashboard', icon:'📊'},
+  {key:'projects', label:'Projekty', icon:'🏗️'},
+  {key:'costs', label:'Koszty', icon:'💰'},
+  {key:'employees', label:'Pracownicy', icon:'👤'}
+];
+function renderMobileTabbar(){
+  var bar = document.getElementById('mobile-tabbar');
+  if(!bar) return;
+  var isKnownTab = MOBILE_TABS.some(function(t){ return t.key===currentTab; });
+  var html = MOBILE_TABS.map(function(t){
+    return '<div class="mt-item'+(currentTab===t.key?' active':'')+'" onclick="goTab(\''+t.key+'\')"><span class="mt-icon">'+t.icon+'</span>'+t.label+'</div>';
+  }).join('');
+  html += '<div class="mt-item'+(!isKnownTab?' active':'')+'" onclick="openMobileNav()"><span class="mt-icon">☰</span>Więcej</div>';
+  bar.innerHTML = html;
 }
 function goTab(key){
   currentTab = key;
@@ -2116,6 +2196,96 @@ function openForm(entity,id,defaults){
   }
 }
 
+/* ===================== Tryb kont: wylogowanie ===================== */
+// Dopełnienie systemu logowania sesyjnego (AUTH_MODE=accounts, patrz
+// app/api/auth/*, middleware.ts) — bez tego strona logowania nie miałaby
+// żadnego sposobu wylogowania poza ręcznym czyszczeniem ciasteczka.
+// Celowo niewidoczne, gdy tryb kont jest wyłączony (dzisiejszy Basic
+// Auth) — /api/auth/me wtedy zawsze zwraca authenticated:false, więc ten
+// element w ogóle się nie pokazuje, zero zmiany dla obecnych użytkowników.
+function accountStatusInit(){
+  fetch('/api/auth/me').then(function(r){ return r.json(); }).then(function(data){
+    var el = document.getElementById('account-status');
+    if(!el || !data || !data.authenticated) return;
+    el.style.display = '';
+    el.innerHTML = '<span style="color:var(--muted);font-size:12px">'+esc(data.username)+'</span> '
+      + '<button class="btn btn-icon" title="Wyloguj" onclick="accountLogout()" style="padding:4px 8px;font-size:12px">Wyloguj</button>';
+  }).catch(function(){ /* Basic Auth albo brak połączenia — nic nie pokazujemy */ });
+}
+function accountLogout(){
+  fetch('/api/auth/logout', {method:'POST'}).finally(function(){ window.location.href = '/login'; });
+}
+
+/* ===================== Pasek "brak połączenia" ===================== */
+function updateOfflineBanner(){
+  var b = document.getElementById('offline-banner');
+  if(!b) return;
+  var online = true;
+  try{ online = navigator.onLine; }catch(e){}
+  b.classList.toggle('show', !online);
+}
+window.addEventListener('online', updateOfflineBanner);
+window.addEventListener('offline', updateOfflineBanner);
+
+/* ===================== "Dodaj do ekranu głównego" ===================== */
+// Dyskretny, jednorazowy baner (2026-09-07, na polecenie Kamila: appka ma
+// być "zawsze pod ręką" jak apka telefoniczna). Nie blokuje niczego, nie
+// pojawia się ponownie po zamknięciu (localStorage) ani na desktopie/gdy
+// appka jest już zainstalowana. Android/Chrome: prawdziwy prompt instalacji
+// (beforeinstallprompt). iOS Safari nie ma takiego promptu — tam pokazujemy
+// krótką, ręczną instrukcję (Udostępnij → Dodaj do ekranu początkowego).
+var DEFERRED_INSTALL_PROMPT = null;
+var INSTALL_DISMISS_KEY = 'ffp_install_banner_dismissed';
+function isStandaloneDisplay(){
+  try{
+    return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true; // starszy Safari na iOS
+  }catch(e){ return false; }
+}
+function isIOSDevice(){
+  try{ return /iphone|ipad|ipod/i.test(navigator.userAgent); }catch(e){ return false; }
+}
+function installBannerDismiss(){
+  try{ localStorage.setItem(INSTALL_DISMISS_KEY,'1'); }catch(e){}
+  var b = document.getElementById('install-banner'); if(b) b.classList.remove('show');
+  var d = document.getElementById('install-hint-detail'); if(d) d.classList.remove('show');
+}
+function installBannerAction(){
+  if(DEFERRED_INSTALL_PROMPT){
+    DEFERRED_INSTALL_PROMPT.prompt();
+    DEFERRED_INSTALL_PROMPT.userChoice.finally(function(){
+      DEFERRED_INSTALL_PROMPT = null;
+      installBannerDismiss();
+    });
+  } else if(isIOSDevice()){
+    var d = document.getElementById('install-hint-detail');
+    if(d) d.classList.add('show');
+  } else {
+    installBannerDismiss();
+  }
+}
+function installBannerInit(){
+  try{
+    if(localStorage.getItem(INSTALL_DISMISS_KEY)==='1') return;
+  }catch(e){}
+  if(isStandaloneDisplay()) return; // już zainstalowana/otwarta jak apka
+  if(isIOSDevice()){
+    // Brak beforeinstallprompt na iOS — pokaż baner od razu (poprowadzi do
+    // ręcznej instrukcji po kliknięciu "Dodaj").
+    var b = document.getElementById('install-banner');
+    if(b) setTimeout(function(){ b.classList.add('show'); }, 1500);
+  }
+}
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  DEFERRED_INSTALL_PROMPT = e;
+  try{ if(localStorage.getItem(INSTALL_DISMISS_KEY)==='1') return; }catch(err){}
+  if(isStandaloneDisplay()) return;
+  var b = document.getElementById('install-banner');
+  if(b) setTimeout(function(){ b.classList.add('show'); }, 1500);
+});
+window.addEventListener('appinstalled', function(){ installBannerDismiss(); });
+
 /* ============================= INIT ============================= */
 document.getElementById('modal-overlay').addEventListener('input', draftSave);
 document.getElementById('modal-overlay').addEventListener('change', draftSave);
@@ -2126,6 +2296,9 @@ async function boot(){
     BOOTED = true;
     render();
     setSaveStatus('idle');
+    installBannerInit();
+    updateOfflineBanner();
+    accountStatusInit();
   }catch(e){
     document.getElementById('content').innerHTML = '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">Nie udało się połączyć z bazą danych</h3><div>'+esc(e.message)+'</div><button class="btn" style="margin-top:10px" onclick="boot()">Spróbuj ponownie</button></div>';
     setSaveStatus('error','Brak połączenia z bazą');

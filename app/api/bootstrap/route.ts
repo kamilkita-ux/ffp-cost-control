@@ -229,7 +229,7 @@ export async function GET(req: Request) {
     contracts: contractsOut
   });
 
-  const restricted = isRestrictedUser(req);
+  const restricted = await isRestrictedUser(req);
   const employeesOut = restricted ? employeesFull.map(redactEmployeeSalary) : employeesFull;
   const fixedCostSchedule = restricted
     ? {
@@ -254,7 +254,7 @@ export async function GET(req: Request) {
     fixedCostSchedule,
     shareholderStructure: settingsMap.shareholderStructure ?? DEFAULT_SHAREHOLDER_STRUCTURE,
     serverMetrics,
-    currentUser: currentLogin(req),
+    currentUser: await currentLogin(req),
     restricted
   });
 }
