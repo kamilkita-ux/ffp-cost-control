@@ -11,7 +11,7 @@
 // skrypt "test").
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem } from "../lib/serverMetrics";
+import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem, preserveSalaryFieldsIfRestricted } from "../lib/serverMetrics";
 
 // Mały, ręcznie policzony zestaw danych: jeden dział, dwa projekty,
 // dwóch pracowników (jeden aktywny w 100% na projekt A, jeden nieaktywny
@@ -98,4 +98,34 @@ test("redactFixedCostLineItem — ukrywa nazwę/notatkę, zostawia kwoty", () =>
   assert.equal(redacted.note, "");
   assert.equal(redacted.current, 5000, "kwoty muszą zostać, żeby sumy się zgadzały");
   assert.equal(redacted.future12m, 60000);
+});
+
+test("preserveSalaryFieldsIfRestricted — konto pełne: przesłane dane bez zmian", () => {
+  const incoming = { firstName: "Jan", grossSalary: 999, netSalary: 1 };
+  const out = preserveSalaryFieldsIfRestricted(incoming, { grossSalary: 12000, netSalary: 8500 }, false);
+  assert.equal(out, incoming, "dla konta pełnego funkcja musi zwrócić dokładnie ten sam obiekt, bez modyfikacji");
+});
+
+test("preserveSalaryFieldsIfRestricted — konto ograniczone + edycja (PUT): wymusza wartości z bazy, ignorując puste pola z ukrytego formularza", () => {
+  // Dokładnie ten scenariusz, który powodował błąd: przeglądarka wysyła
+  // puste stringi w polach kwotowych (bo dostała je już wyzerowane z
+  // /api/bootstrap), a serwer musi je zignorować i zachować prawdziwe
+  // kwoty zapisane w bazie.
+  const incoming = { firstName: "Jan", position: "Kierownik po zmianie", grossSalary: "", netSalary: "", bonus: "" };
+  const current = { grossSalary: 12000, netSalary: 8500, employerCost: 14500, otherMonthlyCost: 0, bonus: 1000, car: 0, phoneCost: 100, computer: 0, otherBenefits: 0 };
+  const out = preserveSalaryFieldsIfRestricted(incoming, current, true);
+  assert.equal(out.grossSalary, 12000);
+  assert.equal(out.netSalary, 8500);
+  assert.equal(out.employerCost, 14500);
+  assert.equal(out.bonus, 1000);
+  // Pola niebędące kwotami zostają takie, jak przesłano (edycja ma zadziałać).
+  assert.equal(out.position, "Kierownik po zmianie");
+});
+
+test("preserveSalaryFieldsIfRestricted — konto ograniczone + nowy pracownik (POST, current=null): kwoty wynagrodzenia = null", () => {
+  const incoming = { firstName: "Nowy", grossSalary: 15000, netSalary: 10000 };
+  const out = preserveSalaryFieldsIfRestricted(incoming, null, true);
+  assert.equal(out.grossSalary, null);
+  assert.equal(out.netSalary, null);
+  assert.equal(out.firstName, "Nowy");
 });

@@ -5,6 +5,8 @@ import {
   toEnum, EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP
 } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
+import { isRestrictedUser } from "@/lib/access";
+import { redactEmployeeSalary, preserveSalaryFieldsIfRestricted } from "@/lib/serverMetrics";
 
 function toData(body: any) {
   return {
@@ -51,9 +53,15 @@ export async function POST(req: Request) {
   if (!body?.firstName || !body?.lastName || !body?.position) {
     return NextResponse.json({ error: "invalid_input", message: "Imię, nazwisko i stanowisko są wymagane." }, { status: 400 });
   }
+  // Nowo tworzony pracownik nie ma jeszcze żadnych kwot w bazie — dla konta
+  // ograniczonego "current" to null, więc preserveSalaryFieldsIfRestricted
+  // (patrz lib/serverMetrics.ts) po prostu wyzeruje kwoty wynagrodzenia,
+  // niezależnie od tego, co przesłano w żądaniu.
+  const restricted = await isRestrictedUser(req);
+  const safeBody = preserveSalaryFieldsIfRestricted(body, null, restricted);
   const allocations = allocationsData(body);
   const created = await prisma.$transaction(async (tx) => {
-    const emp = await tx.employee.create({ data: toData(body) });
+    const emp = await tx.employee.create({ data: toData(safeBody) });
     if (allocations.length) {
       await tx.employeeProjectAllocation.createMany({
         data: allocations.map((a: any) => ({ ...a, employeeId: emp.id }))
@@ -62,5 +70,6 @@ export async function POST(req: Request) {
     return tx.employee.findUniqueOrThrow({ where: { id: emp.id }, include: { allocations: true } });
   });
   await logChange(req, "employee", created.id, "create", `${created.firstName} ${created.lastName}`);
-  return NextResponse.json(serializeEmployee(created), { status: 201 });
+  const out = serializeEmployee(created);
+  return NextResponse.json(restricted ? redactEmployeeSalary(out) : out, { status: 201 });
 }

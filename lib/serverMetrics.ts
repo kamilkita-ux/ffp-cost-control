@@ -168,7 +168,7 @@ export function computeServerMetrics(data: {
 // stanowisko, dział, alokacje % na projekty i ocena stanowiska ZOSTAJĄ
 // (to nie są kwoty pieniężne), bo są potrzebne np. do listy osób
 // przypisanych do projektu.
-const SALARY_FIELDS = [
+export const SALARY_FIELDS = [
   "netSalary", "grossSalary", "employerCost", "otherMonthlyCost",
   "bonus", "car", "phoneCost", "computer", "otherBenefits"
 ] as const;
@@ -176,6 +176,29 @@ const SALARY_FIELDS = [
 export function redactEmployeeSalary<T extends AnyRec>(employee: T): T {
   const copy: AnyRec = { ...employee };
   for (const f of SALARY_FIELDS) copy[f] = null;
+  return copy as T;
+}
+
+// Znalezione 2026-09-07 przy przeglądzie kodu: konto ograniczone dostaje z
+// /api/bootstrap pracownika z WYZEROWANYMI kwotami (redactEmployeeSalary
+// wyżej). Formularz edycji w przeglądarce trzyma te (już puste) wartości w
+// ukrytych polach — więc zapis JAKIEJKOLWIEK zmiany przez taką osobę (np.
+// samej zmiany stanowiska) wysyłał puste kwoty i FAKTYCZNIE KASOWAŁ
+// prawdziwe wynagrodzenie w bazie danych. Ta funkcja to naprawia: dla konta
+// ograniczonego zawsze wymusza wartości pól wynagrodzenia takie, jakie są
+// aktualnie w bazie ("current"), ignorując cokolwiek przyszło w żądaniu
+// ("incoming") — używana w PUT/POST app/api/employees. Czysta funkcja
+// (bez dostępu do bazy), żeby dało się ją przetestować bez Postgresa.
+export function preserveSalaryFieldsIfRestricted<T extends AnyRec>(
+  incoming: T,
+  current: AnyRec | null,
+  restricted: boolean
+): T {
+  if (!restricted) return incoming;
+  const copy: AnyRec = { ...incoming };
+  for (const f of SALARY_FIELDS) {
+    copy[f] = current ? current[f] ?? null : null;
+  }
   return copy as T;
 }
 
