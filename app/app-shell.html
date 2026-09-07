@@ -204,6 +204,7 @@ tr:hover td{background:var(--accent-bg);}
       <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
       <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
       <div class="spacer"></div>
+      <div id="account-status" class="hide-mobile" style="display:none"></div>
       <div id="save-status" class="hide-mobile"></div>
       <button class="btn btn-primary hide-mobile" onclick="openForm('costs')">+ Koszt</button>
       <button class="btn hide-mobile" onclick="openForm('employees')">+ Pracownik</button>
@@ -839,7 +840,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-07-05 (dolny pasek nawigacji na telefonie)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-07-06 (wylogowanie w trybie kont)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2195,6 +2196,26 @@ function openForm(entity,id,defaults){
   }
 }
 
+/* ===================== Tryb kont: wylogowanie ===================== */
+// Dopełnienie systemu logowania sesyjnego (AUTH_MODE=accounts, patrz
+// app/api/auth/*, middleware.ts) — bez tego strona logowania nie miałaby
+// żadnego sposobu wylogowania poza ręcznym czyszczeniem ciasteczka.
+// Celowo niewidoczne, gdy tryb kont jest wyłączony (dzisiejszy Basic
+// Auth) — /api/auth/me wtedy zawsze zwraca authenticated:false, więc ten
+// element w ogóle się nie pokazuje, zero zmiany dla obecnych użytkowników.
+function accountStatusInit(){
+  fetch('/api/auth/me').then(function(r){ return r.json(); }).then(function(data){
+    var el = document.getElementById('account-status');
+    if(!el || !data || !data.authenticated) return;
+    el.style.display = '';
+    el.innerHTML = '<span style="color:var(--muted);font-size:12px">'+esc(data.username)+'</span> '
+      + '<button class="btn btn-icon" title="Wyloguj" onclick="accountLogout()" style="padding:4px 8px;font-size:12px">Wyloguj</button>';
+  }).catch(function(){ /* Basic Auth albo brak połączenia — nic nie pokazujemy */ });
+}
+function accountLogout(){
+  fetch('/api/auth/logout', {method:'POST'}).finally(function(){ window.location.href = '/login'; });
+}
+
 /* ===================== Pasek "brak połączenia" ===================== */
 function updateOfflineBanner(){
   var b = document.getElementById('offline-banner');
@@ -2277,6 +2298,7 @@ async function boot(){
     setSaveStatus('idle');
     installBannerInit();
     updateOfflineBanner();
+    accountStatusInit();
   }catch(e){
     document.getElementById('content').innerHTML = '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">Nie udało się połączyć z bazą danych</h3><div>'+esc(e.message)+'</div><button class="btn" style="margin-top:10px" onclick="boot()">Spróbuj ponownie</button></div>';
     setSaveStatus('error','Brak połączenia z bazą');
