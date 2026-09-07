@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { restoreSnapshot } from "@/lib/restoreData";
+import { isAdminCaller } from "@/lib/access";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -8,7 +9,12 @@ type Ctx = { params: Promise<{ id: string }> };
 // zapisanego w danym punkcie backupu (operacja niszcząca, w jednej
 // transakcji). Odpowiednik "Wgraj kopię zapasową", ale bez potrzeby
 // ręcznego pobierania/wgrywania pliku — jeden klik na liście backupów.
-export async function POST(_req: Request, { params }: Ctx) {
+// Admin-only — patrz uwaga w app/api/admin/backups/route.ts (brakujący
+// guard, naprawa 2026-09-08): to najbardziej destrukcyjna operacja w całej
+// aplikacji (kasuje i zastępuje CAŁĄ produkcyjną bazę), a wcześniej mogło
+// ją wywołać dowolne zalogowane konto, także ograniczone.
+export async function POST(req: Request, { params }: Ctx) {
+  if (!(await isAdminCaller(req))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const { id } = await params;
   const backup = await prisma.backup.findUnique({ where: { id } });
   if (!backup) return NextResponse.json({ error: "not_found" }, { status: 404 });

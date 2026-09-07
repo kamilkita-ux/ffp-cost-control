@@ -6,6 +6,7 @@ import {
   RECURRENCE_MAP, PAYMENT_STATUS_MAP, NECESSITY_MAP, FINANCING_TYPE_MAP
 } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
+import { isAdminCaller } from "@/lib/access";
 
 // POST /api/restore — przywraca CAŁĄ bazę z pliku kopii zapasowej JSON
 // (dokładnie ten sam format, który zwraca /api/bootstrap i który pobiera
@@ -13,7 +14,15 @@ import { logChange } from "@/lib/audit";
 //
 // Operacja niszcząca: usuwa bieżące dane i zastępuje je zawartością pliku,
 // w jednej transakcji (albo wszystko się powiedzie, albo nic się nie zmienia).
+//
+// UWAGA — znalezione i naprawione 2026-09-08 (audyt bezpieczeństwa ścieżek
+// zapisu, ten sam pattern co /api/admin/backups): ten endpoint nie miał
+// ŻADNEGO sprawdzenia uprawnień — dowolne zalogowane konto, także
+// ograniczone, mogło jednym żądaniem POST skasować i zastąpić CAŁĄ
+// produkcyjną bazę danych dowolnym plikiem JSON. Admin-only, tak jak
+// /api/admin/backups/[id]/restore (ten sam skutek, inna droga wywołania).
 export async function POST(req: Request) {
+  if (!(await isAdminCaller(req))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const data = await req.json();
   if (!data || typeof data !== "object") {
     return NextResponse.json({ error: "invalid_input" }, { status: 400 });
