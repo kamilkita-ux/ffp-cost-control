@@ -7,6 +7,7 @@ import {
 } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
 import { isAdminCaller } from "@/lib/access";
+import { looksLikeRealBackup } from "@/lib/backupShape";
 
 // POST /api/restore — przywraca CAŁĄ bazę z pliku kopii zapasowej JSON
 // (dokładnie ten sam format, który zwraca /api/bootstrap i który pobiera
@@ -26,6 +27,17 @@ export async function POST(req: Request) {
   const data = await req.json();
   if (!data || typeof data !== "object") {
     return NextResponse.json({ error: "invalid_input" }, { status: 400 });
+  }
+  // Zabezpieczenie znalezione 2026-09-08 (patrz lib/backupShape.ts): bez
+  // tego sprawdzenia payload typu "{}" albo literówka w nazwie klucza
+  // (np. "employes") przechodziłby dotychczasowy walidator ("to jest
+  // obiekt") i operacja niżej WYCZYŚCIŁABY CAŁĄ BAZĘ, nie wstawiając nic
+  // z powrotem (bo każde pole ma domyślnie "?? []").
+  if (!looksLikeRealBackup(data)) {
+    return NextResponse.json(
+      { error: "invalid_input", message: "Plik nie wygląda na prawidłowy eksport bazy (brak żadnej z oczekiwanych tablic) — przywracanie przerwane, żeby nie wyczyścić bazy przypadkowym plikiem." },
+      { status: 400 }
+    );
   }
 
   await prisma.$transaction(async (tx) => {

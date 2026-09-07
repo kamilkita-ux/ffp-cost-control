@@ -4,6 +4,7 @@ import {
   EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP, PROJECT_STATUS_MAP,
   RECURRENCE_MAP, PAYMENT_STATUS_MAP, NECESSITY_MAP, FINANCING_TYPE_MAP
 } from "./serialize";
+import { looksLikeRealBackup } from "./backupShape";
 
 // Przywraca CAŁĄ bazę z obiektu danych o kształcie zwracanym przez
 // buildSnapshot() / /api/bootstrap (dokładnie ten sam format).
@@ -20,6 +21,14 @@ import {
 export async function restoreSnapshot(db: typeof prisma, data: any) {
   if (!data || typeof data !== "object") {
     throw new Error("invalid_snapshot");
+  }
+  // Ta sama paranoja co w app/api/restore/route.ts (2026-09-08, patrz
+  // lib/backupShape.ts): nawet jeśli ten snapshot pochodzi z naszej
+  // własnej tabeli Backup (więc teoretycznie zawsze dobrze uformowany),
+  // lepiej odmówić przywrócenia z uszkodzonego/pustego rekordu niż
+  // bezpowrotnie wyczyścić bazę bez wstawienia niczego z powrotem.
+  if (!looksLikeRealBackup(data)) {
+    throw new Error("invalid_snapshot_shape");
   }
 
   await db.$transaction(async (tx) => {
