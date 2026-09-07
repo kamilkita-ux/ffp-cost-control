@@ -11,6 +11,7 @@ import {
   serializeDocument
 } from "@/lib/serialize";
 import { currentLogin, isRestrictedUser } from "@/lib/access";
+import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem } from "@/lib/serverMetrics";
 
 export const dynamic = "force-dynamic";
 
@@ -167,10 +168,27 @@ const DEFAULT_SHAREHOLDER_STRUCTURE = {
 // dedykowane endpointy CRUD per encja (patrz app/api/<encja>/route.ts).
 //
 // Zwraca też restricted:true dla kont z listy APP_BASIC_AUTH_RESTRICTED_USERS
-// (patrz lib/access.ts) — frontend na tej podstawie ukrywa kwoty wynagrodzeń
-// pracowników w interfejsie. Same dane (wynagrodzenia) i tak są tu zwracane
-// w pełni, bo są potrzebne do poprawnego wyliczenia kosztów projektów i
-// wyniku finansowego — patrz komentarz w lib/access.ts o zakresie tej ochrony.
+// (patrz lib/access.ts).
+//
+// 2026-09-06/07 — POPRAWKA BEZPIECZEŃSTWA (na wyraźne polecenie Kamila):
+// wcześniej ten endpoint zwracał PEŁNE kwoty wynagrodzeń kontom
+// ograniczonym, tylko UKRYWAJĄC je w interfejsie — czyli ktoś z wiedzą
+// o narzędziach deweloperskich przeglądarki mógł je i tak zobaczyć w
+// surowej odpowiedzi. Teraz dla kont z listy "restricted":
+//   1) kwoty wynagrodzeń/benefitów każdego pracownika są usuwane z
+//      odpowiedzi (redactEmployeeSalary — patrz lib/serverMetrics.ts),
+//   2) nazwane pozycje w harmonogramie kosztów stałych ("Michał B2B",
+//      "Kontroling - Maciek" itp. w Założenia -> Koszty Stałe) mają
+//      usuniętą nazwę/notatkę (redactFixedCostLineItem) — to było
+//      widoczne wprost w interfejsie (bez żadnych devtools), więc to
+//      w praktyce WAŻNIEJSZY z dwóch problemów,
+//   3) żeby mimo to wszystkie SUMY (koszt projektu, wynik firmy, koszty
+//      działów, prognoza) dalej się zgadzały, serwer sam liczy je z
+//      PEŁNYCH (nieukrytych) danych i wysyła gotowe w polu
+//      "serverMetrics" — frontend (app-shell.html, funkcja metrics())
+//      używa tych gotowych sum zamiast liczyć je z (teraz ukrytych)
+//      kwot per-pracownik, gdy STATE.restricted===true. Dla kont
+//      pełnych nic się nie zmienia — liczą jak dotychczas w przeglądarce.
 export async function GET(req: Request) {
   const [departments, projects, employees, vendors, costs, contracts, financings, documents, settings] =
     await prisma.$transaction([
@@ -192,22 +210,51 @@ export async function GET(req: Request) {
   const settingsMap: Record<string, any> = {};
   for (const s of settings) settingsMap[s.key] = s.value;
 
+  const departmentsOut = departments.map(serializeDepartment);
+  const projectsOut = projects.map(serializeProject);
+  const employeesFull = employees.map(serializeEmployee); // PEŁNE dane — do liczenia serverMetrics, NIE wysyłane wprost restricted
+  const costsOut = costs.map(serializeCost);
+  const contractsOut = contracts.map(serializeContract);
+  const financingsOut = financings.map(serializeFinancing);
+  const fixedCostScheduleFull = settingsMap.fixedCostSchedule ?? DEFAULT_FIXED_COST_SCHEDULE;
+
+  // Liczone ZAWSZE z pełnych, nieukrytych danych — patrz komentarz przy
+  // GET wyżej. Frontend korzysta z tego tylko dla kont "restricted".
+  const serverMetrics = computeServerMetrics({
+    projects: projectsOut,
+    costs: costsOut,
+    employees: employeesFull,
+    departments: departmentsOut,
+    financings: financingsOut,
+    contracts: contractsOut
+  });
+
+  const restricted = isRestrictedUser(req);
+  const employeesOut = restricted ? employeesFull.map(redactEmployeeSalary) : employeesFull;
+  const fixedCostSchedule = restricted
+    ? {
+        ...fixedCostScheduleFull,
+        lineItems: (fixedCostScheduleFull.lineItems || []).map((li: any, i: number) => redactFixedCostLineItem(li, i))
+      }
+    : fixedCostScheduleFull;
+
   return NextResponse.json({
-    departments: departments.map(serializeDepartment),
-    projects: projects.map(serializeProject),
-    employees: employees.map(serializeEmployee),
+    departments: departmentsOut,
+    projects: projectsOut,
+    employees: employeesOut,
     vendors: vendors.map(serializeVendor),
-    costs: costs.map(serializeCost),
-    contracts: contracts.map(serializeContract),
-    financings: financings.map(serializeFinancing),
+    costs: costsOut,
+    contracts: contractsOut,
+    financings: financingsOut,
     documents: documents.map(serializeDocument),
     costCategories: settingsMap.costCategories ?? DEFAULT_CATEGORIES,
     costCenters: settingsMap.costCenters ?? DEFAULT_COST_CENTERS,
     currency: settingsMap.currency ?? "PLN",
     assumptions: settingsMap.assumptions ?? DEFAULT_ASSUMPTIONS,
-    fixedCostSchedule: settingsMap.fixedCostSchedule ?? DEFAULT_FIXED_COST_SCHEDULE,
+    fixedCostSchedule,
     shareholderStructure: settingsMap.shareholderStructure ?? DEFAULT_SHAREHOLDER_STRUCTURE,
+    serverMetrics,
     currentUser: currentLogin(req),
-    restricted: isRestrictedUser(req)
+    restricted
   });
 }
