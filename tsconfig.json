@@ -19,5 +19,24 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // Zabezpieczenie na przyszłość (2026-09-07): wgrywanie plików przez
+  // interfejs GitHuba czasem zostawiało w repo przypadkowe duplikaty ze
+  // starych, nieudanych prób — nazwy typu "wgraj-do-...", "ffp-cfmodel-...",
+  // zagnieżdżone foldery "ffp-batch.../ffp-batch...", albo plik trasy API
+  // nazwany inaczej niż dokładnie "route.ts" (Next.js i tak rozpoznaje
+  // WYŁĄCZNIE plik nazwany dosłownie "route.ts" jako prawdziwą trasę —
+  // każdy inny to zawsze zapomniany duplikat, nigdy prawdziwy kod). Taki
+  // pojedynczy zapomniany plik potrafił wysadzić CAŁY build na Railway
+  // (błąd typów w duplikacie), mimo że właściwy kod aplikacji był
+  // poprawny. Te wzorce nie zastępują posprzątania repo — tylko sprawiają,
+  // że pojedynczy zapomniany plik nie blokuje już całego wdrożenia.
+  "exclude": [
+    "node_modules",
+    "**/wgraj-do-*",
+    "**/ffp-cfmodel-*",
+    "**/ffp-upload/**",
+    "**/ffp-batch*/**",
+    "**/*-route.ts",
+    "**/*-route.tsx"
+  ]
 }
