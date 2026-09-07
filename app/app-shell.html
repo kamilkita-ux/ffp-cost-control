@@ -163,6 +163,10 @@ tr:hover td{background:var(--accent-bg);}
 #install-banner .ib-close{background:transparent;color:#cfe8dc;padding:7px 8px;}
 #install-hint-detail{display:none;position:fixed;left:12px;right:12px;bottom:78px;z-index:60;background:#fff;color:var(--text);border-radius:12px;box-shadow:0 6px 20px rgba(10,20,15,.2);padding:14px 16px;font-size:13px;max-width:460px;margin:0 auto;line-height:1.5;}
 #install-hint-detail.show{display:block;}
+/* Pasek "brak połączenia" — appka ma dawać znać, gdy dane mogą być
+   nieaktualne/zmiany się nie zapiszą, tak jak apka na telefonie. */
+#offline-banner{display:none;position:sticky;top:0;z-index:55;background:var(--warn-bg);color:var(--warn);border-bottom:1px solid #f0ddb0;padding:6px 14px;font-size:12.5px;text-align:center;font-weight:600;}
+#offline-banner.show{display:block;}
 </style>
 <div id="app">
   <div id="sidebar-overlay" class="no-print" onclick="closeMobileNav()"></div>
@@ -172,6 +176,7 @@ tr:hover td{background:var(--accent-bg);}
     <div id="nav-list"></div>
   </div>
   <div id="main">
+    <div id="offline-banner" class="no-print">Brak połączenia z internetem — dane mogą być nieaktualne, zmiany się nie zapiszą.</div>
     <div id="topbar" class="no-print">
       <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
       <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
@@ -810,7 +815,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-07-03 (konta uzytkownikow + baner instalacji)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-07-04 (konta uzytkownikow + baner instalacji + info offline)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2145,6 +2150,17 @@ function openForm(entity,id,defaults){
   }
 }
 
+/* ===================== Pasek "brak połączenia" ===================== */
+function updateOfflineBanner(){
+  var b = document.getElementById('offline-banner');
+  if(!b) return;
+  var online = true;
+  try{ online = navigator.onLine; }catch(e){}
+  b.classList.toggle('show', !online);
+}
+window.addEventListener('online', updateOfflineBanner);
+window.addEventListener('offline', updateOfflineBanner);
+
 /* ===================== "Dodaj do ekranu głównego" ===================== */
 // Dyskretny, jednorazowy baner (2026-09-07, na polecenie Kamila: appka ma
 // być "zawsze pod ręką" jak apka telefoniczna). Nie blokuje niczego, nie
@@ -2215,6 +2231,7 @@ async function boot(){
     render();
     setSaveStatus('idle');
     installBannerInit();
+    updateOfflineBanner();
   }catch(e){
     document.getElementById('content').innerHTML = '<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">Nie udało się połączyć z bazą danych</h3><div>'+esc(e.message)+'</div><button class="btn" style="margin-top:10px" onclick="boot()">Spróbuj ponownie</button></div>';
     setSaveStatus('error','Brak połączenia z bazą');
