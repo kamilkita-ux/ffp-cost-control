@@ -35,7 +35,7 @@ import type { SessionPayload } from "./session";
 // i jest aktywne — jeśli nie, sesja jest traktowana tak, jakby jej wcale
 // nie było (użytkownik "wylogowany" najpóźniej przy pierwszym wywołaniu API
 // po dezaktywacji, nie dopiero po wygaśnięciu tokenu).
-async function getVerifiedSession(req: Request): Promise<SessionPayload | null> {
+export async function getVerifiedSession(req: Request): Promise<SessionPayload | null> {
   const session = await getSessionFromRequest(req);
   if (!session) return null;
   try {
