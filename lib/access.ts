@@ -4,15 +4,17 @@
 // APP_BASIC_AUTH_RESTRICTED_USERS (format "login1:haslo1,login2:haslo2",
 // ten sam format co APP_BASIC_AUTH_EXTRA_USERS w middleware.ts).
 //
-// UWAGA — zakres tego ograniczenia: to jest ukrycie na poziomie interfejsu
-// (frontend nie renderuje kwot wynagrodzeń, API bootstrap i tak zwraca
-// pełne dane, bo reszta wyliczeń — koszty projektów, zysk, cash burn —
-// musi je uwzględniać, żeby były poprawne). Ktoś, kto celowo zajrzy w
-// narzędzia deweloperskie przeglądarki i podejrzy surową odpowiedź API,
-// nadal mógłby zobaczyć liczby. To rozwiązanie wystarcza do zwykłego
-// korzystania z aplikacji, ale nie jest twardą barierą bezpieczeństwa —
-// jeśli to ma znaczenie, potrzebna byłaby osobna, większa zmiana
-// (przeniesienie wyliczeń na serwer).
+// UWAGA — zakres tego ograniczenia (zaktualizowane 2026-09-07): od tej
+// zmiany API /api/bootstrap NIE zwraca już kontom ograniczonym surowych
+// kwot wynagrodzeń — są usuwane po stronie serwera (patrz
+// lib/serverMetrics.ts: redactEmployeeSalary, redactFixedCostLineItem).
+// Sumy zbiorcze (koszt projektu, wynik firmy, koszty działów), których
+// te konta i tak używają, liczone są od razu na serwerze z pełnych
+// danych (pole "serverMetrics" w odpowiedzi bootstrap) — więc dalej są
+// poprawne, mimo że surowe kwoty per-pracownik już nie docierają do
+// przeglądarki. To już jest realna bariera (nie tylko ukrycie w
+// interfejsie) — ktoś zaglądający w devtools nie zobaczy tych kwot,
+// bo ich po prostu nie ma w odpowiedzi API.
 function parseUserList(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
