@@ -378,3 +378,22 @@ model ChangeLog {
   @@index([createdAt])
   @@index([entity])
 }
+
+// Prawdziwe konta użytkowników — login + hasło zahaszowane (scrypt, patrz
+// lib/passwords.ts), zamiast wspólnych par login:hasło w zmiennych
+// środowiskowych Railway (patrz middleware.ts). DODANE 2026-09-07, ale
+// NIEUŻYWANE dopóki zmienna środowiskowa AUTH_MODE nie jest ustawiona na
+// "accounts" — do tego czasu logowanie działa dokładnie tak jak dotychczas
+// (Basic Auth), więc dodanie tej tabeli nikogo nie blokuje z dostępu.
+// role: "full" (pełny dostęp, jak dotychczasowe konta primary/extra) albo
+// "restricted" (bez wglądu w wynagrodzenia — patrz lib/access.ts).
+model AppUser {
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  username     String    @unique
+  passwordHash String
+  role         String    @default("restricted")
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+}

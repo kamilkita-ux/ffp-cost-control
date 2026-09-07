@@ -15,6 +15,12 @@
 // przeglądarki. To już jest realna bariera (nie tylko ukrycie w
 // interfejsie) — ktoś zaglądający w devtools nie zobaczy tych kwot,
 // bo ich po prostu nie ma w odpowiedzi API.
+// WAŻNE: to działa w OBU trybach logowania (Basic Auth i, po przełączeniu,
+// AUTH_MODE=accounts), żeby zabezpieczenie wynagrodzeń (isRestrictedUser)
+// nigdy nie "wyłączyło się przypadkiem" tylko dlatego, że Kamil zmienił
+// sposób logowania — patrz lib/session.ts / lib/authSession.ts.
+import { getSessionFromRequest } from "./authSession";
+
 function parseUserList(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
@@ -23,7 +29,7 @@ function parseUserList(raw: string | undefined): string[] {
     .filter((u): u is string => !!u);
 }
 
-export function currentLogin(req: Request): string {
+export async function currentLogin(req: Request): Promise<string> {
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Basic ")) {
     try {
@@ -37,12 +43,40 @@ export function currentLogin(req: Request): string {
       // ignoruj błędne nagłówki
     }
   }
+  const session = await getSessionFromRequest(req);
+  if (session) return session.username;
   return "";
 }
 
-export function isRestrictedUser(req: Request): boolean {
-  const login = currentLogin(req);
+export async function isRestrictedUser(req: Request): Promise<boolean> {
+  const session = await getSessionFromRequest(req);
+  if (session) return session.role === "restricted";
+  const login = await currentLogin(req);
   if (!login) return false;
   const restrictedLogins = parseUserList(process.env.APP_BASIC_AUTH_RESTRICTED_USERS);
   return restrictedLogins.includes(login);
+}
+
+// Kto może zarządzać kontami w /api/admin/users (tworzyć/usuwać osoby,
+// resetować hasła)? Główne konto Kamila (to samo, którym loguje się dziś
+// przez Basic Auth — APP_BASIC_AUTH_USER) ALBO — po przełączeniu na
+// AUTH_MODE=accounts — sesja z rolą "full". Dzięki temu nie ma problemu
+// "z czego utworzyć pierwsze konto": Kamil zarządza kontami swoim
+// dotychczasowym loginem, zanim jeszcze sam przejdzie na nowy system.
+export async function isAdminCaller(req: Request): Promise<boolean> {
+  const session = await getSessionFromRequest(req);
+  if (session) return session.role === "full";
+  const authHeader = req.headers.get("authorization");
+  if (authHeader && authHeader.startsWith("Basic ")) {
+    try {
+      const decoded = Buffer.from(authHeader.slice(6), "base64").toString("utf-8");
+      const idx = decoded.indexOf(":");
+      const login = idx !== -1 ? decoded.slice(0, idx) : "";
+      const primary = process.env.APP_BASIC_AUTH_USER;
+      if (login && primary && login === primary) return true;
+    } catch {
+      // ignoruj błędne nagłówki
+    }
+  }
+  return false;
 }
