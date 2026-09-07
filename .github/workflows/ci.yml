@@ -26,6 +26,8 @@ jobs:
         run: npx prisma generate
       - name: Type check
         run: npx tsc --noEmit
+      - name: Testy automatyczne
+        run: npm test
       - name: Production build
         run: npx next build
         env:
