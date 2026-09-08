@@ -48,3 +48,27 @@ for (const relPath of MUST_GUARD_WITH_ADMIN) {
     );
   });
 }
+
+// Zatwierdzone przez Kamila 2026-09-08 (D-SETTINGS-PERMISSIONS,
+// SETTINGS_PERMISSION_MATRIX z raportu nocnego): klucze finansowe/wrażliwe
+// w /api/settings muszą być zablokowane dla konta ograniczonego.
+test("PUT /api/settings blokuje konto ograniczone dla kluczy finansowych/wrażliwych", () => {
+  const src = readFileSync(join(ROOT, "app/api/settings/route.ts"), "utf-8");
+  assert.match(
+    src,
+    /import\s*\{[^}]*isRestrictedUser[^}]*\}\s*from\s*["']@\/lib\/access["']/,
+    "app/api/settings/route.ts musi importować isRestrictedUser z @/lib/access"
+  );
+  assert.match(
+    src,
+    /await isRestrictedUser\(req\)/,
+    "app/api/settings/route.ts musi realnie wywoływać isRestrictedUser(req)"
+  );
+  for (const key of ["assumptions", "fixedCostSchedule", "shareholderStructure"]) {
+    assert.match(
+      src,
+      new RegExp(`["']${key}["']`),
+      `RESTRICTED_FORBIDDEN_KEYS musi obejmować "${key}"`
+    );
+  }
+});
