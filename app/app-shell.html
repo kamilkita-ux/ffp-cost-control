@@ -840,7 +840,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-07-07 (poprawka cache powloki PWA)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-08-08 (dashboard odswieza daty samoczynnie)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1013,6 +1013,18 @@ function render(){
   }
 }
 function openDetail(type,id){ currentTab='detail:'+type+':'+id; render(); }
+
+// Zgłoszone przez Kamila (2026-09-08): dashboard, jeśli zostawić kartę
+// otwartą bez żadnej akcji (np. przez noc), pokazywał "Stan na [wczorajsza
+// data]" i nieaktualne liczniki dni ("Płatności w 7 dni", zaległości) —
+// bo render() liczy się od nowa TYLKO przy nawigacji/zmianie danych, nigdy
+// samoczynnie z zegara. Poniżej: co 5 minut, WYŁĄCZNIE gdy użytkownik jest
+// akurat na dashboardzie, przeliczamy widok od nowa — bezpieczne, bo
+// formularze otwierają się w osobnym #modal-overlay (nie w #content), więc
+// to odświeżenie nigdy nie przerwie komuś edycji w toku.
+setInterval(function(){
+  if(BOOTED && currentTab==='dashboard') render();
+}, 5*60*1000);
 
 /* ============================= DASHBOARD ============================= */
 function viewDashboard(){
