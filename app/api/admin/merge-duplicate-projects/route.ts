@@ -19,11 +19,19 @@ import { DUPLICATE_PROJECT_MERGES } from "@/lib/duplicateProjectMerges";
 // zachowywany ma puste pole — nie nadpisujemy istniejących danych), a
 // dopiero potem stary rekord Projektu jest usuwany.
 //
-// POPRAWKA 2026-09-17: pierwsza wersja tego endpointu NIE przenosiła pól
-// skalarnych (m.in. revenueMonthly, location) — co spowodowało realną utratę
-// wpisanego przychodu dla 5 farm przy pierwszym uruchomieniu (Kamil to
-// wychwycił po zmianach na Dashboardzie). Naprawione tutaj; utracone dane
-// trzeba było uzupełnić ręcznie tym razem (stare rekordy już usunięte).
+// POPRAWKA 2026-09-17 (1): pierwsza wersja NIE przenosiła pól skalarnych
+// (m.in. revenueMonthly, location) — realna utrata wpisanego przychodu dla
+// 3 farm przy pierwszym uruchomieniu (Wylewa, Poręba, F9 Chludowo).
+// Naprawione (CARRY_OVER_FIELDS); utracone dane przywraca osobno
+// /api/admin/repair-lost-revenue.
+//
+// POPRAWKA 2026-09-18 (2): dwie pary ("Miejsce piastowe", "Wysoka
+// Strzyżowska") NIE zostały scalone, bo szukaliśmy starego rekordu po
+// DOKŁADNEJ nazwie, a w bazie nazwa różni się niewidocznie (spacja na
+// końcu / podwójna spacja / inna forma Unicode "ż"). Teraz stary rekord
+// dopasowujemy po ZNORMALIZOWANEJ nazwie (NFC, małe litery, pojedyncze
+// spacje, trim), a zachowywany — po dokładnej (trim+NFC) nazwie z kodem.
+// Wszystkie pasujące stare warianty (może być >1) są scalane do jednego.
 //
 // Idempotentne: jeśli stary projekt nie istnieje (już scalony wcześniej —
 // np. przy drugim kliknięciu), para jest pomijana bez błędu.
@@ -33,6 +41,20 @@ const CARRY_OVER_FIELDS = [
   "connectionAgreementStatus", "permitsStatus", "environmentalDecisionStatus",
   "zoningStatus", "owner", "startDate"
 ] as const;
+const NUMERIC_FIELDS = new Set(["revenueMonthly", "budgetTotal", "requestedPowerMW", "grantedPowerMW"]);
+
+function normName(s: string | null | undefined): string {
+  return (s || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+}
+function exactName(s: string | null | undefined): string {
+  return (s || "").normalize("NFC").replace(/\s+/g, " ").trim();
+}
+function isEmptyVal(v: unknown, numeric: boolean): boolean {
+  if (v === null || v === undefined || v === "") return true;
+  if (numeric && !(v instanceof Date) && Number(v as any) === 0) return true;
+  return false;
+}
+
 export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -43,57 +65,62 @@ export async function POST(req: Request) {
   let reassignedContracts = 0;
   let reassignedFinancings = 0;
   let reassignedAllocations = 0;
+  const carried: string[] = [];
   const skipped: string[] = [];
 
+  const allProjects: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false } });
+  const deletedIds = new Set<string>();
+
   for (const pair of DUPLICATE_PROJECT_MERGES) {
-    const oldProject = await prisma.project.findFirst({
-      where: { name: pair.oldName, isDemo: false }
-    });
-    if (!oldProject) {
-      skipped.push(`${pair.oldName} → ${pair.keepName}: stary rekord już nie istnieje (prawdopodobnie już scalony wcześniej) — pomiń.`);
-      continue;
-    }
-    const keepProject = await prisma.project.findFirst({
-      where: { name: pair.keepName, isDemo: false }
-    });
+    const live = allProjects.filter((p) => !deletedIds.has(p.id));
+    // Zachowywany: dokładna nazwa (po trim/NFC) — w razie kilku, ten z kodem.
+    const keepCandidates = live.filter((p) => exactName(p.name) === exactName(pair.keepName));
+    const keepProject = keepCandidates.find((p) => p.code) || keepCandidates[0];
     if (!keepProject) {
       skipped.push(`${pair.oldName} → ${pair.keepName}: nie znaleziono docelowego projektu "${pair.keepName}" — pomiń, nic nie usunięto.`);
       continue;
     }
-    if (oldProject.id === keepProject.id) {
-      skipped.push(`${pair.oldName} → ${pair.keepName}: to już ten sam rekord — pomiń.`);
+    // Stare warianty: znormalizowana nazwa == znormalizowana oldName, bez zachowywanego.
+    const oldVariants = live.filter((p) => p.id !== keepProject.id && normName(p.name) === normName(pair.oldName));
+    if (!oldVariants.length) {
+      skipped.push(`${pair.oldName} → ${pair.keepName}: stary rekord już nie istnieje (już scalony) — pomiń.`);
       continue;
     }
 
-    const costsRes = await prisma.cost.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
-    reassignedCosts += costsRes.count;
-    const contractsRes = await prisma.contract.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
-    reassignedContracts += contractsRes.count;
-    const financingsRes = await prisma.financing.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
-    reassignedFinancings += financingsRes.count;
-    const allocationsRes = await prisma.employeeProjectAllocation.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
-    reassignedAllocations += allocationsRes.count;
+    for (const oldProject of oldVariants) {
+      const costsRes = await prisma.cost.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
+      reassignedCosts += costsRes.count;
+      const contractsRes = await prisma.contract.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
+      reassignedContracts += contractsRes.count;
+      const financingsRes = await prisma.financing.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
+      reassignedFinancings += financingsRes.count;
+      const allocationsRes = await prisma.employeeProjectAllocation.updateMany({ where: { projectId: oldProject.id }, data: { projectId: keepProject.id } });
+      reassignedAllocations += allocationsRes.count;
 
-    const marker = `[Scalono duplikat "${pair.oldName}"]`;
-    const updateData: Record<string, unknown> = {};
-    for (const field of CARRY_OVER_FIELDS) {
-      const oldVal = (oldProject as Record<string, unknown>)[field];
-      const keepVal = (keepProject as Record<string, unknown>)[field];
-      const keepIsEmpty = keepVal === null || keepVal === undefined || keepVal === "";
-      const oldHasValue = oldVal !== null && oldVal !== undefined && oldVal !== "";
-      if (keepIsEmpty && oldHasValue) {
-        updateData[field] = oldVal;
+      const marker = `[Scalono duplikat "${exactName(oldProject.name)}"]`;
+      const updateData: Record<string, unknown> = {};
+      for (const field of CARRY_OVER_FIELDS) {
+        const oldVal = oldProject[field];
+        const keepVal = keepProject[field];
+        const numeric = NUMERIC_FIELDS.has(field);
+        if (isEmptyVal(keepVal, numeric) && !isEmptyVal(oldVal, numeric)) {
+          updateData[field] = oldVal;
+          keepProject[field] = oldVal; // żeby kolejny wariant nie nadpisał
+          carried.push(`${exactName(pair.keepName)}.${field} ← ${String(oldVal)}`);
+        }
       }
-    }
-    if (oldProject.description && !(keepProject.description || "").includes(marker)) {
-      updateData.description = `${keepProject.description ? keepProject.description + "\n\n" : ""}${marker} ${oldProject.description}`;
-    }
-    if (Object.keys(updateData).length) {
-      await prisma.project.update({ where: { id: keepProject.id }, data: updateData });
-    }
+      if (oldProject.description && !(keepProject.description || "").includes(marker)) {
+        updateData.description = `${keepProject.description ? keepProject.description + "\n\n" : ""}${marker} ${oldProject.description}`;
+        keepProject.description = updateData.description;
+      }
+      if (Object.keys(updateData).length) {
+        await prisma.project.update({ where: { id: keepProject.id }, data: updateData });
+      }
 
-    await prisma.project.delete({ where: { id: oldProject.id } });
-    merged++;
+      await prisma.project.delete({ where: { id: oldProject.id } });
+      deletedIds.add(oldProject.id);
+      merged++;
+    }
   }
 
   await logChange(
@@ -101,7 +128,7 @@ export async function POST(req: Request) {
     "project",
     null,
     "update",
-    `Scalenie duplikatów farm (powstałych z importu CF Farmy.xlsx): ${merged} par scalonych. Przepięto: ${reassignedCosts} kosztów, ${reassignedContracts} umów, ${reassignedFinancings} finansowań, ${reassignedAllocations} przypisań pracowników.`
+    `Scalenie duplikatów farm: ${merged} rekordów scalonych. Przepięto: ${reassignedCosts} kosztów, ${reassignedContracts} umów, ${reassignedFinancings} finansowań, ${reassignedAllocations} przypisań pracowników. Przeniesione pola: ${carried.length ? carried.join("; ") : "brak"}.`
   );
 
   return NextResponse.json({
@@ -111,6 +138,7 @@ export async function POST(req: Request) {
     reassignedContracts,
     reassignedFinancings,
     reassignedAllocations,
+    carried,
     skipped
   });
 }

@@ -842,7 +842,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-17-15 (zakladka Kontrola spojnosci + wzory)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-18-16 (scalanie odporne na spacje + przywracanie przychodow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2226,6 +2226,11 @@ function viewSettings(){
   '<div class="panel"><h3>Scalenie duplikatów farm (jednorazowe porządki)</h3>'+
   '<div class="muted">Portfel zawiera duplikaty tych samych farm pod różną pisownią (np. „wylewa” i „Wylewa”), powstałe przy wcześniejszym imporcie arkusza kontrolera. To scala każdą parę w jeden rekord (zachowuje wersję z kodem PV-xxx), przepinając powiązane koszty/umowy/finansowania — nic nie ginie. Bezpieczne do wielokrotnego kliknięcia.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="mergeDuplicateProjectsNow()">Scal duplikaty farm</button></div>'+
+  '<div class="muted" style="margin-top:6px">Od 18.09: dopasowuje stare rekordy niezależnie od wielkości liter i ukrytych spacji, a przy scalaniu przenosi też przychód, lokalizację i statusy pozwoleń/przyłączenia (nie nadpisuje już wpisanych wartości).</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Przywróć utracone przychody (5 farm)</h3>'+
+  '<div class="muted">Przy pierwszym scalaniu 17.09 przepadł wpisany „Przychód / mies.” dla Wylewa (424 500), Poręba (183 950), F9 Chludowo (56 667) — oraz, jeśli scalanie powyżej ich nie przeniosło, Miejsce Piastowe (56 600) i F8 Wysoka Strzyżowska (28 333). Ten przycisk wpisuje te wartości TYLKO tam, gdzie pole jest puste — nie nadpisuje niczego, co już wpisałeś. Kliknij PO „Scal duplikaty farm”.</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="repairLostRevenueNow()">Przywróć utracone przychody</button></div>'+
   '</div>'+
   '<div class="panel"><h3>Model budżetowy „Budżet Farm PV" (Grzegorz) — dane bieżące</h3>'+
   '<div class="muted">Wczytuje dane z 7 pozycji (Dębowiec, Lubelskie 4x1 MW [nowy], Łubno, Miejsce Piastowe z BESS 2MW, Opole 5x1 MW [nowy], Poręba, Wylewa) jako BIEŻĄCY, aktualny stan tych projektów (decyzja Kamila 2026-09-17) — nadpisuje moc/CAPEX/lokalizację/datę uruchomienia/opis i zastępuje stare finansowanie tej samej pozycji z arkusza CF Farmy.xlsx. Nie rusza pozostałych 4 farm ani innych modułów (Pracownicy, Koszty stałe spółki itd.). Zalecane: najpierw kliknij „Scal duplikaty farm” powyżej. Bezpieczne do wielokrotnego kliknięcia — ale ZALECANA KOPIA ZAPASOWA przed pierwszym uruchomieniem (nadpisuje dane).</div>'+
@@ -2369,11 +2374,21 @@ function importPvBudgetNow(){
 function mergeDuplicateProjectsNow(){
   if(!confirm('Scalić duplikaty farm (te same farmy występujące dwa razy pod różną pisownią)? Powiązane koszty/umowy/finansowania zostaną przepięte do zachowywanego rekordu, duplikat zostanie usunięty. Zalecane: wcześniej zrób kopię zapasową.')) return;
   apiCall('POST','/api/admin/merge-duplicate-projects').then(function(res){
-    var msg='Gotowe.\nScalonych par: '+res.merged+'.\nPrzepięto: '+res.reassignedCosts+' kosztów, '+res.reassignedContracts+' umów, '+res.reassignedFinancings+' finansowań, '+res.reassignedAllocations+' przypisań pracowników.';
+    var msg='Gotowe.\nScalonych rekordów: '+res.merged+'.\nPrzepięto: '+res.reassignedCosts+' kosztów, '+res.reassignedContracts+' umów, '+res.reassignedFinancings+' finansowań, '+res.reassignedAllocations+' przypisań pracowników.';
+    if(res.carried && res.carried.length){ msg+='\n\nPrzeniesione pola:\n'+res.carried.join('\n'); }
     if(res.skipped && res.skipped.length){ msg+='\n\nPominięte:\n'+res.skipped.join('\n'); }
     alert(msg);
     return refreshState().then(render);
   }).catch(function(e){ alert('Nie udało się scalić duplikatów: '+e.message); });
+}
+function repairLostRevenueNow(){
+  if(!confirm('Przywrócić utracone przychody miesięczne (5 farm)? Wpisze wartości tylko w puste pola, niczego nie nadpisze.')) return;
+  apiCall('POST','/api/admin/repair-lost-revenue').then(function(res){
+    var msg='Gotowe.\nUzupełnione: '+(res.filled.length? '\n'+res.filled.join('\n') : 'nic (wszystko już było wpisane)');
+    if(res.skipped && res.skipped.length){ msg+='\n\nPominięte:\n'+res.skipped.join('\n'); }
+    alert(msg);
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Nie udało się przywrócić przychodów: '+e.message); });
 }
 function downloadBackupPoint(id){
   fetch('/api/admin/backups/'+id).then(function(r){
