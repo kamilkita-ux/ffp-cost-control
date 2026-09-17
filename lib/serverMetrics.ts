@@ -60,16 +60,19 @@ function localISO(d: Date): string {
   const p2 = (n: number) => (n < 10 ? "0" : "") + n;
   return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
 }
-function runRateAsOfISO(): string { const d = new Date(); d.setDate(d.getDate() + 45); return localISO(d); }
+function runRateAsOfISO(): string { const d = new Date(); return localISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
 function recurringCostActive(c: AnyRec, asOfISO: string): boolean {
   if (c.paymentStatus === "anulowany") return false;
   if (c.costDate && String(c.costDate) > asOfISO) return false;
   return true;
 }
 function financingActive(f: AnyRec, asOfISO: string): boolean {
-  if (f.nextPaymentDate && String(f.nextPaymentDate) > asOfISO) return false;
   if (f.endDate && String(f.endDate) < asOfISO.slice(0, 7) + "-01") return false;
-  return true;
+  if (!f.nextPaymentDate) return true;
+  if (String(f.nextPaymentDate) <= asOfISO) return true;
+  const n = Number(f.numInstallments) || 0, r = Number(f.remainingInstallments) || 0;
+  if (n > 0 && r > 0 && r < n) return true; // już w spłacie
+  return false;
 }
 
 function empAllocPct(e: AnyRec, projectId: string): number {

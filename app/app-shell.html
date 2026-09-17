@@ -483,12 +483,23 @@ function recurringCostActive(c, asOfISO){
   if(c.costDate && c.costDate>asOfISO) return false;
   return true;
 }
+// Finansowanie "w spłacie" w miesiącu kończącym się asOfISO, gdy:
+//  - nie minął endDate (koniec spłaty), i
+//  - pierwsza/następna rata (nextPaymentDate) <= koniec tego miesiąca, ALBO
+//    kredyt już jest w trakcie spłaty (spłacono >= 1 ratę: remainingInstallments
+//    < numInstallments) — wtedy data "następnej raty" może być dowolna.
 function financingActive(f, asOfISO){
-  if(f.nextPaymentDate && f.nextPaymentDate>asOfISO) return false;
   if(f.endDate && f.endDate<asOfISO.slice(0,7)+'-01') return false;
-  return true;
+  if(!f.nextPaymentDate) return true;
+  if(f.nextPaymentDate<=asOfISO) return true;
+  var n=Number(f.numInstallments)||0, r=Number(f.remainingInstallments)||0;
+  if(n>0 && r>0 && r<n) return true; // już w spłacie
+  return false;
 }
-function runRateAsOfISO(){ var d=new Date(); d.setDate(d.getDate()+45); return localISO(d); }
+// "Koszt dziś" = koszty bieżącego miesiąca (do jego końca) — bez zapasu
+// w przód, żeby farma/kredyt startujące za 6 tygodni nie wchodziły już dziś
+// (poprawka 2026-09-18 po pierwszym resecie: Opole XI 2026 wpadało do dziś).
+function runRateAsOfISO(){ var d=new Date(); return localISO(new Date(d.getFullYear(), d.getMonth()+1, 0)); }
 function projectActiveInMonth(p, monthEndISO){
   if(p.isDemo) return false;
   if(['sprzedany','zamknięty','zawieszony'].indexOf(p.status)>=0) return false;
@@ -858,7 +869,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-18-17 (reset portfela pod dane Grzegorza, projekcja z kart)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-18-18 (Koszt dzis = biezacy miesiac, bez zapasu 45 dni)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1299,7 +1310,7 @@ function viewConsistency(){
   function row(label,formula,value){ return '<tr><td><b>'+esc(label)+'</b></td><td class="muted" style="font-size:12.5px">'+formula+'</td><td class="right"><b>'+value+'</b></td></tr>'; }
   var formulas = '<div class="table-wrap"><table><thead><tr><th>Liczba na Dashboardzie</th><th>Jak jest liczona (z podstawionymi wartościami)</th><th>Wynik</th></tr></thead><tbody>'+
     row('① Przychód dziś','Suma „Przychód / mies.” TYLKO projektów ze statusem <b>operacyjny</b> ('+ops.length+' szt.): '+(ops.length?ops.map(function(p){return esc(p.name)+' '+fmtMoney0(Number(p.revenueMonthly)||0);}).join(' + '):'brak'), fmtMoney0(m.monthlyRevenue)+'/mies.')+
-    row('① Koszt dziś (run-rate)','Pracownicy aktywni '+fmtMoney0(m.monthlyPayroll)+' + koszty cykliczne z modułu Koszty, które już ruszyły (costDate ≤ dziś+45 dni, nie anulowane) '+fmtMoney0(m.monthlyExternal)+' + raty finansowań, które już ruszyły (pierwsza rata ≤ dziś+45 dni) '+fmtMoney0(m.monthlyFinancing)+'. <b>Nie</b> wchodzą: umowy/abonamenty, koszty jednorazowe, koszty DEMO, OPEX i raty farm, które ruszą później.', fmtMoney0(m.totalBurn)+'/mies.')+
+    row('① Koszt dziś (run-rate)','Pracownicy aktywni '+fmtMoney0(m.monthlyPayroll)+' + koszty cykliczne z modułu Koszty, które już ruszyły (data startu ≤ koniec bieżącego miesiąca, nie anulowane) '+fmtMoney0(m.monthlyExternal)+' + raty finansowań, które już ruszyły (pierwsza rata ≤ koniec bieżącego miesiąca lub kredyt w trakcie spłaty) '+fmtMoney0(m.monthlyFinancing)+'. <b>Nie</b> wchodzą: umowy/abonamenty, koszty jednorazowe, koszty DEMO, OPEX i raty farm, które ruszą później.', fmtMoney0(m.totalBurn)+'/mies.')+
     row('① Zysk dziś','Przychód dziś − Koszt dziś = '+fmtMoney0(m.monthlyRevenue)+' − '+fmtMoney0(m.totalBurn), fmtMoney0(m.monthlyProfit)+'/mies.')+
     row('② Przychód docelowy','Przychód dziś '+fmtMoney0(m.monthlyRevenue)+' + suma „Przychód / mies.” projektów NIEoperacyjnych ('+nonOps.length+' szt.) '+fmtMoney0(m.monthlyRevenueProjected)+'. To założenie z kart projektów, nie bieżący wynik.', fmtMoney0(m.monthlyRevenue+m.monthlyRevenueProjected)+'/mies.')+
     row('Przychód w okresie','Miesiąc po miesiącu z KART PROJEKTÓW: suma „Przychód / mies.” projektów operacyjnych + farm, których data uruchomienia (endDate) ≤ koniec danego miesiąca. Proporcjonalnie do dni w okresie.', fmtMoney0(pm.revenue))+
