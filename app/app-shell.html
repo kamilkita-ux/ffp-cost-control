@@ -841,7 +841,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-17-10 (link do Budzet Farm PV / Grzegorz)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-17-11 (import modelu budzetowego Grzegorza)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2040,6 +2040,10 @@ function viewSettings(){
   '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importCfPortfolioNow()">Wczytaj / odśwież portfel farm</button></div>'+
   '</div>'+
+  '<div class="panel"><h3>Model budżetowy „Budżet Farm PV" (Grzegorz)</h3>'+
+  '<div class="muted">Wczytuje założenia modelu opłacalności (IRR/WACC) dla 7 pozycji: Dębowiec, Lubelskie 4x1 MW (nowy), Łubno, Miejsce Piastowe (z BESS 2MW), Opole 5x1 MW (nowy), Poręba, Wylewa. Dla farm już istniejących w portfelu NIE nadpisuje mocy/CAPEX/statusu — tylko dopisuje opis i tworzy finansowanie modelowe (nieliczone do bieżącego zadłużenia). Bezpieczne do wielokrotnego kliknięcia. Pełny kalkulator dostępny w linku w bocznym menu.</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importPvBudgetNow()">Wczytaj model budżetowy Grzegorza</button></div>'+
+  '</div>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
   '<div class="panel"><h3>Centra kosztów</h3>'+dictList('costCenters')+'</div>'+
@@ -2165,6 +2169,15 @@ function importCfPortfolioNow(){
     alert('Gotowe.\nProjekty — nowe: '+res.projectsCreated+', zaktualizowane: '+res.projectsUpdated+'.\nFinansowania — nowe: '+res.financingsCreated+', zaktualizowane: '+res.financingsUpdated+'.');
     return refreshState().then(render);
   }).catch(function(e){ alert('Nie udało się wczytać portfela: '+e.message); });
+}
+function importPvBudgetNow(){
+  if(!confirm('Wczytać model budżetowy „Budżet Farm PV" (Grzegorz)? Dla istniejących farm dopisze tylko opis i finansowanie modelowe (bez zmiany mocy/CAPEX/statusu), dla Lubelskie 4x1 MW i Opole 5x1 MW utworzy nowe Projekty. Zalecane: wcześniej zrób kopię zapasową ("Utwórz kopię teraz" powyżej).')) return;
+  apiCall('POST','/api/admin/import-pv-budget').then(function(res){
+    var msg='Gotowe.\nProjekty — nowe: '+res.projectsCreated+', zaktualizowane opisy: '+res.projectsUpdated+'.\nFinansowania (modelowe) — nowe: '+res.financingsCreated+', zaktualizowane: '+res.financingsUpdated+'.';
+    if(res.skipped && res.skipped.length){ msg+='\n\nPominięte:\n'+res.skipped.join('\n'); }
+    alert(msg);
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Nie udało się wczytać modelu budżetowego: '+e.message); });
 }
 function downloadBackupPoint(id){
   fetch('/api/admin/backups/'+id).then(function(r){
