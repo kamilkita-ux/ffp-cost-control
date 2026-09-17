@@ -469,6 +469,32 @@ function empAllocPct(e,projectId){
   return a?Number(a.pct)||0:0;
 }
 
+// Reguły "od kiedy liczyć" (2026-09-18, po resecie portfela pod dane
+// Grzegorza): koszt cykliczny wchodzi do run-rate/projekcji dopiero od
+// swojej daty (costDate = data startu, np. uruchomienie farmy) i nigdy, gdy
+// jest anulowany; rata finansowania — dopiero od nextPaymentDate (pierwsza
+// rata) i do endDate (koniec spłaty). Dzięki temu OPEX i kredyty farm, które
+// ruszą w 2027, nie obciążają dzisiejszego "Koszt dziś", a w projekcji
+// pojawiają się w miesiącu, w którym faktycznie zaczynają. asOfISO = ostatni
+// dzień miesiąca, dla którego liczymy (dla run-rate: dziś + 45 dni, żeby
+// objąć najbliższą ratę już aktywnego kredytu).
+function recurringCostActive(c, asOfISO){
+  if(c.paymentStatus==='anulowany') return false;
+  if(c.costDate && c.costDate>asOfISO) return false;
+  return true;
+}
+function financingActive(f, asOfISO){
+  if(f.nextPaymentDate && f.nextPaymentDate>asOfISO) return false;
+  if(f.endDate && f.endDate<asOfISO.slice(0,7)+'-01') return false;
+  return true;
+}
+function runRateAsOfISO(){ var d=new Date(); d.setDate(d.getDate()+45); return localISO(d); }
+function projectActiveInMonth(p, monthEndISO){
+  if(p.isDemo) return false;
+  if(['sprzedany','zamknięty','zawieszony'].indexOf(p.status)>=0) return false;
+  if(p.status==='operacyjny') return true;
+  return !!(p.endDate && p.endDate<=monthEndISO);
+}
 function metrics(){
   // WAŻNE: wszystkie wyliczenia finansowe (KPI, dashboard, analiza, symulator)
   // celowo POMIJAJĄ rekordy oznaczone jako DEMO (isDemo=true) — inaczej
@@ -481,9 +507,11 @@ function metrics(){
 
   var activeEmployees = realEmployeesAll.filter(function(e){return e.status!=='zakończona współpraca';});
   var monthlyPayroll = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
-  var monthlyExternal = realCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
-  var monthlyFinancing = STATE.financings.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
-  var monthlyFixedNonPayroll = realCosts.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var asOf = runRateAsOfISO();
+  var activeCosts = realCosts.filter(function(c){return recurringCostActive(c,asOf);});
+  var monthlyExternal = activeCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyFinancing = STATE.financings.filter(function(f){return financingActive(f,asOf);}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+  var monthlyFixedNonPayroll = activeCosts.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyFixed = monthlyPayroll+monthlyFixedNonPayroll+monthlyFinancing;
   var totalBurn = monthlyPayroll+monthlyExternal+monthlyFinancing;
   var annualRunRate = totalBurn*12;
@@ -495,7 +523,7 @@ function metrics(){
   // Sumy zbiorcze (totalProjectCost, monthlyRevenue) liczone są WYŁĄCZNIE
   // po realProjects, żeby DEMO nie zawyżało łącznych KPI.
   var monthlyProjectCost = STATE.projects.reduce(function(sum,p){
-    var c = realCosts.filter(function(x){return x.projectId===p.id;}).reduce(function(s,x){return s+monthlyEquivalent(x);},0);
+    var c = activeCosts.filter(function(x){return x.projectId===p.id;}).reduce(function(s,x){return s+monthlyEquivalent(x);},0);
     var emp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
     sum[p.id] = c+emp; return sum;
   },{});
@@ -528,14 +556,14 @@ function metrics(){
   });
 
   var unassignedCosts = realCosts.filter(function(c){return !c.projectId;});
-  var monthlyAdminFromCosts = unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var monthlyAdminFromCosts = unassignedCosts.filter(function(c){return recurringCostActive(c,asOf);}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
   var monthlyAdminFromEmp = activeEmployees.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,'ADMIN')/100);},0);
   var monthlyAdmin = monthlyAdminFromCosts+monthlyAdminFromEmp;
 
   var deptCost = {};
   STATE.departments.forEach(function(d){
     var empC = activeEmployees.filter(function(e){return e.departmentId===d.id;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
-    var costC = realCosts.filter(function(c){return c.departmentId===d.id;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    var costC = activeCosts.filter(function(c){return c.departmentId===d.id;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
     deptCost[d.id] = {employees:activeEmployees.filter(function(e){return e.departmentId===d.id;}).length, empCost:empC, otherCost:costC, total:empC+costC};
   });
 
@@ -665,61 +693,49 @@ function periodMetrics(key,customFrom,customTo){
   var r = periodRange(key,customFrom,customTo);
   var m = metrics();
   var months = monthsBetweenDates(r.from,r.to);
-  var oneTime = STATE.costs.filter(function(c){
-    if(c.isDemo) return false; // pomiń dane demonstracyjne — patrz metrics()
-    if(monthlyEquivalent(c)>0) return false; // już policzone w run-rate
+  var realProjects = STATE.projects.filter(function(p){return !p.isDemo;});
+  var realCosts = STATE.costs.filter(function(c){return !c.isDemo;});
+  var oneTime = realCosts.filter(function(c){
+    if(monthlyEquivalent(c)>0) return false; // cykliczne liczone niżej miesiąc po miesiącu
+    if(c.paymentStatus==='anulowany') return false;
     if(!c.costDate) return false;
     var d = new Date(c.costDate+'T00:00:00');
     return d>=r.from && d<=r.to;
   }).reduce(function(s,c){return s+(Number(c.grossAmount)||Number(c.netAmount)||0);},0);
 
-  // Projekcja miesiąc-po-miesiącu: tam, gdzie harmonogram kontrolera
-  // (Założenia -> revenueMonthlySchedule / monthlySchedule, arkusz
-  // "CF Farmy.xlsx") obejmuje dany miesiąc, używamy jego wartości (żeby
-  // odzwierciedlić planowane uruchomienia kolejnych farm — przychód rośnie
-  // skokowo, koszty rosną tylko nieznacznie, zgodnie z założeniami
-  // kontrolera). Poza zakresem harmonogramu (przed dziś lub po grudniu
-  // 2028) — dla miesięcy PRZED zakresem używamy dzisiejszego, bieżącego
-  // run-rate (m.monthlyRevenue/m.totalBurn), a dla miesięcy PO zakresie
-  // powtarzamy jego ostatnią znaną wartość (bez zgadywania dalszego wzrostu).
-  var fc = STATE.fixedCostSchedule || {};
-  var revSchedule = fc.revenueMonthlySchedule || [];
-  var costSchedule = fc.monthlySchedule || [];
-  var revMap = {}, costMap = {};
-  revSchedule.forEach(function(e){ revMap[e.period] = Number(e.suma)||0; });
-  costSchedule.forEach(function(e){ costMap[e.period] = Number(e.suma)||0; });
-  var revKeys = Object.keys(revMap).sort();
-  var costKeys = Object.keys(costMap).sort();
-  var usedSchedule = revKeys.length>0;
-  function scheduledOrFallback(map, keys, periodKey, fallbackFlat){
-    if(map.hasOwnProperty(periodKey)) return map[periodKey];
-    if(!keys.length) return fallbackFlat;
-    if(periodKey < keys[0]) return fallbackFlat; // przed zakresem harmonogramu — dzisiejszy run-rate
-    return map[keys[keys.length-1]]; // po zakresie harmonogramu — powtórz ostatnią znaną wartość
-  }
-  var revenue = 0, recurringCosts = 0;
-  if(usedSchedule){
-    var cur = new Date(r.from.getFullYear(), r.from.getMonth(), 1);
-    var lastMonthStart = new Date(r.to.getFullYear(), r.to.getMonth(), 1);
-    while(cur<=lastMonthStart){
-      var monthStart = new Date(cur.getFullYear(),cur.getMonth(),1);
-      var monthEnd = new Date(cur.getFullYear(),cur.getMonth()+1,0);
-      var overlapStart = monthStart>r.from? monthStart : r.from;
-      var overlapEnd = monthEnd<r.to? monthEnd : r.to;
-      var daysInMonth = Math.round((monthEnd-monthStart)/86400000)+1;
-      var overlapDays = Math.max(0, Math.round((overlapEnd-overlapStart)/86400000)+1);
-      var frac = daysInMonth>0? overlapDays/daysInMonth : 0;
-      var periodKey = cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
-      revenue += scheduledOrFallback(revMap, revKeys, periodKey, m.monthlyRevenue)*frac;
-      recurringCosts += scheduledOrFallback(costMap, costKeys, periodKey, m.totalBurn)*frac;
-      cur.setMonth(cur.getMonth()+1);
-    }
-  } else {
-    revenue = m.monthlyRevenue*months;
-    recurringCosts = m.totalBurn*months;
+  // Projekcja miesiąc-po-miesiącu Z KART PROJEKTÓW I REKORDÓW APLIKACJI
+  // (od 2026-09-18, decyzja Kamila: jedno źródło prawdy — dane Grzegorza
+  // wpisane w projektach). Dla każdego miesiąca M:
+  //  przychód  = suma "Przychód / mies." projektów aktywnych w M
+  //              (operacyjne + te, których data uruchomienia (endDate) <= koniec M);
+  //  koszty    = pracownicy (dzisiejszy stan) + koszty cykliczne z costDate <= koniec M
+  //              (nie anulowane) + raty finansowań z nextPaymentDate <= koniec M i endDate >= M
+  //              + koszty jednorazowe z datą w okresie.
+  // Harmonogram z Założeń (arkusz kontrolera) NIE jest już używany w projekcji —
+  // jest pokazywany osobno jako referencja (kafelek ③ i Kontrola spójności).
+  var revenue = 0, recurringCosts = 0, rows = [];
+  var cur = new Date(r.from.getFullYear(), r.from.getMonth(), 1);
+  var lastMonthStart = new Date(r.to.getFullYear(), r.to.getMonth(), 1);
+  var guard = 0;
+  while(cur<=lastMonthStart && guard<600){
+    var monthStart = new Date(cur.getFullYear(),cur.getMonth(),1);
+    var monthEnd = new Date(cur.getFullYear(),cur.getMonth()+1,0);
+    var monthEndISO = localISO(monthEnd);
+    var overlapStart = monthStart>r.from? monthStart : r.from;
+    var overlapEnd = monthEnd<r.to? monthEnd : r.to;
+    var daysInMonth = Math.round((monthEnd-monthStart)/86400000)+1;
+    var overlapDays = Math.max(0, Math.round((overlapEnd-overlapStart)/86400000)+1);
+    var frac = daysInMonth>0? overlapDays/daysInMonth : 0;
+    var rev = realProjects.filter(function(p){return projectActiveInMonth(p,monthEndISO);}).reduce(function(s,p){return s+(Number(p.revenueMonthly)||0);},0);
+    var rec = realCosts.filter(function(c){return recurringCostActive(c,monthEndISO);}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    var fin = STATE.financings.filter(function(f){return financingActive(f,monthEndISO);}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+    var cost = m.monthlyPayroll + rec + fin;
+    revenue += rev*frac; recurringCosts += cost*frac;
+    rows.push({period: cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0'), revenue:rev, payroll:m.monthlyPayroll, recurring:rec, financing:fin, cost:cost, frac:frac});
+    cur.setMonth(cur.getMonth()+1); guard++;
   }
   var costs = recurringCosts+oneTime;
-  return {from:r.from, to:r.to, months:months, revenue:revenue, recurringCosts:recurringCosts, oneTimeCosts:oneTime, costs:costs, profit:revenue-costs, usedSchedule:usedSchedule};
+  return {from:r.from, to:r.to, months:months, revenue:revenue, recurringCosts:recurringCosts, oneTimeCosts:oneTime, costs:costs, profit:revenue-costs, usedSchedule:false, rows:rows};
 }
 function setDashPeriod(key){
   DASH_PERIOD = key;
@@ -842,7 +858,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-18-16 (scalanie odporne na spacje + przywracanie przychodow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-18-17 (reset portfela pod dane Grzegorza, projekcja z kart)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1061,9 +1077,9 @@ function viewDashboard(){
       DASH_PERIODS.map(function(p){ return '<button class="btn btn-sm'+(DASH_PERIOD===p.key?' btn-primary':'')+'" onclick="setDashPeriod(\''+p.key+'\')">'+p.label+'</button>'; }).join('')+
     '</div>'+
     (DASH_PERIOD==='custom'? '<div class="form-row2" style="margin-bottom:10px"><div><label>Od</label><input type="date" id="dash-custom-from" value="'+esc(DASH_CUSTOM_FROM)+'" onchange="setDashCustomRange()"></div><div><label>Do</label><input type="date" id="dash-custom-to" value="'+esc(DASH_CUSTOM_TO)+'" onchange="setDashCustomRange()"></div></div>':'')+
-    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • '+(pm.usedSchedule? 'Projekcja wg harmonogramu założeń kontrolera (Założenia — arkusz CF Farmy.xlsx): przychód i koszty stałe rosną skokowo wraz z planowanym uruchamianiem kolejnych farm, miesiąc po miesiącu do grudnia 2028; poza tym zakresem — bieżący run-rate.' : 'Projekcja przy utrzymaniu obecnego, bieżącego poziomu przychodów i kosztów stałych (run-rate).')+' + realnie odnotowane koszty jednorazowe z tego okresu. To orientacyjna projekcja oparta na założeniach kontrolera co do tempa uruchamiania kolejnych farm, nie gwarancja wyniku.</div>'+
+    '<div class="muted" style="margin-bottom:10px">Okres: '+periodRangeLabel+' • Projekcja miesiąc po miesiącu z kart projektów i rekordów aplikacji: przychód projektów operacyjnych + farm, których data uruchomienia już minęła w danym miesiącu; koszty = pracownicy + koszty cykliczne od ich daty startu + raty finansowań od pierwszej raty + koszty jednorazowe z datą w okresie. Szczegóły i wzory: zakładka „Kontrola spójności”. To projekcja wg dat i kwot wpisanych w kartach (model Grzegorza), nie gwarancja wyniku.</div>'+
     '<div class="kpi-grid">'+
-      kpi('Przychód w okresie (projekcja)', fmtMoney0(pm.revenue), true)+
+      kpi('Przychód w okresie (projekcja z kart projektów)', fmtMoney0(pm.revenue), true)+
       kpi('Koszty w okresie (projekcja + jednorazowe)', fmtMoney0(pm.costs), true)+
       kpi('z tego koszty jednorazowe (realne)', fmtMoney0(pm.oneTimeCosts))+
       kpi('Zysk w okresie (projekcja)', fmtMoney0(pm.profit), true, pm.profit<0)+
@@ -1210,7 +1226,7 @@ function consistencyChecks(){
 
   // 6. Anulowane koszty cykliczne wciąż liczone
   var cancelledRec = realCosts.filter(function(c){return c.paymentStatus==='anulowany' && monthlyEquivalent(c)>0;});
-  if(cancelledRec.length) add('err','Koszty cykliczne ze statusem „anulowany” NADAL wchodzą do kosztu spółki (run-rate nie patrzy na status płatności)', cancelledRec.map(function(c){return c.name+' — '+fmtMoney0(monthlyEquivalent(c))+'/mies.';}));
+  if(cancelledRec.length) add('info','Koszty cykliczne ze statusem „anulowany” — od 18.09 pomijane w koszcie spółki i projekcji', cancelledRec.map(function(c){return c.name+' — '+fmtMoney0(monthlyEquivalent(c))+'/mies.';}));
 
   // 7. Podwójne liczenie wynagrodzeń
   var payrollLike = realCosts.filter(function(c){return monthlyEquivalent(c)>0 && /wynagrodz|płac|pensj|\bzus\b|kadr|umowa o prac|b2b/i.test((c.name||'')+' '+(c.category||''));});
@@ -1256,9 +1272,15 @@ function consistencyChecks(){
       var diff = Math.abs(sched-fromCards);
       if(diff > Math.max(sched,fromCards)*0.10) drift.push(key+': harmonogram Założeń '+fmtMoney0(sched)+' vs karty projektów '+fmtMoney0(fromCards));
     }
-    if(drift.length) add('warn','Harmonogram przychodów z Założeń (arkusz kontrolera) rozjeżdża się z datami uruchomienia i przychodami wpisanymi w kartach projektów (>10%). Dashboard „Wyniki wg okresu” liczy wg HARMONOGRAMU, nie wg kart projektów.', drift);
-    else add('ok','Harmonogram przychodów z Założeń zgodny (±10%) z kartami projektów na najbliższe 12 mies.');
-  } else add('info','Brak harmonogramu przychodów w Założeniach — projekcja okresowa używa płaskiego run-rate');
+    if(drift.length) add('info','Referencyjny harmonogram przychodów z Założeń (arkusz kontrolera) różni się od kart projektów (>10%). Od 18.09 Dashboard liczy WYŁĄCZNIE z kart projektów — harmonogram jest tylko porównaniem.', drift);
+    else add('ok','Referencyjny harmonogram z Założeń zgodny (±10%) z kartami projektów na najbliższe 12 mies.');
+  }
+  // 14. Koszty/raty, które jeszcze nie ruszyły (liczone dopiero od daty)
+  var asOfRR = runRateAsOfISO();
+  var futureCosts = realCosts.filter(function(c){return monthlyEquivalent(c)>0 && c.paymentStatus!=='anulowany' && c.costDate && c.costDate>asOfRR;});
+  if(futureCosts.length) add('info',futureCosts.length+' kosztów cyklicznych z datą startu w przyszłości ('+fmtMoney0(futureCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0))+'/mies. docelowo) — NIE wchodzą jeszcze do „Koszt dziś”, w projekcji pojawią się od swojej daty', futureCosts.slice(0,40).map(function(c){return c.name+' — od '+fmtDate(c.costDate)+' — '+fmtMoney0(monthlyEquivalent(c))+'/mies.';}));
+  var futureFin = STATE.financings.filter(function(f){return (Number(f.monthlyPayment)||0)>0 && f.nextPaymentDate && f.nextPaymentDate>asOfRR;});
+  if(futureFin.length) add('info',futureFin.length+' finansowań z pierwszą ratą w przyszłości ('+fmtMoney0(futureFin.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0))+'/mies. docelowo) — NIE wchodzą jeszcze do „Koszt dziś”, w projekcji od daty pierwszej raty', futureFin.map(function(f){return f.lender+(f.subject?' ('+f.subject+')':'')+' — od '+fmtDate(f.nextPaymentDate)+' — '+fmtMoney0(f.monthlyPayment)+'/mies.';}));
 
   return checks;
 }
@@ -1277,34 +1299,25 @@ function viewConsistency(){
   function row(label,formula,value){ return '<tr><td><b>'+esc(label)+'</b></td><td class="muted" style="font-size:12.5px">'+formula+'</td><td class="right"><b>'+value+'</b></td></tr>'; }
   var formulas = '<div class="table-wrap"><table><thead><tr><th>Liczba na Dashboardzie</th><th>Jak jest liczona (z podstawionymi wartościami)</th><th>Wynik</th></tr></thead><tbody>'+
     row('① Przychód dziś','Suma „Przychód / mies.” TYLKO projektów ze statusem <b>operacyjny</b> ('+ops.length+' szt.): '+(ops.length?ops.map(function(p){return esc(p.name)+' '+fmtMoney0(Number(p.revenueMonthly)||0);}).join(' + '):'brak'), fmtMoney0(m.monthlyRevenue)+'/mies.')+
-    row('① Koszt dziś (run-rate)','Pracownicy aktywni '+fmtMoney0(m.monthlyPayroll)+' + koszty cykliczne z modułu Koszty '+fmtMoney0(m.monthlyExternal)+' + raty z Leasingi/kredyty '+fmtMoney0(m.monthlyFinancing)+'. <b>Nie</b> wchodzą: umowy/abonamenty, koszty jednorazowe, koszty DEMO.', fmtMoney0(m.totalBurn)+'/mies.')+
+    row('① Koszt dziś (run-rate)','Pracownicy aktywni '+fmtMoney0(m.monthlyPayroll)+' + koszty cykliczne z modułu Koszty, które już ruszyły (costDate ≤ dziś+45 dni, nie anulowane) '+fmtMoney0(m.monthlyExternal)+' + raty finansowań, które już ruszyły (pierwsza rata ≤ dziś+45 dni) '+fmtMoney0(m.monthlyFinancing)+'. <b>Nie</b> wchodzą: umowy/abonamenty, koszty jednorazowe, koszty DEMO, OPEX i raty farm, które ruszą później.', fmtMoney0(m.totalBurn)+'/mies.')+
     row('① Zysk dziś','Przychód dziś − Koszt dziś = '+fmtMoney0(m.monthlyRevenue)+' − '+fmtMoney0(m.totalBurn), fmtMoney0(m.monthlyProfit)+'/mies.')+
     row('② Przychód docelowy','Przychód dziś '+fmtMoney0(m.monthlyRevenue)+' + suma „Przychód / mies.” projektów NIEoperacyjnych ('+nonOps.length+' szt.) '+fmtMoney0(m.monthlyRevenueProjected)+'. To założenie z kart projektów, nie bieżący wynik.', fmtMoney0(m.monthlyRevenue+m.monthlyRevenueProjected)+'/mies.')+
-    row('Przychód w okresie','Miesiąc po miesiącu: wartość z harmonogramu przychodów w Założeniach (arkusz kontrolera) dla danego miesiąca; jeśli miesiąc jest przed harmonogramem — Przychód dziś; po harmonogramie — ostatnia znana wartość. Proporcjonalnie do dni w okresie.', fmtMoney0(pm.revenue))+
-    row('Koszty w okresie','Jak wyżej, z harmonogramu kosztów stałych w Założeniach (poza nim: Koszt dziś) = '+fmtMoney0(pm.recurringCosts)+' + koszty jednorazowe z datą w okresie '+fmtMoney0(pm.oneTimeCosts), fmtMoney0(pm.costs))+
+    row('Przychód w okresie','Miesiąc po miesiącu z KART PROJEKTÓW: suma „Przychód / mies.” projektów operacyjnych + farm, których data uruchomienia (endDate) ≤ koniec danego miesiąca. Proporcjonalnie do dni w okresie.', fmtMoney0(pm.revenue))+
+    row('Koszty w okresie','Miesiąc po miesiącu: pracownicy + koszty cykliczne od swojej daty startu + raty finansowań od pierwszej raty (do końca spłaty) = '+fmtMoney0(pm.recurringCosts)+' + koszty jednorazowe z datą w okresie '+fmtMoney0(pm.oneTimeCosts), fmtMoney0(pm.costs))+
     row('Zysk w okresie','Przychód w okresie − Koszty w okresie', fmtMoney0(pm.profit))+
     row('Przyszłe zapotrzebowanie na kapitał','Suma sald do spłaty wszystkich finansowań + niezapłacone koszty projektów (brutto)', fmtMoney0(m.totalFutureCapitalNeed))+
   '</tbody></table></div>';
 
-  // Rozbicie okresu miesiąc po miesiącu + przychód wg kart projektów
+  // Rozbicie okresu miesiąc po miesiącu (te same wiersze, z których liczy Dashboard) + harmonogram Założeń jako referencja
   var fc = STATE.fixedCostSchedule||{};
-  var revMap={}, costMap={};
-  (fc.revenueMonthlySchedule||[]).forEach(function(e){revMap[e.period]=Number(e.suma)||0;});
-  (fc.monthlySchedule||[]).forEach(function(e){costMap[e.period]=Number(e.suma)||0;});
-  var revKeys=Object.keys(revMap).sort(), costKeys=Object.keys(costMap).sort();
-  function sof(map,keys,k,fb){ if(map.hasOwnProperty(k)) return map[k]; if(!keys.length) return fb; if(k<keys[0]) return fb; return map[keys[keys.length-1]]; }
-  var rows=[]; var cur=new Date(pm.from.getFullYear(),pm.from.getMonth(),1); var last=new Date(pm.to.getFullYear(),pm.to.getMonth(),1); var guard=0;
-  while(cur<=last && guard<72){
-    var key=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
-    var monthEndISO=localISO(new Date(cur.getFullYear(),cur.getMonth()+1,0));
-    var fromCards=real.filter(function(p){return p.status==='operacyjny'||(p.endDate&&p.endDate<=monthEndISO&&['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0);}).reduce(function(s,p){return s+(Number(p.revenueMonthly)||0);},0);
-    var r=sof(revMap,revKeys,key,m.monthlyRevenue), c=sof(costMap,costKeys,key,m.totalBurn);
-    var src = revMap.hasOwnProperty(key)?'harmonogram':(revKeys.length&&key<revKeys[0]?'run-rate':(revKeys.length?'ostatnia wartość':'run-rate'));
-    rows.push('<tr><td>'+key+'</td><td class="muted">'+src+'</td><td class="right">'+fmtMoney0(r)+'</td><td class="right">'+fmtMoney0(fromCards)+'</td><td class="right'+(Math.abs(r-fromCards)>Math.max(r,fromCards)*0.1?'" style="color:var(--danger)':'')+'">'+fmtMoney0(fromCards-r)+'</td><td class="right">'+fmtMoney0(c)+'</td><td class="right'+(r-c<0?'" style="color:var(--danger)':'')+'">'+fmtMoney0(r-c)+'</td></tr>');
-    cur.setMonth(cur.getMonth()+1); guard++;
-  }
-  var monthly = '<div class="muted" style="margin-bottom:8px">Okres: '+fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to))+' (zmień w Dashboardzie). Kolumna „wg kart projektów” = suma przychodu projektów operacyjnych + tych, których planowana data uruchomienia (endDate) już minęła w danym miesiącu. Różnica na czerwono = harmonogram Założeń i karty projektów mówią co innego.</div>'+
-    '<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th>Źródło przychodu</th><th>Przychód wg harmonogramu</th><th>Przychód wg kart projektów</th><th>Różnica</th><th>Koszt (harmonogram/run-rate)</th><th>Zysk mies.</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
+  var revMap={}; (fc.revenueMonthlySchedule||[]).forEach(function(e){revMap[e.period]=Number(e.suma)||0;});
+  var rows=(pm.rows||[]).map(function(rw){
+    var ref = revMap.hasOwnProperty(rw.period)? revMap[rw.period] : null;
+    var profit = rw.revenue-rw.cost;
+    return '<tr><td>'+rw.period+(rw.frac<0.999?' <span class="muted">('+Math.round(rw.frac*100)+'%)</span>':'')+'</td><td class="right"><b>'+fmtMoney0(rw.revenue)+'</b></td><td class="right muted">'+(ref===null?'—':fmtMoney0(ref))+'</td><td class="right">'+fmtMoney0(rw.payroll)+'</td><td class="right">'+fmtMoney0(rw.recurring)+'</td><td class="right">'+fmtMoney0(rw.financing)+'</td><td class="right"><b>'+fmtMoney0(rw.cost)+'</b></td><td class="right'+(profit<0?'" style="color:var(--danger)':'')+'">'+fmtMoney0(profit)+'</td></tr>';
+  });
+  var monthly = '<div class="muted" style="margin-bottom:8px">Okres: '+fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to))+' (zmień w Dashboardzie). Przychód = karty projektów (operacyjne + uruchomione wg daty). Koszty = pracownicy + koszty cykliczne od daty startu + raty od pierwszej raty. Kolumna „Założenia (ref.)” = stary harmonogram kontrolera, tylko do porównania.</div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th>Przychód (karty)</th><th>Założenia (ref.)</th><th>Pracownicy</th><th>Koszty cykl.</th><th>Raty</th><th>Koszt razem</th><th>Zysk mies.</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
 
   var oneTimeList = realCosts.filter(function(c){ if(monthlyEquivalent(c)>0||!c.costDate) return false; var d=new Date(c.costDate+'T00:00:00'); return d>=pm.from&&d<=pm.to; });
 
@@ -2219,6 +2232,11 @@ function viewSettings(){
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
   '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
   '</div>'+
+  '<div class="panel" style="border-color:var(--danger)"><h3>Reset i odbudowa portfela farm (dane Grzegorza jako źródło prawdy)</h3>'+
+  '<div class="muted">Decyzja z 18.09: KASUJE wszystkie Projekty i ich Finansowania (oraz wcześniej wygenerowany OPEX farm), po czym buduje od zera: 7 farm z modelu Grzegorza (moc, CAPEX, data uruchomienia, przychód mies. = moc × uzysk × cena, finansowanie z ratą od pierwszej raty, 4 linie OPEX od daty uruchomienia; magazyny energii jako osobne projekty BESS) + 6 farm z CF Farmy.xlsx oznaczonych „do uzupełnienia”. NIE rusza: Pracowników, Kosztów spółki (koszty przypięte do farm są przepinane po nazwie, nie kasowane), Umów, Dostawców, Akcjonariatu, kopii, użytkowników, danych DEMO. Jedna transakcja — albo wszystko, albo nic. Bezpieczne do ponownego kliknięcia (ten sam stan końcowy). <b>Najpierw „Utwórz kopię teraz”.</b></div>'+
+  '<div style="margin:10px 0"><button class="btn btn-danger btn-sm" onclick="resetFarmPortfolioNow()">Wyzeruj i odbuduj portfel farm</button></div>'+
+  '</div>'+
+  '<details style="margin:8px 0 14px"><summary class="muted" style="cursor:pointer">Starsze narzędzia importu (przed resetem 18.09) — zwykle niepotrzebne</summary>'+
   '<div class="panel"><h3>Portfel farm PV — arkusz kontrolera (CF Farmy.xlsx)</h3>'+
   '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importCfPortfolioNow()">Wczytaj / odśwież portfel farm</button></div>'+
@@ -2236,6 +2254,7 @@ function viewSettings(){
   '<div class="muted">Wczytuje dane z 7 pozycji (Dębowiec, Lubelskie 4x1 MW [nowy], Łubno, Miejsce Piastowe z BESS 2MW, Opole 5x1 MW [nowy], Poręba, Wylewa) jako BIEŻĄCY, aktualny stan tych projektów (decyzja Kamila 2026-09-17) — nadpisuje moc/CAPEX/lokalizację/datę uruchomienia/opis i zastępuje stare finansowanie tej samej pozycji z arkusza CF Farmy.xlsx. Nie rusza pozostałych 4 farm ani innych modułów (Pracownicy, Koszty stałe spółki itd.). Zalecane: najpierw kliknij „Scal duplikaty farm” powyżej. Bezpieczne do wielokrotnego kliknięcia — ale ZALECANA KOPIA ZAPASOWA przed pierwszym uruchomieniem (nadpisuje dane).</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importPvBudgetNow()">Wczytaj model budżetowy Grzegorza (dane bieżące)</button></div>'+
   '</div>'+
+  '</details>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
   '<div class="panel"><h3>Centra kosztów</h3>'+dictList('costCenters')+'</div>'+
@@ -2380,6 +2399,14 @@ function mergeDuplicateProjectsNow(){
     alert(msg);
     return refreshState().then(render);
   }).catch(function(e){ alert('Nie udało się scalić duplikatów: '+e.message); });
+}
+function resetFarmPortfolioNow(){
+  var typed = prompt('To skasuje WSZYSTKIE projekty i ich finansowania i zbuduje portfel od nowa z danych Grzegorza (+6 farm z CF Farmy.xlsx). Pracownicy, koszty spółki, umowy, akcjonariat zostają. Zalecana wcześniej kopia zapasowa.\n\nWpisz RESET, żeby potwierdzić:');
+  if(!typed || typed.trim().toUpperCase()!=='RESET'){ alert('Przerwano — nic nie zmieniono.'); return; }
+  apiCall('POST','/api/admin/reset-farm-portfolio').then(function(res){
+    alert('Gotowe.\nUsunięte projekty: '+res.projectsDeleted+'\nUtworzone projekty: '+res.projectsCreated+' (w tym BESS jako osobne)\nFinansowania: '+res.financingsCreated+'\nKoszty OPEX farm: '+res.costsCreated+'\nPrzepięte koszty/umowy: '+res.relinkedCosts+'/'+res.relinkedContracts+', odpięte: '+res.detachedCosts+'/'+res.detachedContracts);
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Reset NIE wykonany (transakcja wycofana): '+e.message); });
 }
 function repairLostRevenueNow(){
   if(!confirm('Przywrócić utracone przychody miesięczne (5 farm)? Wpisze wartości tylko w puste pola, niczego nie nadpisze.')) return;

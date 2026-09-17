@@ -53,6 +53,25 @@ function totalMonthlyCostEmployee(e: AnyRec): number {
   return base + extra;
 }
 
+// Reguły "od kiedy liczyć" — kopia z app-shell.html (recurringCostActive /
+// financingActive / runRateAsOfISO), 2026-09-18: koszt cykliczny liczony od
+// costDate i nigdy gdy anulowany; rata od nextPaymentDate do endDate.
+function localISO(d: Date): string {
+  const p2 = (n: number) => (n < 10 ? "0" : "") + n;
+  return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
+}
+function runRateAsOfISO(): string { const d = new Date(); d.setDate(d.getDate() + 45); return localISO(d); }
+function recurringCostActive(c: AnyRec, asOfISO: string): boolean {
+  if (c.paymentStatus === "anulowany") return false;
+  if (c.costDate && String(c.costDate) > asOfISO) return false;
+  return true;
+}
+function financingActive(f: AnyRec, asOfISO: string): boolean {
+  if (f.nextPaymentDate && String(f.nextPaymentDate) > asOfISO) return false;
+  if (f.endDate && String(f.endDate) < asOfISO.slice(0, 7) + "-01") return false;
+  return true;
+}
+
 function empAllocPct(e: AnyRec, projectId: string): number {
   if (!e.allocations || !e.allocations.length) return projectId === "ADMIN" ? 100 : 0;
   const a = e.allocations.find((x: AnyRec) => x.projectId === projectId);
@@ -100,16 +119,18 @@ export function computeServerMetrics(data: {
   const activeEmployees = realEmployeesAll.filter((e) => e.status !== "zakończona współpraca");
 
   const monthlyPayroll = activeEmployees.reduce((s, e) => s + totalMonthlyCostEmployee(e), 0);
-  const monthlyExternal = realCosts.reduce((s, c) => s + monthlyEquivalent(c), 0);
-  const monthlyFinancing = financings.reduce((s, f) => s + (Number(f.monthlyPayment) || 0), 0);
-  const monthlyFixedNonPayroll = realCosts.filter((c) => c.isFixed).reduce((s, c) => s + monthlyEquivalent(c), 0);
+  const asOf = runRateAsOfISO();
+  const activeCosts = realCosts.filter((c) => recurringCostActive(c, asOf));
+  const monthlyExternal = activeCosts.reduce((s, c) => s + monthlyEquivalent(c), 0);
+  const monthlyFinancing = financings.filter((f) => financingActive(f, asOf)).reduce((s, f) => s + (Number(f.monthlyPayment) || 0), 0);
+  const monthlyFixedNonPayroll = activeCosts.filter((c) => c.isFixed).reduce((s, c) => s + monthlyEquivalent(c), 0);
   const monthlyFixed = monthlyPayroll + monthlyFixedNonPayroll + monthlyFinancing;
   const totalBurn = monthlyPayroll + monthlyExternal + monthlyFinancing;
   const annualRunRate = totalBurn * 12;
 
   const monthlyProjectCost: Record<string, number> = {};
   for (const p of projects) {
-    const c = realCosts.filter((x) => x.projectId === p.id).reduce((s, x) => s + monthlyEquivalent(x), 0);
+    const c = activeCosts.filter((x) => x.projectId === p.id).reduce((s, x) => s + monthlyEquivalent(x), 0);
     const emp = activeEmployees.reduce((s, e) => s + totalMonthlyCostEmployee(e) * (empAllocPct(e, p.id) / 100), 0);
     monthlyProjectCost[p.id] = c + emp;
   }
@@ -134,7 +155,7 @@ export function computeServerMetrics(data: {
   }
 
   const unassignedCosts = realCosts.filter((c) => !c.projectId);
-  const monthlyAdminFromCosts = unassignedCosts.reduce((s, c) => s + monthlyEquivalent(c), 0);
+  const monthlyAdminFromCosts = unassignedCosts.filter((c) => recurringCostActive(c, asOf)).reduce((s, c) => s + monthlyEquivalent(c), 0);
   const monthlyAdminFromEmp = activeEmployees.reduce((s, e) => s + totalMonthlyCostEmployee(e) * (empAllocPct(e, "ADMIN") / 100), 0);
   const monthlyAdmin = monthlyAdminFromCosts + monthlyAdminFromEmp;
 
@@ -142,7 +163,7 @@ export function computeServerMetrics(data: {
   for (const d of departments) {
     const deptEmployees = activeEmployees.filter((e) => e.departmentId === d.id);
     const empC = deptEmployees.reduce((s, e) => s + totalMonthlyCostEmployee(e), 0);
-    const costC = realCosts.filter((c) => c.departmentId === d.id).reduce((s, c) => s + monthlyEquivalent(c), 0);
+    const costC = activeCosts.filter((c) => c.departmentId === d.id).reduce((s, c) => s + monthlyEquivalent(c), 0);
     deptCost[d.id] = { employees: deptEmployees.length, empCost: empC, otherCost: costC, total: empC + costC };
   }
 
