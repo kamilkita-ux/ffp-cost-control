@@ -838,10 +838,11 @@ var NAV = [
   {key:'assumptions',label:'Założenia',icon:'🧮'},
   {key:'shareholders',label:'Akcjonariat',icon:'🥧'},
   {key:'simulator',label:'Symulator oszczędności',icon:'✂️'},
+  {key:'consistency',label:'Kontrola spójności',icon:'🔍'},
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-17-14 (fix: scalanie duplikatow przenosi tez przychod/lokalizacje)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-17-15 (zakladka Kontrola spojnosci + wzory)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1006,6 +1007,7 @@ function render(){
     case 'assumptions': c.innerHTML = viewAssumptions(); break;
     case 'shareholders': c.innerHTML = viewShareholders(); renderShareholderRows(); break;
     case 'simulator': c.innerHTML = viewSimulator(); break;
+    case 'consistency': c.innerHTML = viewConsistency(); break;
     case 'documents': c.innerHTML = viewDocuments(); break;
     case 'settings': c.innerHTML = viewSettings(); break;
     default:
@@ -1154,6 +1156,170 @@ function viewDashboard(){
 }
 function kpi(label,value,accent,warn){
   return '<div class="kpi'+(accent?' accent':'')+(warn?' warn':'')+'"><div class="label">'+esc(label)+'</div><div class="value'+(String(value).length>10?' small':'')+'">'+value+'</div></div>';
+}
+
+/* ============================= KONTROLA SPÓJNOŚCI ============================= */
+// Zakładka na prośbę Kamila (2026-09-17): "prześlij sposoby liczenia i zrób
+// kontrolę spójności aplikacji". Pokazuje (1) wzory z podstawionymi ŻYWYMI
+// liczbami z bazy — dokładnie te same funkcje metrics()/periodMetrics(),
+// z których korzysta Dashboard, więc nie ma ryzyka rozjazdu między
+// "objaśnieniem" a tym, co pokazuje Dashboard; (2) rozbicie projekcji
+// okresowej miesiąc po miesiącu, z osobną kolumną "przychód wg kart
+// projektów" — żeby było widać, gdzie harmonogram Założeń (arkusz
+// kontrolera) rozjeżdża się z datami/przychodami wpisanymi w projektach;
+// (3) automatyczne kontrole danych (duplikaty, podwójne liczenie,
+// statusy do aktualizacji itp.). Nic tutaj nie modyfikuje danych.
+function consistencyChecks(){
+  var m = metrics();
+  var real = STATE.projects.filter(function(p){return !p.isDemo;});
+  var realCosts = STATE.costs.filter(function(c){return !c.isDemo;});
+  var activeEmp = STATE.employees.filter(function(e){return !e.isDemo && e.status!=='zakończona współpraca';});
+  var checks = [];
+  function add(level,title,details){ checks.push({level:level,title:title,details:details||[]}); }
+  var today = todayISO();
+
+  // 1. Operacyjne bez przychodu
+  var opNoRev = real.filter(function(p){return p.status==='operacyjny' && !(Number(p.revenueMonthly)>0);});
+  if(opNoRev.length) add('err','Projekty operacyjne bez wpisanego przychodu — nie wchodzą do „Przychód dziś”', opNoRev.map(function(p){return p.name;}));
+  else add('ok','Każdy projekt operacyjny ma wpisany przychód miesięczny');
+
+  // 2. Nieoperacyjne z datą uruchomienia w przeszłości
+  var pastEnd = real.filter(function(p){return p.status!=='operacyjny' && p.endDate && p.endDate<today && ['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0;});
+  if(pastEnd.length) add('warn','Projekty nieoperacyjne z planowaną datą uruchomienia w przeszłości — status do aktualizacji? (ich przychód NIE jest liczony do „Przychód dziś”)', pastEnd.map(function(p){return p.name+' — '+fmtDate(p.endDate)+' ('+p.status+', '+fmtMoney0(Number(p.revenueMonthly)||0)+'/mies.)';}));
+  else add('ok','Brak projektów z przeterminowaną datą uruchomienia');
+
+  // 3. Przychód docelowy bez daty uruchomienia
+  var revNoDate = real.filter(function(p){return p.status!=='operacyjny' && Number(p.revenueMonthly)>0 && !p.endDate;});
+  if(revNoDate.length) add('warn','Projekty z docelowym przychodem, ale bez planowanej daty uruchomienia — nie wiadomo, od kiedy liczyć przychód', revNoDate.map(function(p){return p.name+' — '+fmtMoney0(Number(p.revenueMonthly))+'/mies.';}));
+  var noMw = real.filter(function(p){return !(Number(p.mwPower)>0) && ['sprzedany','zamknięty'].indexOf(p.status)<0;});
+  if(noMw.length) add('warn','Projekty bez mocy MW', noMw.map(function(p){return p.name;}));
+
+  // 4. Duplikaty projektów po znormalizowanej nazwie
+  var byNorm = {};
+  real.forEach(function(p){ var k=(p.name||'').toLowerCase().replace(/^f\d+\s+/,'').replace(/\s+/g,' ').trim(); (byNorm[k]=byNorm[k]||[]).push(p.name); });
+  var dupProj = Object.keys(byNorm).filter(function(k){return byNorm[k].length>1;});
+  if(dupProj.length) add('err','Możliwe duplikaty projektów (ta sama nazwa różnie zapisana) — podwójne liczenie w sumach', dupProj.map(function(k){return byNorm[k].join('  ↔  ');}));
+  else add('ok','Brak duplikatów projektów po nazwie');
+
+  // 5. Duplikaty kosztów
+  var byCost = {};
+  realCosts.forEach(function(c){ var k=(c.name||'').toLowerCase().trim()+'|'+(Number(c.grossAmount)||0)+'|'+(c.recurrence||''); (byCost[k]=byCost[k]||[]).push(c); });
+  var dupCost = Object.keys(byCost).filter(function(k){return byCost[k].length>1 && monthlyEquivalent(byCost[k][0])>0;});
+  if(dupCost.length) add('warn','Powtórzone koszty cykliczne (ta sama nazwa, kwota i cykl) — sprawdź, czy to nie duplikat', dupCost.map(function(k){var l=byCost[k]; return l[0].name+' — '+fmtMoney0(l[0].grossAmount)+' × '+l.length+' szt.';}));
+  else add('ok','Brak powtórzonych kosztów cyklicznych');
+
+  // 6. Anulowane koszty cykliczne wciąż liczone
+  var cancelledRec = realCosts.filter(function(c){return c.paymentStatus==='anulowany' && monthlyEquivalent(c)>0;});
+  if(cancelledRec.length) add('err','Koszty cykliczne ze statusem „anulowany” NADAL wchodzą do kosztu spółki (run-rate nie patrzy na status płatności)', cancelledRec.map(function(c){return c.name+' — '+fmtMoney0(monthlyEquivalent(c))+'/mies.';}));
+
+  // 7. Podwójne liczenie wynagrodzeń
+  var payrollLike = realCosts.filter(function(c){return monthlyEquivalent(c)>0 && /wynagrodz|płac|pensj|\bzus\b|kadr|umowa o prac|b2b/i.test((c.name||'')+' '+(c.category||''));});
+  if(payrollLike.length && m.monthlyPayroll>0) add('warn','Możliwe podwójne liczenie wynagrodzeń: są koszty cykliczne wyglądające na płace ORAZ koszty pracowników z modułu Pracownicy ('+fmtMoney0(m.monthlyPayroll)+'/mies.)', payrollLike.map(function(c){return c.name+' — '+fmtMoney0(monthlyEquivalent(c))+'/mies.';}));
+
+  // 8. Podwójne liczenie rat
+  var finLike = realCosts.filter(function(c){return monthlyEquivalent(c)>0 && /leasing|kredyt|\brata\b|raty|pożyczk|pozyczk/i.test((c.name||'')+' '+(c.category||''));});
+  if(finLike.length && m.monthlyFinancing>0) add('warn','Możliwe podwójne liczenie rat: są koszty cykliczne wyglądające na leasing/kredyt ORAZ raty w module Leasingi/kredyty ('+fmtMoney0(m.monthlyFinancing)+'/mies.)', finLike.map(function(c){return c.name+' — '+fmtMoney0(monthlyEquivalent(c))+'/mies.';}));
+
+  // 9. Umowy nie wliczane do kosztu spółki
+  var contractsMonthly = STATE.contracts.reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0);
+  if(contractsMonthly>0) add('warn','Umowy i abonamenty ('+fmtMoney0(contractsMonthly)+'/mies.) NIE wchodzą do „Koszt dziś” — koszt spółki liczy tylko moduły Koszty, Pracownicy i Leasingi/kredyty. Jeśli te umowy nie są też wpisane jako Koszty, koszt jest zaniżony; jeśli są — OK (bez podwójnego liczenia).', STATE.contracts.filter(function(c){return monthlyEquivalentGeneric(c.amount,c.frequency)>0;}).map(function(c){return c.name+' — '+fmtMoney0(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.';}));
+
+  // 10. Finansowania
+  var finNoPay = STATE.financings.filter(function(f){return (Number(f.remainingBalance)||0)>0 && !(Number(f.monthlyPayment)>0);});
+  if(finNoPay.length) add('warn','Finansowania z saldem do spłaty, ale bez wpisanej raty miesięcznej — liczą się do „zapotrzebowania na kapitał”, ale NIE do miesięcznego kosztu spółki', finNoPay.map(function(f){return f.lender+(f.subject?' ('+f.subject+')':'')+' — saldo '+fmtMoney0(f.remainingBalance);}));
+  var finOver = STATE.financings.filter(function(f){return (Number(f.remainingBalance)||0)>(Number(f.initialAmount)||0) && Number(f.initialAmount)>0;});
+  if(finOver.length) add('err','Finansowania z saldem większym niż kwota początkowa', finOver.map(function(f){return f.lender+' — '+fmtMoney0(f.remainingBalance)+' > '+fmtMoney0(f.initialAmount);}));
+  var demoIds = {}; STATE.projects.filter(function(p){return p.isDemo;}).forEach(function(p){demoIds[p.id]=1;});
+  var finDemo = STATE.financings.filter(function(f){return f.projectId && demoIds[f.projectId];});
+  if(finDemo.length) add('warn','Finansowania przypisane do projektów DEMO są liczone do kosztu spółki (moduł finansowań nie ma flagi DEMO)', finDemo.map(function(f){return f.lender+' — '+fmtMoney0(f.monthlyPayment)+'/mies.';}));
+
+  // 11. Koszty projektów = 0
+  if(m.totalProjectCost===0 && m.totalBurn>0) add('info','Żaden koszt ani pracownik nie jest przypisany do projektu — cały koszt spółki ('+fmtMoney0(m.totalBurn)+'/mies.) traktowany jest jako Centrala. „Zysk / mies.” w tabeli Projektów pokazuje wtedy sam przychód, bez kosztów farmy.');
+
+  // 12. Pracownicy bez alokacji
+  var noAlloc = activeEmp.filter(function(e){return !e.allocations||!e.allocations.length;});
+  if(noAlloc.length) add('info',noAlloc.length+' pracowników bez przypisania do projektów — 100% ich kosztu idzie do Administracji/Centrali');
+
+  // 13. Harmonogram Założeń vs karty projektów (bieżący miesiąc i +12)
+  var fc = STATE.fixedCostSchedule||{};
+  var revMap = {}; (fc.revenueMonthlySchedule||[]).forEach(function(e){revMap[e.period]=Number(e.suma)||0;});
+  if(Object.keys(revMap).length){
+    var drift = [];
+    var now = new Date();
+    for(var i=0;i<=12;i+=3){
+      var d = new Date(now.getFullYear(), now.getMonth()+i, 1);
+      var key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      if(!revMap.hasOwnProperty(key)) continue;
+      var monthEndISO = localISO(new Date(d.getFullYear(), d.getMonth()+1, 0));
+      var fromCards = real.filter(function(p){return p.status==='operacyjny' || (p.endDate && p.endDate<=monthEndISO && ['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0);}).reduce(function(s,p){return s+(Number(p.revenueMonthly)||0);},0);
+      var sched = revMap[key];
+      var diff = Math.abs(sched-fromCards);
+      if(diff > Math.max(sched,fromCards)*0.10) drift.push(key+': harmonogram Założeń '+fmtMoney0(sched)+' vs karty projektów '+fmtMoney0(fromCards));
+    }
+    if(drift.length) add('warn','Harmonogram przychodów z Założeń (arkusz kontrolera) rozjeżdża się z datami uruchomienia i przychodami wpisanymi w kartach projektów (>10%). Dashboard „Wyniki wg okresu” liczy wg HARMONOGRAMU, nie wg kart projektów.', drift);
+    else add('ok','Harmonogram przychodów z Założeń zgodny (±10%) z kartami projektów na najbliższe 12 mies.');
+  } else add('info','Brak harmonogramu przychodów w Założeniach — projekcja okresowa używa płaskiego run-rate');
+
+  return checks;
+}
+function viewConsistency(){
+  var m = metrics();
+  var pm = periodMetrics(DASH_PERIOD,DASH_CUSTOM_FROM,DASH_CUSTOM_TO);
+  var real = STATE.projects.filter(function(p){return !p.isDemo;});
+  var ops = real.filter(function(p){return p.status==='operacyjny';});
+  var nonOps = real.filter(function(p){return p.status!=='operacyjny';});
+  var realCosts = STATE.costs.filter(function(c){return !c.isDemo;});
+  var checks = consistencyChecks();
+  var lvl = {err:['BŁĄD','pill-danger'],warn:['UWAGA','pill-warn'],info:['INFO','pill-muted'],ok:['OK','pill-ok']};
+  var order = {err:0,warn:1,info:2,ok:3};
+  checks.sort(function(a,b){return order[a.level]-order[b.level];});
+
+  function row(label,formula,value){ return '<tr><td><b>'+esc(label)+'</b></td><td class="muted" style="font-size:12.5px">'+formula+'</td><td class="right"><b>'+value+'</b></td></tr>'; }
+  var formulas = '<div class="table-wrap"><table><thead><tr><th>Liczba na Dashboardzie</th><th>Jak jest liczona (z podstawionymi wartościami)</th><th>Wynik</th></tr></thead><tbody>'+
+    row('① Przychód dziś','Suma „Przychód / mies.” TYLKO projektów ze statusem <b>operacyjny</b> ('+ops.length+' szt.): '+(ops.length?ops.map(function(p){return esc(p.name)+' '+fmtMoney0(Number(p.revenueMonthly)||0);}).join(' + '):'brak'), fmtMoney0(m.monthlyRevenue)+'/mies.')+
+    row('① Koszt dziś (run-rate)','Pracownicy aktywni '+fmtMoney0(m.monthlyPayroll)+' + koszty cykliczne z modułu Koszty '+fmtMoney0(m.monthlyExternal)+' + raty z Leasingi/kredyty '+fmtMoney0(m.monthlyFinancing)+'. <b>Nie</b> wchodzą: umowy/abonamenty, koszty jednorazowe, koszty DEMO.', fmtMoney0(m.totalBurn)+'/mies.')+
+    row('① Zysk dziś','Przychód dziś − Koszt dziś = '+fmtMoney0(m.monthlyRevenue)+' − '+fmtMoney0(m.totalBurn), fmtMoney0(m.monthlyProfit)+'/mies.')+
+    row('② Przychód docelowy','Przychód dziś '+fmtMoney0(m.monthlyRevenue)+' + suma „Przychód / mies.” projektów NIEoperacyjnych ('+nonOps.length+' szt.) '+fmtMoney0(m.monthlyRevenueProjected)+'. To założenie z kart projektów, nie bieżący wynik.', fmtMoney0(m.monthlyRevenue+m.monthlyRevenueProjected)+'/mies.')+
+    row('Przychód w okresie','Miesiąc po miesiącu: wartość z harmonogramu przychodów w Założeniach (arkusz kontrolera) dla danego miesiąca; jeśli miesiąc jest przed harmonogramem — Przychód dziś; po harmonogramie — ostatnia znana wartość. Proporcjonalnie do dni w okresie.', fmtMoney0(pm.revenue))+
+    row('Koszty w okresie','Jak wyżej, z harmonogramu kosztów stałych w Założeniach (poza nim: Koszt dziś) = '+fmtMoney0(pm.recurringCosts)+' + koszty jednorazowe z datą w okresie '+fmtMoney0(pm.oneTimeCosts), fmtMoney0(pm.costs))+
+    row('Zysk w okresie','Przychód w okresie − Koszty w okresie', fmtMoney0(pm.profit))+
+    row('Przyszłe zapotrzebowanie na kapitał','Suma sald do spłaty wszystkich finansowań + niezapłacone koszty projektów (brutto)', fmtMoney0(m.totalFutureCapitalNeed))+
+  '</tbody></table></div>';
+
+  // Rozbicie okresu miesiąc po miesiącu + przychód wg kart projektów
+  var fc = STATE.fixedCostSchedule||{};
+  var revMap={}, costMap={};
+  (fc.revenueMonthlySchedule||[]).forEach(function(e){revMap[e.period]=Number(e.suma)||0;});
+  (fc.monthlySchedule||[]).forEach(function(e){costMap[e.period]=Number(e.suma)||0;});
+  var revKeys=Object.keys(revMap).sort(), costKeys=Object.keys(costMap).sort();
+  function sof(map,keys,k,fb){ if(map.hasOwnProperty(k)) return map[k]; if(!keys.length) return fb; if(k<keys[0]) return fb; return map[keys[keys.length-1]]; }
+  var rows=[]; var cur=new Date(pm.from.getFullYear(),pm.from.getMonth(),1); var last=new Date(pm.to.getFullYear(),pm.to.getMonth(),1); var guard=0;
+  while(cur<=last && guard<72){
+    var key=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
+    var monthEndISO=localISO(new Date(cur.getFullYear(),cur.getMonth()+1,0));
+    var fromCards=real.filter(function(p){return p.status==='operacyjny'||(p.endDate&&p.endDate<=monthEndISO&&['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0);}).reduce(function(s,p){return s+(Number(p.revenueMonthly)||0);},0);
+    var r=sof(revMap,revKeys,key,m.monthlyRevenue), c=sof(costMap,costKeys,key,m.totalBurn);
+    var src = revMap.hasOwnProperty(key)?'harmonogram':(revKeys.length&&key<revKeys[0]?'run-rate':(revKeys.length?'ostatnia wartość':'run-rate'));
+    rows.push('<tr><td>'+key+'</td><td class="muted">'+src+'</td><td class="right">'+fmtMoney0(r)+'</td><td class="right">'+fmtMoney0(fromCards)+'</td><td class="right'+(Math.abs(r-fromCards)>Math.max(r,fromCards)*0.1?'" style="color:var(--danger)':'')+'">'+fmtMoney0(fromCards-r)+'</td><td class="right">'+fmtMoney0(c)+'</td><td class="right'+(r-c<0?'" style="color:var(--danger)':'')+'">'+fmtMoney0(r-c)+'</td></tr>');
+    cur.setMonth(cur.getMonth()+1); guard++;
+  }
+  var monthly = '<div class="muted" style="margin-bottom:8px">Okres: '+fmtDate(localISO(pm.from))+' — '+fmtDate(localISO(pm.to))+' (zmień w Dashboardzie). Kolumna „wg kart projektów” = suma przychodu projektów operacyjnych + tych, których planowana data uruchomienia (endDate) już minęła w danym miesiącu. Różnica na czerwono = harmonogram Założeń i karty projektów mówią co innego.</div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th>Źródło przychodu</th><th>Przychód wg harmonogramu</th><th>Przychód wg kart projektów</th><th>Różnica</th><th>Koszt (harmonogram/run-rate)</th><th>Zysk mies.</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
+
+  var oneTimeList = realCosts.filter(function(c){ if(monthlyEquivalent(c)>0||!c.costDate) return false; var d=new Date(c.costDate+'T00:00:00'); return d>=pm.from&&d<=pm.to; });
+
+  var checksHtml = checks.map(function(ch){
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--border)"><span class="pill '+lvl[ch.level][1]+'">'+lvl[ch.level][0]+'</span> '+esc(ch.title)+
+      (ch.details.length?'<ul style="margin:6px 0 0 18px;font-size:12.5px;color:var(--muted)">'+ch.details.slice(0,25).map(function(d){return '<li>'+esc(d)+'</li>';}).join('')+(ch.details.length>25?'<li>… i '+(ch.details.length-25)+' więcej</li>':'')+'</ul>':'')+'</div>';
+  }).join('');
+  var nErr=checks.filter(function(c){return c.level==='err';}).length, nWarn=checks.filter(function(c){return c.level==='warn';}).length;
+
+  return '<h2 class="page-title">Kontrola spójności</h2>'+
+  '<div class="page-sub">Te same funkcje, z których liczy Dashboard — z podstawionymi liczbami z bazy. Nic tu nie zmienia danych. Stan na '+fmtDate(todayISO())+'.</div>'+
+  '<div class="panel"><h3>Automatyczne kontrole — '+(nErr?nErr+' błąd(y), ':'')+(nWarn?nWarn+' uwag(i)':'bez uwag')+'</h3>'+checksHtml+'</div>'+
+  '<div class="panel"><h3>Jak liczone są liczby na Dashboardzie</h3>'+formulas+'</div>'+
+  '<div class="panel"><h3>Projekcja okresowa miesiąc po miesiącu</h3>'+monthly+'</div>'+
+  '<div class="panel"><h3>Koszty jednorazowe wliczone w okres ('+fmtMoney0(pm.oneTimeCosts)+')</h3>'+costsTable(oneTimeList,false)+'</div>';
 }
 
 /* ============================= COSTS TABLE (shared) ============================= */
