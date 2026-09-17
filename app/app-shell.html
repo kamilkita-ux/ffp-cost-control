@@ -197,6 +197,7 @@ tr:hover td{background:var(--accent-bg);}
     <h1>FFP Cost Control</h1>
     <div class="sub">Farmy Fotowoltaiki Polska S.A.</div>
     <div id="nav-list"></div>
+    <a href="/budzet-farm-pv.html" target="_blank" rel="noopener" class="nav-item" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#e5e7eb);opacity:.85;text-decoration:none;color:inherit">📐 Budżet Farm PV (Grzegorz)</a>
   </div>
   <div id="main">
     <div id="offline-banner" class="no-print">Brak połączenia z internetem — dane mogą być nieaktualne, zmiany się nie zapiszą.</div>
@@ -840,7 +841,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-17-09 (portfel farm z arkusza kontrolera)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-17-10 (link do Budzet Farm PV / Grzegorz)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
