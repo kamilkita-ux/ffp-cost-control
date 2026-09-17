@@ -840,7 +840,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-08-08 (dashboard odswieza daty samoczynnie)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-17-09 (portfel farm z arkusza kontrolera)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2035,6 +2035,10 @@ function viewSettings(){
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
   '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
   '</div>'+
+  '<div class="panel"><h3>Portfel farm PV — arkusz kontrolera (CF Farmy.xlsx)</h3>'+
+  '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importCfPortfolioNow()">Wczytaj / odśwież portfel farm</button></div>'+
+  '</div>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
   '<div class="panel"><h3>Centra kosztów</h3>'+dictList('costCenters')+'</div>'+
@@ -2153,6 +2157,13 @@ function renderBackupsList(){
 function createManualBackupNow(){
   apiCall('POST','/api/admin/backups').then(function(){ ensureBackupsLoaded(true); alert('Utworzono kopię zapasową.'); })
     .catch(function(e){ alert('Nie udało się utworzyć kopii: '+e.message); });
+}
+function importCfPortfolioNow(){
+  if(!confirm('Wczytać/odświeżyć 11 farm z arkusza kontrolera (CF Farmy.xlsx) jako Projekty i Finansowania? Zalecane: wcześniej zrób kopię zapasową ("Utwórz kopię teraz" powyżej).')) return;
+  apiCall('POST','/api/admin/import-cf-portfolio').then(function(res){
+    alert('Gotowe.\nProjekty — nowe: '+res.projectsCreated+', zaktualizowane: '+res.projectsUpdated+'.\nFinansowania — nowe: '+res.financingsCreated+', zaktualizowane: '+res.financingsUpdated+'.');
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Nie udało się wczytać portfela: '+e.message); });
 }
 function downloadBackupPoint(id){
   fetch('/api/admin/backups/'+id).then(function(r){
