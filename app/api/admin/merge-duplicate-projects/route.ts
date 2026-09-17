@@ -14,10 +14,25 @@ import { DUPLICATE_PROJECT_MERGES } from "@/lib/duplicateProjectMerges";
 // Finansowania i przypisania pracowników (EmployeeProjectAllocation)
 // wskazujące na STARY (bez kodu) projekt zostają przepięte na ZACHOWYWANY
 // (z kodem) projekt, opis starego dopisywany jest do opisu zachowywanego
-// (jeśli nie był już dopisany), a stary rekord Projektu jest usuwany.
+// (jeśli nie był już dopisany), WYBRANE POLA SKALARNE projektu (patrz
+// CARRY_OVER_FIELDS) są przenoszone ze starego na zachowywany (tylko gdy
+// zachowywany ma puste pole — nie nadpisujemy istniejących danych), a
+// dopiero potem stary rekord Projektu jest usuwany.
+//
+// POPRAWKA 2026-09-17: pierwsza wersja tego endpointu NIE przenosiła pól
+// skalarnych (m.in. revenueMonthly, location) — co spowodowało realną utratę
+// wpisanego przychodu dla 5 farm przy pierwszym uruchomieniu (Kamil to
+// wychwycił po zmianach na Dashboardzie). Naprawione tutaj; utracone dane
+// trzeba było uzupełnić ręcznie tym razem (stare rekordy już usunięte).
 //
 // Idempotentne: jeśli stary projekt nie istnieje (już scalony wcześniej —
 // np. przy drugim kliknięciu), para jest pomijana bez błędu.
+const CARRY_OVER_FIELDS = [
+  "revenueMonthly", "location", "gridOperator", "energyBuyer", "budgetTotal",
+  "requestedPowerMW", "grantedPowerMW", "connectionConditionsStatus",
+  "connectionAgreementStatus", "permitsStatus", "environmentalDecisionStatus",
+  "zoningStatus", "owner", "startDate"
+] as const;
 export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -60,9 +75,21 @@ export async function POST(req: Request) {
     reassignedAllocations += allocationsRes.count;
 
     const marker = `[Scalono duplikat "${pair.oldName}"]`;
+    const updateData: Record<string, unknown> = {};
+    for (const field of CARRY_OVER_FIELDS) {
+      const oldVal = (oldProject as Record<string, unknown>)[field];
+      const keepVal = (keepProject as Record<string, unknown>)[field];
+      const keepIsEmpty = keepVal === null || keepVal === undefined || keepVal === "";
+      const oldHasValue = oldVal !== null && oldVal !== undefined && oldVal !== "";
+      if (keepIsEmpty && oldHasValue) {
+        updateData[field] = oldVal;
+      }
+    }
     if (oldProject.description && !(keepProject.description || "").includes(marker)) {
-      const newDescription = `${keepProject.description ? keepProject.description + "\n\n" : ""}${marker} ${oldProject.description}`;
-      await prisma.project.update({ where: { id: keepProject.id }, data: { description: newDescription } });
+      updateData.description = `${keepProject.description ? keepProject.description + "\n\n" : ""}${marker} ${oldProject.description}`;
+    }
+    if (Object.keys(updateData).length) {
+      await prisma.project.update({ where: { id: keepProject.id }, data: updateData });
     }
 
     await prisma.project.delete({ where: { id: oldProject.id } });
