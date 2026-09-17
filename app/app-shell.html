@@ -841,7 +841,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-17-12 (kafelek Grzegorz z osadzona aplikacja)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-17-13 (dane Grzegorza jako biezace + scalanie duplikatow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2057,9 +2057,13 @@ function viewSettings(){
   '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importCfPortfolioNow()">Wczytaj / odśwież portfel farm</button></div>'+
   '</div>'+
-  '<div class="panel"><h3>Model budżetowy „Budżet Farm PV" (Grzegorz)</h3>'+
-  '<div class="muted">Wczytuje założenia modelu opłacalności (IRR/WACC) dla 7 pozycji: Dębowiec, Lubelskie 4x1 MW (nowy), Łubno, Miejsce Piastowe (z BESS 2MW), Opole 5x1 MW (nowy), Poręba, Wylewa. Dla farm już istniejących w portfelu NIE nadpisuje mocy/CAPEX/statusu — tylko dopisuje opis i tworzy finansowanie modelowe (nieliczone do bieżącego zadłużenia). Bezpieczne do wielokrotnego kliknięcia. Pełny kalkulator dostępny w linku w bocznym menu.</div>'+
-  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importPvBudgetNow()">Wczytaj model budżetowy Grzegorza</button></div>'+
+  '<div class="panel"><h3>Scalenie duplikatów farm (jednorazowe porządki)</h3>'+
+  '<div class="muted">Portfel zawiera duplikaty tych samych farm pod różną pisownią (np. „wylewa” i „Wylewa”), powstałe przy wcześniejszym imporcie arkusza kontrolera. To scala każdą parę w jeden rekord (zachowuje wersję z kodem PV-xxx), przepinając powiązane koszty/umowy/finansowania — nic nie ginie. Bezpieczne do wielokrotnego kliknięcia.</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="mergeDuplicateProjectsNow()">Scal duplikaty farm</button></div>'+
+  '</div>'+
+  '<div class="panel"><h3>Model budżetowy „Budżet Farm PV" (Grzegorz) — dane bieżące</h3>'+
+  '<div class="muted">Wczytuje dane z 7 pozycji (Dębowiec, Lubelskie 4x1 MW [nowy], Łubno, Miejsce Piastowe z BESS 2MW, Opole 5x1 MW [nowy], Poręba, Wylewa) jako BIEŻĄCY, aktualny stan tych projektów (decyzja Kamila 2026-09-17) — nadpisuje moc/CAPEX/lokalizację/datę uruchomienia/opis i zastępuje stare finansowanie tej samej pozycji z arkusza CF Farmy.xlsx. Nie rusza pozostałych 4 farm ani innych modułów (Pracownicy, Koszty stałe spółki itd.). Zalecane: najpierw kliknij „Scal duplikaty farm” powyżej. Bezpieczne do wielokrotnego kliknięcia — ale ZALECANA KOPIA ZAPASOWA przed pierwszym uruchomieniem (nadpisuje dane).</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importPvBudgetNow()">Wczytaj model budżetowy Grzegorza (dane bieżące)</button></div>'+
   '</div>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
@@ -2188,13 +2192,22 @@ function importCfPortfolioNow(){
   }).catch(function(e){ alert('Nie udało się wczytać portfela: '+e.message); });
 }
 function importPvBudgetNow(){
-  if(!confirm('Wczytać model budżetowy „Budżet Farm PV" (Grzegorz)? Dla istniejących farm dopisze tylko opis i finansowanie modelowe (bez zmiany mocy/CAPEX/statusu), dla Lubelskie 4x1 MW i Opole 5x1 MW utworzy nowe Projekty. Zalecane: wcześniej zrób kopię zapasową ("Utwórz kopię teraz" powyżej).')) return;
+  if(!confirm('UWAGA: to NADPISZE dane 7 farm (moc, CAPEX, lokalizacja, data uruchomienia, opis) danymi Grzegorza jako danymi BIEŻĄCYMI, oraz ZASTĄPI stare finansowanie tej samej pozycji z arkusza CF Farmy.xlsx. Dla Lubelskie 4x1 MW i Opole 5x1 MW utworzy nowe Projekty. Zalecane: najpierw kliknij „Scal duplikaty farm”, i koniecznie zrób kopię zapasową ("Utwórz kopię teraz" powyżej) przed pierwszym uruchomieniem. Kontynuować?')) return;
   apiCall('POST','/api/admin/import-pv-budget').then(function(res){
-    var msg='Gotowe.\nProjekty — nowe: '+res.projectsCreated+', zaktualizowane opisy: '+res.projectsUpdated+'.\nFinansowania (modelowe) — nowe: '+res.financingsCreated+', zaktualizowane: '+res.financingsUpdated+'.';
+    var msg='Gotowe.\nProjekty — nowe: '+res.projectsCreated+', nadpisane: '+res.projectsUpdated+'.\nFinansowania — nowe: '+res.financingsCreated+', zaktualizowane: '+res.financingsUpdated+', starych zastąpionych: '+res.oldFinancingsReplaced+'.';
     if(res.skipped && res.skipped.length){ msg+='\n\nPominięte:\n'+res.skipped.join('\n'); }
     alert(msg);
     return refreshState().then(render);
   }).catch(function(e){ alert('Nie udało się wczytać modelu budżetowego: '+e.message); });
+}
+function mergeDuplicateProjectsNow(){
+  if(!confirm('Scalić duplikaty farm (te same farmy występujące dwa razy pod różną pisownią)? Powiązane koszty/umowy/finansowania zostaną przepięte do zachowywanego rekordu, duplikat zostanie usunięty. Zalecane: wcześniej zrób kopię zapasową.')) return;
+  apiCall('POST','/api/admin/merge-duplicate-projects').then(function(res){
+    var msg='Gotowe.\nScalonych par: '+res.merged+'.\nPrzepięto: '+res.reassignedCosts+' kosztów, '+res.reassignedContracts+' umów, '+res.reassignedFinancings+' finansowań, '+res.reassignedAllocations+' przypisań pracowników.';
+    if(res.skipped && res.skipped.length){ msg+='\n\nPominięte:\n'+res.skipped.join('\n'); }
+    alert(msg);
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Nie udało się scalić duplikatów: '+e.message); });
 }
 function downloadBackupPoint(id){
   fetch('/api/admin/backups/'+id).then(function(r){

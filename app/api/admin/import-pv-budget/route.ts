@@ -7,16 +7,31 @@ import { PV_BUDGET_ENTRIES } from "@/lib/pvBudgetSeed";
 // POST /api/admin/import-pv-budget — wczytuje model budżetowy z narzędzia
 // "Budżet Farm PV" (Grzegorz) — patrz lib/pvBudgetSeed.ts.
 //
-// WAŻNE rozróżnienie (patrz komentarz w lib/pvBudgetSeed.ts): to są ZAŁOŻENIA
-// modelu opłacalności (IRR/WACC), NIE rzeczywiste podpisane umowy finansowania.
-// Dlatego:
-//  - dla projektów już istniejących w portfelu (dopasowanie po nazwie) NIE
-//    nadpisujemy mwPower/capex/status/dat — tylko DOPISUJEMY opis modelu do
-//    description (jeśli jeszcze nie był dopisany) i tworzymy/aktualizujemy
-//    Financing z excludeFromSimulation=true.
-//  - dla nowych projektów (Lubelskie 4x1 MW, Opole 5x1 MW) tworzymy pełny
-//    rekord Project (też excludeFromSimulation=true na Financing).
-// Idempotentne: bezpieczne do wielokrotnego uruchomienia.
+// ZMIANA DECYZJI Kamila (2026-09-17, po wdrożeniu wersji "tylko referencyjnej"):
+// dane Grzegorza są BIEŻĄCE — mają być GŁÓWNYMI/aktualnymi danymi tych 7 farm,
+// NIE tylko dopiskiem obok prawdziwego portfela. Zakres ograniczony wyłącznie
+// do tego, co faktycznie zawierają dane Grzegorza — reszta modułów (Pracownicy,
+// Koszty stałe spółki, pozostałe 4 farmy spoza jego zestawu: Skrzypaczowice,
+// Ziempniów, Kamyk, Pieczyska) NIE jest ruszana.
+//
+// Dla każdej z 7 pozycji:
+//  - dopasowanie po nazwie (matchExistingProjectName) lub tworzenie nowego
+//    projektu (Lubelskie 4x1 MW, Opole 5x1 MW);
+//  - NADPISUJEMY mwPower, location, capex (=totalCapex), endDate (data
+//    uruchomienia) i description danymi Grzegorza (stają się bieżącym stanem
+//    projektu) — status NIE jest ruszany (Grzegorz go nie modeluje);
+//  - USUWAMY istniejące finansowanie tej samej pozycji ze starego importu CF
+//    Farmy.xlsx (rozpoznawane po tym, że lender NIE zaczyna się od "Model
+//    budżetowy (Grzegorz)") — Kamil potwierdził: to ta sama pozycja
+//    (finansowanie budowy PV danej farmy), świeższe dane Grzegorza ją
+//    zastępują, żeby uniknąć podwójnego liczenia zadłużenia;
+//  - tworzymy/aktualizujemy Financing Grzegorza jako BIEŻĄCE realne założenie
+//    (excludeFromSimulation=false — liczy się do zadłużenia/cash-flow, bo to
+//    już nie tylko model referencyjny, tylko aktualny stan wg Kamila).
+//
+// Zalecana kolejność: najpierw kliknąć "Scal duplikaty farm"
+// (/api/admin/merge-duplicate-projects), potem ten import — ale ten
+// endpoint sam jest idempotentny niezależnie od kolejności.
 function monthName(m: number): string {
   const names = ["styczeń","luty","marzec","kwiecień","maj","czerwiec","lipiec","sierpień","wrzesień","październik","listopad","grudzień"];
   return names[m - 1] || String(m);
@@ -36,10 +51,18 @@ export async function POST(req: Request) {
   let projectsUpdated = 0;
   let financingsCreated = 0;
   let financingsUpdated = 0;
+  let oldFinancingsReplaced = 0;
   const skipped: string[] = [];
 
   for (const e of PV_BUDGET_ENTRIES) {
     let projectId: string | null = null;
+    const projectData = {
+      location: e.location,
+      mwPower: e.mwPower,
+      capex: e.totalCapex,
+      endDate: addMonths(e.commissioningYear, e.commissioningMonth, 0),
+      description: `[Budżet Farm PV — Grzegorz, dane bieżące 2026-09-17] ${e.description}`
+    };
 
     if (e.matchExistingProjectName) {
       const existing = await prisma.project.findFirst({
@@ -50,30 +73,19 @@ export async function POST(req: Request) {
         continue;
       }
       projectId = existing.id;
-      const marker = "[Budżet Farm PV — Grzegorz]";
-      if (!(existing.description || "").includes(marker)) {
-        const newDescription = `${existing.description ? existing.description + "\n\n" : ""}${marker} ${e.description}`;
-        await prisma.project.update({ where: { id: existing.id }, data: { description: newDescription } });
-        projectsUpdated++;
-      }
+      await prisma.project.update({ where: { id: existing.id }, data: projectData });
+      projectsUpdated++;
     } else {
       const existingByLabel = await prisma.project.findFirst({
         where: { name: e.label, isDemo: false }
       });
       if (existingByLabel) {
         projectId = existingByLabel.id;
+        await prisma.project.update({ where: { id: existingByLabel.id }, data: projectData });
+        projectsUpdated++;
       } else {
         const created = await prisma.project.create({
-          data: {
-            isDemo: false,
-            name: e.label,
-            location: e.location,
-            mwPower: e.mwPower,
-            capex: e.totalCapex,
-            status: "DEVELOPMENT",
-            endDate: addMonths(e.commissioningYear, e.commissioningMonth, 0),
-            description: `[Budżet Farm PV — Grzegorz] ${e.description}`
-          }
+          data: { isDemo: false, name: e.label, status: "DEVELOPMENT", ...projectData }
         });
         projectId = created.id;
         projectsCreated++;
@@ -81,6 +93,18 @@ export async function POST(req: Request) {
     }
 
     if (!projectId) continue;
+
+    // Usuń stare, realne finansowanie tej samej pozycji (z importu CF Farmy.xlsx)
+    // — rozpoznawane po tym, że NIE pochodzi z modelu Grzegorza.
+    const oldFinancings = await prisma.financing.findMany({
+      where: { projectId, NOT: { lender: { startsWith: "Model budżetowy (Grzegorz)" } } }
+    });
+    if (oldFinancings.length) {
+      await prisma.financing.deleteMany({
+        where: { id: { in: oldFinancings.map((f: { id: string }) => f.id) } }
+      });
+      oldFinancingsReplaced += oldFinancings.length;
+    }
 
     const financingsToUpsert: Array<{ lender: string; subject: string; fin: typeof e.financingPv; capexBase: number }> = [
       { lender: "Model budżetowy (Grzegorz) — PV", subject: `${e.label}: instalacja PV`, fin: e.financingPv, capexBase: e.pvCapex }
@@ -109,8 +133,8 @@ export async function POST(req: Request) {
         interestRate: f.fin.interestRate,
         nextPaymentDate,
         projectId,
-        notes: `Założenie modelu opłacalności (Budżet Farm PV — Grzegorz), NIE rzeczywista umowa: ${f.fin.debtSharePct}% udziału długu, start ${monthName(f.fin.startMonth)} ${f.fin.startYear}, karencja ${f.fin.graceMonths} mc, rata malejąca. Nie liczone do bieżącego zadłużenia (excludeFromSimulation).`,
-        excludeFromSimulation: true
+        notes: `Model budżetowy (Grzegorz), dane bieżące wg Kamila (2026-09-17): ${f.fin.debtSharePct}% udziału długu, start ${monthName(f.fin.startMonth)} ${f.fin.startYear}, karencja ${f.fin.graceMonths} mc, rata malejąca.`,
+        excludeFromSimulation: false
       };
       if (existing) {
         await prisma.financing.update({ where: { id: existing.id }, data });
@@ -127,7 +151,7 @@ export async function POST(req: Request) {
     "project",
     null,
     "update",
-    `Import modelu "Budżet Farm PV" (Grzegorz): ${projectsCreated} nowych, ${projectsUpdated} zaktualizowanych opisów projektów; ${financingsCreated} nowych, ${financingsUpdated} zaktualizowanych finansowań (modelowych, excludeFromSimulation).`
+    `Import modelu "Budżet Farm PV" (Grzegorz) jako danych BIEŻĄCYCH: ${projectsCreated} nowych, ${projectsUpdated} zaktualizowanych (nadpisanych) projektów; ${financingsCreated} nowych, ${financingsUpdated} zaktualizowanych finansowań; ${oldFinancingsReplaced} starych finansowań (CF Farmy.xlsx) zastąpionych.`
   );
 
   return NextResponse.json({
@@ -136,6 +160,7 @@ export async function POST(req: Request) {
     projectsUpdated,
     financingsCreated,
     financingsUpdated,
+    oldFinancingsReplaced,
     skipped
   });
 }
