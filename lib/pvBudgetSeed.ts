@@ -172,8 +172,11 @@ export const PV_BUDGET_ENTRIES: PvBudgetEntry[] = [
     matchExistingProjectName: null,
     mwPower: 5,
     location: "woj. Opolskie",
-    commissioningYear: 2026,
-    commissioningMonth: 11,
+    // KOREKTA Kamila 2026-09-18: w eksporcie Grzegorza "uruchomienie" = XI 2026
+    // (ten sam miesiąc co start kredytu) — to jest start PRAC; przychód (i OPEX)
+    // dopiero po 9 miesiącach, czyli od VIII 2027. Kredyt zostaje od XI 2026.
+    commissioningYear: 2027,
+    commissioningMonth: 8,
     pvCapex: 10040000,
     storageCapex: 0,
     totalCapex: 10040000,

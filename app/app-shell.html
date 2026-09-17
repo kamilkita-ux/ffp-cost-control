@@ -869,7 +869,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-18-18 (Koszt dzis = biezacy miesiac, bez zapasu 45 dni)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-18-19 (poprawki danych: Opole przychod od VIII 2027)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2247,6 +2247,10 @@ function viewSettings(){
   '<div class="muted">Decyzja z 18.09: KASUJE wszystkie Projekty i ich Finansowania (oraz wcześniej wygenerowany OPEX farm), po czym buduje od zera: 7 farm z modelu Grzegorza (moc, CAPEX, data uruchomienia, przychód mies. = moc × uzysk × cena, finansowanie z ratą od pierwszej raty, 4 linie OPEX od daty uruchomienia; magazyny energii jako osobne projekty BESS) + 6 farm z CF Farmy.xlsx oznaczonych „do uzupełnienia”. NIE rusza: Pracowników, Kosztów spółki (koszty przypięte do farm są przepinane po nazwie, nie kasowane), Umów, Dostawców, Akcjonariatu, kopii, użytkowników, danych DEMO. Jedna transakcja — albo wszystko, albo nic. Bezpieczne do ponownego kliknięcia (ten sam stan końcowy). <b>Najpierw „Utwórz kopię teraz”.</b></div>'+
   '<div style="margin:10px 0"><button class="btn btn-danger btn-sm" onclick="resetFarmPortfolioNow()">Wyzeruj i odbuduj portfel farm</button></div>'+
   '</div>'+
+  '<div class="panel"><h3>Zastosuj poprawki danych (lista uzupełnień)</h3>'+
+  '<div class="muted">Umówiony sposób uzupełniania: podajesz informację, ja dopisuję ją do listy poprawek w kodzie, Ty klikasz raz. Aktualnie na liście: Opole 5x1 MW — start prac XI 2026, przychód i OPEX od VIII 2027 (Kamil, 18.09). Bezpieczne do wielokrotnego kliknięcia (ustawia te same wartości).</div>'+
+  '<div style="margin:10px 0"><button class="btn btn-sm" onclick="applyDataAdjustmentsNow()">Zastosuj poprawki danych</button></div>'+
+  '</div>'+
   '<details style="margin:8px 0 14px"><summary class="muted" style="cursor:pointer">Starsze narzędzia importu (przed resetem 18.09) — zwykle niepotrzebne</summary>'+
   '<div class="panel"><h3>Portfel farm PV — arkusz kontrolera (CF Farmy.xlsx)</h3>'+
   '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
@@ -2410,6 +2414,15 @@ function mergeDuplicateProjectsNow(){
     alert(msg);
     return refreshState().then(render);
   }).catch(function(e){ alert('Nie udało się scalić duplikatów: '+e.message); });
+}
+function applyDataAdjustmentsNow(){
+  if(!confirm('Zastosować poprawki danych z listy? Zmienia tylko wymienione pola wskazanych projektów.')) return;
+  apiCall('POST','/api/admin/apply-data-adjustments').then(function(res){
+    var msg='Gotowe.\nZastosowane:\n'+(res.applied.length?res.applied.join('\n'):'brak');
+    if(res.skipped && res.skipped.length){ msg+='\n\nPominięte:\n'+res.skipped.join('\n'); }
+    alert(msg);
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Nie udało się zastosować poprawek: '+e.message); });
 }
 function resetFarmPortfolioNow(){
   var typed = prompt('To skasuje WSZYSTKIE projekty i ich finansowania i zbuduje portfel od nowa z danych Grzegorza (+6 farm z CF Farmy.xlsx). Pracownicy, koszty spółki, umowy, akcjonariat zostają. Zalecana wcześniej kopia zapasowa.\n\nWpisz RESET, żeby potwierdzić:');

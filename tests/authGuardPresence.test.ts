@@ -35,7 +35,8 @@ const MUST_GUARD_WITH_ADMIN = [
   "app/api/admin/import-pv-budget/route.ts",
   "app/api/admin/merge-duplicate-projects/route.ts",
   "app/api/admin/repair-lost-revenue/route.ts",
-  "app/api/admin/reset-farm-portfolio/route.ts"
+  "app/api/admin/reset-farm-portfolio/route.ts",
+  "app/api/admin/apply-data-adjustments/route.ts"
 ];
 
 for (const relPath of MUST_GUARD_WITH_ADMIN) {
