@@ -197,7 +197,6 @@ tr:hover td{background:var(--accent-bg);}
     <h1>FFP Cost Control</h1>
     <div class="sub">Farmy Fotowoltaiki Polska S.A.</div>
     <div id="nav-list"></div>
-    <a href="/budzet-farm-pv.html" target="_blank" rel="noopener" class="nav-item" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#e5e7eb);opacity:.85;text-decoration:none;color:inherit">📐 Budżet Farm PV (Grzegorz)</a>
   </div>
   <div id="main">
     <div id="offline-banner" class="no-print">Brak połączenia z internetem — dane mogą być nieaktualne, zmiany się nie zapiszą.</div>
@@ -826,6 +825,7 @@ var NAV = [
   {key:'dashboard',label:'Dashboard',icon:'📊'},
   {key:'employees',label:'Pracownicy',icon:'👤'},
   {key:'projects',label:'Projekty',icon:'🏗️'},
+  {key:'grzegorz',label:'Budżet Farm PV (Grzegorz)',icon:'📐'},
   {key:'costs',label:'Koszty',icon:'💰'},
   {key:'fixedcosts',label:'Koszty stałe',icon:'📌'},
   {key:'contracts',label:'Umowy i abonamenty',icon:'📄'},
@@ -841,7 +841,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-17-11 (import modelu budzetowego Grzegorza)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-17-12 (kafelek Grzegorz z osadzona aplikacja)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -993,6 +993,7 @@ function render(){
     case 'dashboard': c.innerHTML = viewDashboard(); break;
     case 'employees': c.innerHTML = viewEmployees(); break;
     case 'projects': c.innerHTML = viewProjects(); break;
+    case 'grzegorz': c.innerHTML = viewGrzegorz(); break;
     case 'costs': c.innerHTML = viewCosts(false); break;
     case 'fixedcosts': c.innerHTML = viewCosts(true); break;
     case 'contracts': c.innerHTML = viewContracts(); break;
@@ -1302,6 +1303,22 @@ function saveEmployee(ev,id){
 }
 
 /* ============================= PROJECTS ============================= */
+// Kafelek "Budżet Farm PV (Grzegorz)" — pokazuje pełne, samodzielne narzędzie
+// kalkulatora IRR/WACC Grzegorza (public/budzet-farm-pv.html) osadzone w
+// ramce wewnątrz aplikacji, żeby nie trzeba było otwierać osobnej karty.
+// Narzędzie samo zapisuje swoje dane lokalnie w przeglądarce (localStorage
+// tej ramki) — nie współdzieli stanu z resztą FFP Cost Control. Import
+// wybranych, zatwierdzonych przez Kamila pozycji do Projektów/Finansowań
+// odbywa się osobno, przyciskiem w Ustawieniach ("Wczytaj model budżetowy
+// Grzegorza" — patrz app/api/admin/import-pv-budget).
+function viewGrzegorz(){
+  return '<h2 class="page-title">Budżet Farm PV (Grzegorz)</h2>'+
+  '<div class="page-sub">Pełny kalkulator opłacalności (CAPEX, OPEX, IRR, WACC) — narzędzie Grzegorza, osadzone tu dla wygody. Dane liczone tu NIE trafiają automatycznie do Projektów — do tego służy przycisk „Wczytaj model budżetowy Grzegorza” w Ustawieniach.</div>'+
+  '<div class="toolbar"><div></div><a href="/budzet-farm-pv.html" target="_blank" rel="noopener" class="btn btn-sm">Otwórz w osobnej karcie ↗</a></div>'+
+  '<div class="panel" style="padding:0;overflow:hidden">'+
+  '<iframe src="/budzet-farm-pv.html" title="Budżet Farm PV (Grzegorz)" style="width:100%;height:calc(100vh - 220px);min-height:520px;border:0;display:block;background:#fff"></iframe>'+
+  '</div>';
+}
 function viewProjects(){
   var m = metrics();
   return '<h2 class="page-title">Projekty</h2><div class="page-sub">'+STATE.projects.length+' projektów • koszt łączny: '+fmtMoney0(m.totalProjectCost)+'/mies. • przychód bieżący (operacyjne): '+fmtMoney0(m.monthlyRevenue)+'/mies. • docelowy przychód po uruchomieniu (założenie): '+fmtMoney0(m.monthlyRevenueProjected)+'/mies. • przyszłe zapotrzebowanie na kapitał: '+fmtMoney0(m.totalFutureCapitalNeed)+'</div>'+
