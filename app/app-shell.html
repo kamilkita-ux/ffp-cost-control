@@ -508,6 +508,11 @@ function financingActive(f, asOfISO){
 // w przód, żeby farma/kredyt startujące za 6 tygodni nie wchodziły już dziś
 // (poprawka 2026-09-18 po pierwszym resecie: Opole XI 2026 wpadało do dziś).
 function runRateAsOfISO(){ var d=new Date(); return localISO(new Date(d.getFullYear(), d.getMonth()+1, 0)); }
+// Wersje "aktywne dziś" (bieżący miesiąc) — używane we WSZYSTKICH sumach
+// zbiorczych poza Dashboardem (Koszty, Leasingi, Dostawcy, Analiza, Wykresy,
+// karta projektu), żeby każdy moduł liczył tak samo jak Dashboard.
+function activeMonthlyEquivalent(c){ return recurringCostActive(c, runRateAsOfISO()) ? monthlyEquivalent(c) : 0; }
+function activeMonthlyPayment(f){ return financingActive(f, runRateAsOfISO()) ? (Number(f.monthlyPayment)||0) : 0; }
 function projectActiveInMonth(p, monthEndISO){
   if(p.isDemo) return false;
   if(['sprzedany','zamknięty','zawieszony'].indexOf(p.status)>=0) return false;
@@ -860,6 +865,7 @@ var NAV = [
   {key:'dashboard',label:'Dashboard',icon:'📊'},
   {key:'employees',label:'Pracownicy',icon:'👤'},
   {key:'projects',label:'Projekty',icon:'🏗️'},
+  {key:'portfolio',label:'Portfel farm (zarządczy)',icon:'🌞'},
   {key:'grzegorz',label:'Budżet Farm PV (Grzegorz)',icon:'📐'},
   {key:'costs',label:'Koszty',icon:'💰'},
   {key:'fixedcosts',label:'Koszty stałe',icon:'📌'},
@@ -877,7 +883,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-18-20 (Ustawienia: zwijane panele)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-18-21 (Portfel farm - widok zarzadczy; spojne sumy w modulach)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1029,6 +1035,7 @@ function render(){
     case 'dashboard': c.innerHTML = viewDashboard(); break;
     case 'employees': c.innerHTML = viewEmployees(); break;
     case 'projects': c.innerHTML = viewProjects(); break;
+    case 'portfolio': c.innerHTML = viewPortfolio(); break;
     case 'grzegorz': c.innerHTML = viewGrzegorz(); break;
     case 'costs': c.innerHTML = viewCosts(false); break;
     case 'fixedcosts': c.innerHTML = viewCosts(true); break;
@@ -1070,7 +1077,7 @@ function viewDashboard(){
   var m = metrics();
   var topCosts = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,10);
   var byCategory = {};
-  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+activeMonthlyEquivalent(c); });
   var byDept = m.deptCost;
   var terminable = STATE.contracts.filter(function(c){ var d=daysUntil(c.earliestTerminationDate); return d!==null && d>=0 && d<=90; });
   var unassignedEmp = STATE.employees.filter(function(e){ return !e.allocations || e.allocations.length===0; });
@@ -1354,6 +1361,142 @@ function viewConsistency(){
   '<div class="panel"><h3>Koszty jednorazowe wliczone w okres ('+fmtMoney0(pm.oneTimeCosts)+')</h3>'+costsTable(oneTimeList,false)+'</div>';
 }
 
+
+/* ============================= PORTFEL FARM (widok zarządczy) ============================= */
+// Na prośbę Kamila (2026-09-18): "extra dane dla mnie jako zarządzającego
+// całymi farmami". Wszystko liczone z kart projektów, finansowań i kosztów
+// OPEX — tych samych rekordów, z których liczy Dashboard. Definicje:
+//  EBITDA/mies. = przychód/mies. − OPEX/mies. (docelowe, po uruchomieniu)
+//  Gotówka po obsłudze długu = EBITDA − rata
+//  DSCR = EBITDA / rata (pokrycie raty; bank zwykle wymaga ≥ 1,2)
+//  Zwrot = CAPEX / (12 × EBITDA) w latach (uproszczony, bez podatku i degradacji)
+//  Kapitał własny = CAPEX − finansowanie dłużne (initialAmount)
+//  Luka kasowa = najniższy punkt skumulowanego wyniku miesięcznego (5 lat)
+function farmRows(){
+  var real = STATE.projects.filter(function(p){return !p.isDemo && ['sprzedany','zamknięty'].indexOf(p.status)<0;});
+  var today = todayISO();
+  return real.map(function(p){
+    var fins = STATE.financings.filter(function(f){return f.projectId===p.id;});
+    var costs = STATE.costs.filter(function(c){return !c.isDemo && c.projectId===p.id;});
+    var mw = Number(p.mwPower)||0, rev = Number(p.revenueMonthly)||0, capex = Number(p.capex)||0;
+    var opex = costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    var debt = fins.reduce(function(s,f){return s+(Number(f.initialAmount)||0);},0);
+    var installment = fins.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+    var loanStart = fins.map(function(f){return f.nextPaymentDate;}).filter(Boolean).sort()[0]||null;
+    var loanEnd = fins.map(function(f){return f.endDate;}).filter(Boolean).sort().slice(-1)[0]||null;
+    var ebitda = rev-opex, cash = ebitda-installment;
+    var dscr = installment>0? ebitda/installment : null;
+    var payback = (capex>0 && ebitda>0)? capex/(12*ebitda) : null;
+    var equity = Math.max(0, capex-debt);
+    var monthsTo = p.endDate? Math.round((new Date(p.endDate+'T00:00:00')-new Date(today+'T00:00:00'))/(30.4368*86400000)) : null;
+    var flags = [];
+    if(p.status!=='operacyjny' && !p.endDate) flags.push('brak daty uruchomienia');
+    if(p.status!=='operacyjny' && p.endDate && p.endDate<today) flags.push('data uruchomienia minęła, status '+p.status);
+    if(p.status!=='operacyjny' && monthsTo!==null && monthsTo<=6 && ['development','pozwolenia'].indexOf(p.status)>=0) flags.push('uruchomienie za '+monthsTo+' mies., a status wciąż „'+p.status+'”');
+    if(!rev) flags.push('brak przychodu');
+    if(!opex && p.assetType!=='BESS') flags.push('brak OPEX');
+    if(dscr!==null && dscr<1.2) flags.push('DSCR '+dscr.toFixed(2)+' < 1,2');
+    if(cash<0) flags.push('rata wyższa niż EBITDA');
+    if(payback!==null && payback>12) flags.push('zwrot > 12 lat');
+    if(mw>0 && capex>0 && p.assetType!=='BESS' && (capex/mw<1200000 || capex/mw>3500000)) flags.push('CAPEX/MW nietypowy: '+fmtMoney0(capex/mw));
+    if(mw>0 && rev>0 && p.assetType!=='BESS' && (rev*12/mw<250000 || rev*12/mw>600000)) flags.push('przychód/MW/rok nietypowy: '+fmtMoney0(rev*12/mw));
+    if(!capex) flags.push('brak CAPEX');
+    if(capex>0 && !debt && p.status!=='operacyjny') flags.push('brak finansowania — 100% kapitał własny?');
+    ['connectionConditionsStatus','connectionAgreementStatus','permitsStatus','environmentalDecisionStatus','zoningStatus'].forEach(function(k){ if(/odmowa|wypowiedziana|brak pokrycia/.test(p[k]||'')) flags.push(k.replace('Status','')+': '+p[k]); });
+    return {p:p, mw:mw, rev:rev, capex:capex, opex:opex, debt:debt, installment:installment, loanStart:loanStart, loanEnd:loanEnd, ebitda:ebitda, cash:cash, dscr:dscr, payback:payback, equity:equity, monthsTo:monthsTo, flags:flags};
+  });
+}
+function viewPortfolio(){
+  var rows = farmRows();
+  var today = todayISO();
+  var byStatus = {};
+  rows.forEach(function(r){ var st=r.p.status||'—'; byStatus[st]=(byStatus[st]||0)+r.mw; });
+  var totMw = rows.reduce(function(s,r){return s+r.mw;},0);
+  var opMw = rows.filter(function(r){return r.p.status==='operacyjny';}).reduce(function(s,r){return s+r.mw;},0);
+  var totCapex = rows.reduce(function(s,r){return s+r.capex;},0);
+  var totDebt = rows.reduce(function(s,r){return s+r.debt;},0);
+  var totEquity = rows.reduce(function(s,r){return s+r.equity;},0);
+  var totRev = rows.reduce(function(s,r){return s+r.rev;},0);
+  var totOpex = rows.reduce(function(s,r){return s+r.opex;},0);
+  var totInst = rows.reduce(function(s,r){return s+r.installment;},0);
+
+  // Krzywa gotówki 5 lat (te same wiersze co Dashboard, okres 5y)
+  var pm5 = periodMetrics('5y');
+  var cum=0, minCum=0, minAt=null, firstPositive=null, breakEven=null;
+  (pm5.rows||[]).forEach(function(rw){
+    var net = (rw.revenue-rw.cost)*rw.frac; cum+=net;
+    if(cum<minCum){ minCum=cum; minAt=rw.period; }
+    if(firstPositive===null && rw.revenue-rw.cost>0) firstPositive=rw.period;
+    if(breakEven===null && cum>=0 && rw.period>(minAt||'')) breakEven=rw.period;
+  });
+  if(minCum===0) minAt = null;
+
+  // Kapitał własny do wyłożenia wg kwartału (wg daty startu prac; gdy brak — daty uruchomienia)
+  var eqByQ = {};
+  rows.forEach(function(r){ if(!r.equity) return; var d=r.p.startDate||r.p.endDate; if(!d) { eqByQ['brak daty']=(eqByQ['brak daty']||0)+r.equity; return; } var q=d.slice(0,4)+' Q'+(Math.floor((Number(d.slice(5,7))-1)/3)+1); eqByQ[q]=(eqByQ[q]||0)+r.equity; });
+  var eqKeys = Object.keys(eqByQ).sort();
+
+  // Kamienie milowe (najbliższe 12 mies.)
+  var horizonISO = localISO(new Date(new Date().getFullYear(), new Date().getMonth()+12, 1));
+  var milestones = [];
+  rows.forEach(function(r){
+    if(r.p.startDate && r.p.startDate>=today && r.p.startDate<=horizonISO) milestones.push({d:r.p.startDate, t:'start prac — '+r.p.name});
+    if(r.p.endDate && r.p.endDate>=today && r.p.endDate<=horizonISO && r.p.status!=='operacyjny') milestones.push({d:r.p.endDate, t:'uruchomienie — '+r.p.name+' ('+fmtMoney0(r.rev)+'/mies.)'});
+    if(r.loanStart && r.loanStart>=today && r.loanStart<=horizonISO) milestones.push({d:r.loanStart, t:'pierwsza rata — '+r.p.name+' ('+fmtMoney0(r.installment)+'/mies.)'});
+  });
+  milestones.sort(function(a,b){return a.d<b.d?-1:1;});
+
+  // Oś czasu 36 mies. (pasek: start prac → uruchomienie)
+  var axisMonths = 36, t0 = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  function mIdx(iso){ var d=new Date(iso+'T00:00:00'); return (d.getFullYear()-t0.getFullYear())*12+(d.getMonth()-t0.getMonth()); }
+  function bar(r){
+    if(r.p.status==='operacyjny') return '<div style="height:10px;background:var(--accent);border-radius:5px;width:100%;opacity:.7" title="operacyjna"></div>';
+    var a = r.p.startDate? mIdx(r.p.startDate) : (r.p.endDate? mIdx(r.p.endDate)-6 : null);
+    var b = r.p.endDate? mIdx(r.p.endDate) : null;
+    if(a===null && b===null) return '<div class="muted" style="font-size:11px">brak dat</div>';
+    if(a===null) a=b; if(b===null) b=a;
+    var left = Math.max(0,Math.min(axisMonths,a)), right = Math.max(0,Math.min(axisMonths,b));
+    var w = Math.max(1.5, (right-left)/axisMonths*100);
+    var late = b<0;
+    return '<div style="position:relative;height:10px;background:var(--bg);border-radius:5px"><div style="position:absolute;left:'+(left/axisMonths*100)+'%;width:'+w+'%;height:10px;border-radius:5px;background:'+(late?'var(--danger)':'var(--warn)')+'" title="'+esc((r.p.startDate||'?')+' → '+(r.p.endDate||'?'))+'"></div></div>';
+  }
+  var sorted = rows.slice().sort(function(a,b){ var ka=a.p.status==='operacyjny'?'0':(a.p.endDate||'9999'); var kb=b.p.status==='operacyjny'?'0':(b.p.endDate||'9999'); return ka<kb?-1:ka>kb?1:0; });
+
+  function pct(x){ return x===null||!isFinite(x)?'—':x.toFixed(2); }
+  var table = '<div class="table-wrap"><table><thead><tr><th>Farma</th><th>Status</th><th class="right">MW</th><th>Start prac → uruchomienie</th><th style="min-width:160px">Oś 36 mies.</th><th class="right">CAPEX</th><th class="right">Dług</th><th class="right">Kapitał wł.</th><th class="right">Przychód/mies.</th><th class="right">OPEX/mies.</th><th class="right">EBITDA/mies.</th><th class="right">Rata/mies.</th><th class="right">DSCR</th><th class="right">Zwrot (lata)</th><th>Uwagi</th></tr></thead><tbody>'+
+    sorted.map(function(r){
+      var p=r.p;
+      return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span> <span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></td><td>'+projectStatusPill(p.status)+'</td><td class="right">'+(r.mw||'—')+'</td><td style="font-size:12px">'+(p.startDate?fmtDate(p.startDate):'—')+' → '+(p.endDate?fmtDate(p.endDate):'—')+(r.monthsTo!==null&&p.status!=='operacyjny'?'<br><span class="muted">za '+r.monthsTo+' mies.</span>':'')+'</td><td>'+bar(r)+'</td><td class="right">'+(r.capex?fmtMoney0(r.capex):'—')+'</td><td class="right">'+(r.debt?fmtMoney0(r.debt):'—')+'</td><td class="right">'+(r.capex?fmtMoney0(r.equity):'—')+'</td><td class="right">'+fmtMoney0(r.rev)+'</td><td class="right">'+fmtMoney0(r.opex)+'</td><td class="right'+(r.ebitda<0?'" style="color:var(--danger)':'')+'">'+fmtMoney0(r.ebitda)+'</td><td class="right">'+(r.installment?fmtMoney0(r.installment):'—')+'</td><td class="right'+(r.dscr!==null&&r.dscr<1.2?'" style="color:var(--danger)':'')+'">'+pct(r.dscr)+'</td><td class="right">'+(r.payback!==null?r.payback.toFixed(1):'—')+'</td><td style="font-size:12px;color:var(--danger)">'+r.flags.map(esc).join('<br>')+'</td></tr>';
+    }).join('')+
+    '<tr style="font-weight:600"><td>Razem ('+rows.length+')</td><td></td><td class="right">'+totMw+'</td><td></td><td></td><td class="right">'+fmtMoney0(totCapex)+'</td><td class="right">'+fmtMoney0(totDebt)+'</td><td class="right">'+fmtMoney0(totEquity)+'</td><td class="right">'+fmtMoney0(totRev)+'</td><td class="right">'+fmtMoney0(totOpex)+'</td><td class="right">'+fmtMoney0(totRev-totOpex)+'</td><td class="right">'+fmtMoney0(totInst)+'</td><td class="right">'+pct(totInst>0?(totRev-totOpex)/totInst:null)+'</td><td></td><td></td></tr>'+
+  '</tbody></table></div>';
+
+  var flagged = rows.filter(function(r){return r.flags.length;});
+  return '<h2 class="page-title">Portfel farm — widok zarządczy</h2>'+
+  '<div class="page-sub">Liczone z kart projektów, finansowań i OPEX (dane Grzegorza + CF). Wartości docelowe = po uruchomieniu wszystkich farm, rok 1, bez degradacji/eskalacji. Stan na '+fmtDate(today)+'.</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Moc portfela', totMw+' MW • operacyjne '+opMw+' MW', true)+
+    kpi('Moc wg statusu', Object.keys(byStatus).map(function(k){return k+': '+byStatus[k]+' MW';}).join(' • '))+
+    kpi('CAPEX portfela', fmtMoney0(totCapex), true)+
+    kpi('Finansowanie dłużne', fmtMoney0(totDebt)+' ('+(totCapex?Math.round(totDebt/totCapex*100):0)+'%)')+
+    kpi('Kapitał własny do wyłożenia', fmtMoney0(totEquity), true, totEquity>0)+
+    kpi('Przychód docelowy', fmtMoney0(totRev)+'/mies. = '+fmtMoney0(totRev*12)+'/rok', true)+
+    kpi('OPEX farm docelowy', fmtMoney0(totOpex)+'/mies.')+
+    kpi('EBITDA farm docelowa', fmtMoney0(totRev-totOpex)+'/mies.', true)+
+    kpi('Raty docelowe', fmtMoney0(totInst)+'/mies. • DSCR portfela '+pct(totInst>0?(totRev-totOpex)/totInst:null))+
+    kpi('Luka kasowa (5 lat)', minAt? fmtMoney0(minCum)+' w '+minAt : 'brak (skumulowany wynik nie schodzi poniżej zera)', true, !!minAt)+
+    kpi('Pierwszy miesiąc na plusie', firstPositive||'— (w 5 latach)')+
+    kpi('Odrobienie luki (skumulowany ≥ 0)', breakEven||'— (w 5 latach)')+
+  '</div>'+
+  '<div class="panel"><h3>Farmy — ekonomika i harmonogram</h3>'+table+'</div>'+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Kapitał własny wg kwartału startu prac</h3>'+(eqKeys.length?'<table><tbody>'+eqKeys.map(function(k){return '<tr><td>'+esc(k)+'</td><td class="right">'+fmtMoney0(eqByQ[k])+'</td></tr>';}).join('')+'</tbody></table>':'<div class="empty">Brak</div>')+'<div class="muted" style="margin-top:8px">CAPEX minus finansowanie dłużne, przypisane do kwartału startu prac (lub uruchomienia, gdy brak daty startu). Orientacyjne zapotrzebowanie na equity.</div></div>'+
+    '<div class="panel"><h3>Kamienie milowe — najbliższe 12 mies.</h3>'+(milestones.length?'<table><tbody>'+milestones.map(function(m){return '<tr><td style="white-space:nowrap">'+fmtDate(m.d)+'</td><td>'+esc(m.t)+'</td></tr>';}).join('')+'</tbody></table>':'<div class="empty">Brak</div>')+'</div>'+
+  '</div>'+
+  '<div class="panel"><h3>Sygnały ostrzegawcze ('+flagged.length+' farm)</h3>'+(flagged.length? flagged.map(function(r){return '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><b>'+esc(r.p.name)+'</b>: '+r.flags.map(esc).join('; ')+'</div>';}).join('') : '<div class="empty">Brak sygnałów</div>')+
+  '<div class="muted" style="margin-top:8px">Progi: DSCR &lt; 1,2; zwrot &gt; 12 lat; CAPEX/MW poza 1,2–3,5 mln; przychód/MW/rok poza 250–600 tys.; uruchomienie ≤ 6 mies. przy statusie development/pozwolenia.</div></div>';
+}
+
 /* ============================= COSTS TABLE (shared) ============================= */
 function costsTable(list,showActions){
   if(!list.length) return '<div class="empty">Brak pozycji</div>';
@@ -1589,9 +1732,10 @@ function projectDetail(p){
   var m = metrics();
   var costs = STATE.costs.filter(function(c){return c.projectId===p.id;});
   var emps = STATE.employees.filter(function(e){return empAllocPct(e,p.id)>0;});
-  var extCost = costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var extCost = costs.reduce(function(s,c){return s+activeMonthlyEquivalent(c);},0); // aktywne dziś (jak Dashboard)
+  var extCostTarget = costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0); // docelowo, po uruchomieniu
   var empCost = emps.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
-  var fixedCost = costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var fixedCost = costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+activeMonthlyEquivalent(c);},0);
   var oneTimeCost = costs.filter(function(c){return c.recurrence==='jednorazowy'||c.recurrence==='nieregularny';}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
   var sinceStart = costs.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0)+oneTimeCost*0; // sum of all recorded gross amounts as "since start"
   var annualProfit = p.revenueMonthly!==''? (Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0))*12 : null;
@@ -1610,7 +1754,8 @@ function projectDetail(p){
     kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
     kpi('Koszt od początku projektu',fmtMoney0(sinceStart))+
     (STATE.restricted?'':kpi('Koszt pracowników',fmtMoney0(empCost)))+
-    kpi('Koszt zewnętrzny',fmtMoney0(extCost))+
+    kpi('Koszt zewnętrzny (aktywny dziś)',fmtMoney0(extCost))+
+    (extCostTarget!==extCost? kpi('Koszt zewnętrzny docelowy (po uruchomieniu)',fmtMoney0(extCostTarget)) : '')+
     kpi('Koszt stały',fmtMoney0(fixedCost))+
     kpi('Koszt jednorazowy',fmtMoney0(oneTimeCost))+
     kpi('Przyszłe zapotrzebowanie na kapitał',fmtMoney0(futureCapital),true,futureCapital>0)+
@@ -1676,8 +1821,9 @@ function viewCosts(fixedOnly){
   });
   var total = list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
   var totalMonthly = list.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var totalMonthlyActive = list.reduce(function(s,c){return s+activeMonthlyEquivalent(c);},0);
   return '<h2 class="page-title">'+(fixedOnly?'Koszty stałe':'Rejestr kosztów')+'</h2>'+
-  '<div class="page-sub">'+list.length+' pozycji • suma brutto: '+fmtMoney0(total)+' • ekwiwalent miesięczny (cykliczne): '+fmtMoney0(totalMonthly)+'</div>'+
+  '<div class="page-sub">'+list.length+' pozycji • suma brutto: '+fmtMoney0(total)+' • cykliczne aktywne dziś: '+fmtMoney0(totalMonthlyActive)+'/mies.'+(totalMonthly!==totalMonthlyActive?' • docelowo (z tymi, które jeszcze nie ruszyły): '+fmtMoney0(totalMonthly)+'/mies.':'')+'</div>'+
   '<div class="toolbar"><div class="filters">'+
     selectFilter('project',projectOptions(true),'Wszystkie projekty','costFilterChange')+
     selectFilter('dept',STATE.departments.map(function(d){return {v:d.id,l:d.name};}),'Wszystkie działy','costFilterChange')+
@@ -1811,7 +1957,9 @@ function saveContract(ev,id){
 function viewFinancing(){
   var list = STATE.financings;
   var totalMo = list.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
-  return '<h2 class="page-title">Leasingi / kredyty</h2><div class="page-sub">'+list.length+' pozycji • rata łącznie: '+fmtMoney0(totalMo)+'/mies.</div>'+
+  var totalMoActive = list.reduce(function(s,f){return s+activeMonthlyPayment(f);},0);
+  var totalBalance = list.reduce(function(s,f){return s+(Number(f.remainingBalance)||0);},0);
+  return '<h2 class="page-title">Leasingi / kredyty</h2><div class="page-sub">'+list.length+' pozycji • raty aktywne dziś: '+fmtMoney0(totalMoActive)+'/mies.'+(totalMo!==totalMoActive?' • docelowo (po uruchomieniu wszystkich): '+fmtMoney0(totalMo)+'/mies.':'')+' • saldo do spłaty: '+fmtMoney0(totalBalance)+'</div>'+
   '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'financing\')">+ Dodaj finansowanie</button></div>'+
   '<div class="table-wrap"><table><thead><tr><th>Bank / leasingodawca</th><th>Przedmiot</th><th>Rodzaj</th><th>Rata / mies.</th><th>Pozostałe raty</th><th>Saldo pozostałe</th><th>Następna rata</th><th></th></tr></thead><tbody>'+
   (list.length?list.map(function(f){
@@ -1852,7 +2000,7 @@ function viewVendors(){
   '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Typ usług</th><th>Kontakt</th><th>Koszt / mies.</th><th>Koszt / rok</th><th></th></tr></thead><tbody>'+
   (STATE.vendors.length?STATE.vendors.map(function(v){
     var costsV = STATE.costs.filter(function(c){return c.vendorId===v.id;});
-    var mo = costsV.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    var mo = costsV.reduce(function(s,c){return s+activeMonthlyEquivalent(c);},0);
     return '<tr><td><span class="link" onclick="openVendorDetail(\''+v.id+'\')">'+esc(v.name)+'</span>'+(v.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(v.serviceType||'—')+'</td><td>'+esc(v.contactPerson||v.email||'—')+'</td><td class="right">'+fmtMoney(mo)+'</td><td class="right">'+fmtMoney(mo*12)+'</td><td><span class="link" onclick="openForm(\'vendors\',\''+v.id+'\')">edytuj</span></td></tr>';
   }).join(''):'<tr><td colspan="6" class="empty">Brak dostawców</td></tr>')+
   '</tbody></table></div>';
@@ -1947,7 +2095,7 @@ function viewAnalysis(){
   var top20fixed = realCostsA.filter(function(c){return c.isFixed;}).slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,20);
   function groupSum(keyFn,labelFn){
     var g={};
-    realCostsA.forEach(function(c){ var k=keyFn(c); g[k]=(g[k]||0)+monthlyEquivalent(c); });
+    realCostsA.forEach(function(c){ var k=keyFn(c); g[k]=(g[k]||0)+activeMonthlyEquivalent(c); });
     return Object.keys(g).map(function(k){return {label:labelFn(k),value:g[k]};}).sort(function(a,b){return b.value-a.value;});
   }
   function table(rows){
@@ -1988,7 +2136,7 @@ function viewCharts(){
     .map(function(p){return {label:p.name, value:Number(p.revenueMonthly)||0};})
     .sort(function(x,y){return y.value-x.value;});
   var byCategory = {};
-  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+monthlyEquivalent(c); });
+  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+activeMonthlyEquivalent(c); });
   var costByCategory = Object.keys(byCategory).map(function(k){return {label:k, value:byCategory[k]};}).sort(function(x,y){return y.value-x.value;});
   var months = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
   var pp = a.productionProfile || {};
