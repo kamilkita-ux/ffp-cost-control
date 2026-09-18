@@ -83,6 +83,14 @@ tr:hover td{background:var(--accent-bg);}
 .pill-warn{background:var(--warn-bg);color:var(--warn);}
 .pill-danger{background:var(--danger-bg);color:var(--danger);}
 .pill-muted{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+/* Zwijane panele w Ustawieniach (prośba Kamila 2026-09-18: "wszystkie te długie powinny się zwijać") */
+details.panel>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;user-select:none;}
+details.panel>summary::-webkit-details-marker{display:none;}
+details.panel>summary::before{content:'▸';color:var(--muted);font-size:13px;width:12px;}
+details.panel[open]>summary::before{content:'▾';}
+details.panel>summary h3{margin:0;display:inline;}
+details.panel>summary .muted{font-weight:400;font-size:12px;}
+details.panel>.panel-body{margin-top:10px;}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 .filters select,.filters input{width:auto;min-width:130px;}
 @media print{
@@ -869,7 +877,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-18-19 (poprawki danych: Opole przychod od VIII 2027)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-18-20 (Ustawienia: zwijane panele)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2229,29 +2237,34 @@ function saveDocument(ev,id){
 }
 
 /* ============================= SETTINGS ============================= */
+// Stan zwinięcia paneli w Ustawieniach — zapamiętywany w przeglądarce, żeby
+// po każdym odświeżeniu widoku (np. po kliknięciu przycisku) otwarte panele
+// nie zwijały się z powrotem. Domyślnie wszystko zwinięte.
+function settingsOpenAttr(key){ try{ return localStorage.getItem('ffp_settings_open_'+key)==='1' ? 'open' : ''; }catch(e){ return ''; } }
+function onSettingsToggle(el){ try{ localStorage.setItem('ffp_settings_open_'+el.getAttribute('data-key'), el.open?'1':'0'); }catch(e){} }
 function viewSettings(){
   ensureBackupsLoaded();
   var hasDemo = STATE.employees.some(function(e){return e.isDemo;})||STATE.projects.some(function(p){return p.isDemo;})||STATE.costs.some(function(c){return c.isDemo;})||STATE.vendors.some(function(v){return v.isDemo;});
   return '<h2 class="page-title">Ustawienia / słowniki</h2>'+
-  '<div class="panel"><h3>Gdzie przechowywane są dane</h3><div class="muted">Dane FFP Cost Control są zapisywane WYŁĄCZNIE w bazie PostgreSQL (przez Prisma ORM i API tej aplikacji) i widoczne dla każdego, kto otworzy tę aplikację — niezależnie od urządzenia i przeglądarki. Status ostatniego zapisu widać w pasku górnym. Pełne szczegóły (gdzie fizycznie stoi baza, jak wygląda backup, jak wdrożyć aplikację ponownie) znajdują się w pliku README repozytorium.</div>'+
+  '<details class="panel" data-key="storage" '+settingsOpenAttr('storage')+' ontoggle="onSettingsToggle(this)"><summary><h3>Gdzie przechowywane są dane</h3><span class="muted">baza, kopia ręczna</span></summary><div class="panel-body"><div class="muted">Dane FFP Cost Control są zapisywane WYŁĄCZNIE w bazie PostgreSQL (przez Prisma ORM i API tej aplikacji) i widoczne dla każdego, kto otworzy tę aplikację — niezależnie od urządzenia i przeglądarki. Status ostatniego zapisu widać w pasku górnym. Pełne szczegóły (gdzie fizycznie stoi baza, jak wygląda backup, jak wdrożyć aplikację ponownie) znajdują się w pliku README repozytorium.</div>'+
   '<div class="section-title">Ręczna kopia zapasowa (JSON) — dodatkowe zabezpieczenie</div>'+
   '<button class="btn btn-sm" onclick="exportBackupJson()">Pobierz kopię zapasową (.json)</button> '+
   '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
-  '</div>'+
-  '<div class="panel"><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3>'+
+  '</div></details>'+
+  '<details class="panel" data-key="backups" '+settingsOpenAttr('backups')+' ontoggle="onSettingsToggle(this)"><summary><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3><span class="muted">kliknij „Utwórz kopię teraz” przed zmianami</span></summary><div class="panel-body">'+
   '<div class="muted">System sam zapisuje pełny stan danych co kilka godzin. Poniżej lista ostatnich punktów — możesz cofnąć się do dowolnego z nich jednym kliknięciem, albo pobrać go jako plik.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
   '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
-  '</div>'+
-  '<div class="panel" style="border-color:var(--danger)"><h3>Reset i odbudowa portfela farm (dane Grzegorza jako źródło prawdy)</h3>'+
+  '</div></details>'+
+  '<details class="panel" style="border-color:var(--danger)" data-key="reset" '+settingsOpenAttr('reset')+' ontoggle="onSettingsToggle(this)"><summary><h3>Reset i odbudowa portfela farm (dane Grzegorza jako źródło prawdy)</h3><span class="muted">kasuje portfel — ostrożnie</span></summary><div class="panel-body">'+
   '<div class="muted">Decyzja z 18.09: KASUJE wszystkie Projekty i ich Finansowania (oraz wcześniej wygenerowany OPEX farm), po czym buduje od zera: 7 farm z modelu Grzegorza (moc, CAPEX, data uruchomienia, przychód mies. = moc × uzysk × cena, finansowanie z ratą od pierwszej raty, 4 linie OPEX od daty uruchomienia; magazyny energii jako osobne projekty BESS) + 6 farm z CF Farmy.xlsx oznaczonych „do uzupełnienia”. NIE rusza: Pracowników, Kosztów spółki (koszty przypięte do farm są przepinane po nazwie, nie kasowane), Umów, Dostawców, Akcjonariatu, kopii, użytkowników, danych DEMO. Jedna transakcja — albo wszystko, albo nic. Bezpieczne do ponownego kliknięcia (ten sam stan końcowy). <b>Najpierw „Utwórz kopię teraz”.</b></div>'+
   '<div style="margin:10px 0"><button class="btn btn-danger btn-sm" onclick="resetFarmPortfolioNow()">Wyzeruj i odbuduj portfel farm</button></div>'+
-  '</div>'+
-  '<div class="panel"><h3>Zastosuj poprawki danych (lista uzupełnień)</h3>'+
+  '</div></details>'+
+  '<details class="panel" data-key="adjustments" '+settingsOpenAttr('adjustments')+' ontoggle="onSettingsToggle(this)"><summary><h3>Zastosuj poprawki danych (lista uzupełnień)</h3><span class="muted">jeden klik po każdej mojej poprawce</span></summary><div class="panel-body">'+
   '<div class="muted">Umówiony sposób uzupełniania: podajesz informację, ja dopisuję ją do listy poprawek w kodzie, Ty klikasz raz. Aktualnie na liście: Opole 5x1 MW — start prac XI 2026, przychód i OPEX od VIII 2027 (Kamil, 18.09). Bezpieczne do wielokrotnego kliknięcia (ustawia te same wartości).</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="applyDataAdjustmentsNow()">Zastosuj poprawki danych</button></div>'+
-  '</div>'+
-  '<details style="margin:8px 0 14px"><summary class="muted" style="cursor:pointer">Starsze narzędzia importu (przed resetem 18.09) — zwykle niepotrzebne</summary>'+
+  '</div></details>'+
+  '<details class="panel" data-key="legacy" '+settingsOpenAttr('legacy')+' ontoggle="onSettingsToggle(this)"><summary><h3>Starsze narzędzia importu (przed resetem 18.09)</h3><span class="muted">zwykle niepotrzebne</span></summary><div class="panel-body">'+
   '<div class="panel"><h3>Portfel farm PV — arkusz kontrolera (CF Farmy.xlsx)</h3>'+
   '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importCfPortfolioNow()">Wczytaj / odśwież portfel farm</button></div>'+
@@ -2269,19 +2282,19 @@ function viewSettings(){
   '<div class="muted">Wczytuje dane z 7 pozycji (Dębowiec, Lubelskie 4x1 MW [nowy], Łubno, Miejsce Piastowe z BESS 2MW, Opole 5x1 MW [nowy], Poręba, Wylewa) jako BIEŻĄCY, aktualny stan tych projektów (decyzja Kamila 2026-09-17) — nadpisuje moc/CAPEX/lokalizację/datę uruchomienia/opis i zastępuje stare finansowanie tej samej pozycji z arkusza CF Farmy.xlsx. Nie rusza pozostałych 4 farm ani innych modułów (Pracownicy, Koszty stałe spółki itd.). Zalecane: najpierw kliknij „Scal duplikaty farm” powyżej. Bezpieczne do wielokrotnego kliknięcia — ale ZALECANA KOPIA ZAPASOWA przed pierwszym uruchomieniem (nadpisuje dane).</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importPvBudgetNow()">Wczytaj model budżetowy Grzegorza (dane bieżące)</button></div>'+
   '</div>'+
-  '</details>'+
-  '<div class="grid2">'+
-  '<div class="panel"><h3>Kategorie kosztów</h3>'+dictList('costCategories')+'</div>'+
-  '<div class="panel"><h3>Centra kosztów</h3>'+dictList('costCenters')+'</div>'+
-  '</div>'+
+  '</div></details>'+
+  '<details class="panel" data-key="dicts" '+settingsOpenAttr('dicts')+' ontoggle="onSettingsToggle(this)"><summary><h3>Słowniki: kategorie i centra kosztów</h3></summary><div class="panel-body"><div class="grid2">'+
+  '<div><div class="section-title">Kategorie kosztów</div>'+dictList('costCategories')+'</div>'+
+  '<div><div class="section-title">Centra kosztów</div>'+dictList('costCenters')+'</div>'+
+  '</div></div></details>'+
   '<div class="panel"><h3>Waluta domyślna</h3>'+selectHtml('currency',['PLN','EUR','USD'],STATE.currency)+' <button class="btn btn-sm" onclick="setCurrency()">Zapisz</button></div>'+
   '<div class="panel"><h3>Dane demonstracyjne</h3><div class="muted">Aplikacja zawiera kilka przykładowych rekordów oznaczonych jako DEMO, ułatwiających sprawdzenie działania.</div>'+
   (hasDemo?'<button class="btn btn-danger" style="margin-top:10px" onclick="removeDemoData()">Usuń wszystkie dane DEMO</button>':'<div class="muted" style="margin-top:8px">Brak danych DEMO w systemie.</div>')+'</div>'+
-  '<div class="panel"><h3>Dziennik zmian (audyt)</h3><div class="muted">Kto i kiedy tworzył, edytował lub usuwał dane w systemie — login odczytywany z logowania (Kamil / Jerzy / Grzegorz).</div>'+
+  '<details class="panel" data-key="changelog" '+settingsOpenAttr('changelog')+' ontoggle="onSettingsToggle(this)"><summary><h3>Dziennik zmian (audyt)</h3><span class="muted">kto co zmienił</span></summary><div class="panel-body"><div class="muted">Kto i kiedy tworzył, edytował lub usuwał dane w systemie — login odczytywany z logowania (Kamil / Jerzy / Grzegorz).</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="ensureChangelogLoaded(true)">Odśwież</button></div>'+
   '<div id="changelog-list">'+renderChangelogList()+'</div>'+
-  '</div>'+
-  '<div class="panel"><h3>Integracje (przygotowane na przyszłość)</h3><div class="muted">Microsoft Entra ID (logowanie firmowe), SharePoint, OneDrive, Outlook — pola techniczne (externalSource, externalId, sharePointUrl, documentUrl) są już przygotowane w modelu danych (tabela Document). Integracja zostanie wdrożona w kolejnym etapie.</div></div>';
+  '</div></details>'+
+  '<details class="panel" data-key="integrations" '+settingsOpenAttr('integrations')+' ontoggle="onSettingsToggle(this)"><summary><h3>Integracje (przygotowane na przyszłość)</h3></summary><div class="panel-body"><div class="muted">Microsoft Entra ID (logowanie firmowe), SharePoint, OneDrive, Outlook — pola techniczne (externalSource, externalId, sharePointUrl, documentUrl) są już przygotowane w modelu danych (tabela Document). Integracja zostanie wdrożona w kolejnym etapie.</div></div></details>';
 }
 var CHANGELOG_LIST = null;
 function ensureChangelogLoaded(force){
