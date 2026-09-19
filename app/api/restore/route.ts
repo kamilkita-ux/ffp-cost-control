@@ -245,6 +245,11 @@ export async function POST(req: Request) {
     if (data.currency) {
       await tx.appSetting.upsert({ where: { key: "currency" }, create: { key: "currency", value: data.currency }, update: { value: data.currency } });
     }
+    for (const k of ["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]) {
+      if (data[k]) {
+        await tx.appSetting.upsert({ where: { key: k }, create: { key: k, value: data[k] }, update: { value: data[k] } });
+      }
+    }
   }, { timeout: 30000 });
 
   await logChange(req, "database", null, "update", "Przywrócono bazę z pliku kopii zapasowej (restore)");

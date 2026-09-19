@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logChange } from "@/lib/audit";
 import { isRestrictedUser } from "@/lib/access";
 
-const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assumptions", "fixedCostSchedule", "shareholderStructure"]);
+const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]);
 
 // Klucze finansowe/wrażliwe — patrz SETTINGS_PERMISSION_MATRIX w raporcie
 // nocnym (2026-09-08), zatwierdzone przez Kamila: konto ograniczone (bez
@@ -12,7 +12,7 @@ const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assu
 // zawiera dokładnie te nazwiska/kwoty, które redactFixedCostLineItem ukrywa
 // przy odczycie — bez tego ograniczenia dało by się je nadpisać przez samo
 // wywołanie API, mimo że w interfejsie nie ma do tego żadnego formularza).
-const RESTRICTED_FORBIDDEN_KEYS = new Set(["assumptions", "fixedCostSchedule", "shareholderStructure"]);
+const RESTRICTED_FORBIDDEN_KEYS = new Set(["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]);
 
 // PUT /api/settings  { key: "currency" | "costCategories" | "costCenters" | "assumptions" | "fixedCostSchedule" | "shareholderStructure", value: ... }
 // Proste słowniki (kategorie kosztów, centra kosztów) i ustawienia (waluta)

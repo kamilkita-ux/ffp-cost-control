@@ -12,6 +12,7 @@ import {
 } from "@/lib/serialize";
 import { currentLogin, isRestrictedUser } from "@/lib/access";
 import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem } from "@/lib/serverMetrics";
+import { DEFAULT_GROUP_STRUCTURE } from "@/lib/groupStructureSeed";
 
 export const dynamic = "force-dynamic";
 
@@ -253,6 +254,7 @@ export async function GET(req: Request) {
     assumptions: settingsMap.assumptions ?? DEFAULT_ASSUMPTIONS,
     fixedCostSchedule,
     shareholderStructure: settingsMap.shareholderStructure ?? DEFAULT_SHAREHOLDER_STRUCTURE,
+    groupStructure: settingsMap.groupStructure ?? DEFAULT_GROUP_STRUCTURE,
     serverMetrics,
     currentUser: await currentLogin(req),
     restricted

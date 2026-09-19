@@ -91,6 +91,30 @@ details.panel[open]>summary::before{content:'▾';}
 details.panel>summary h3{margin:0;display:inline;}
 details.panel>summary .muted{font-weight:400;font-size:12px;}
 details.panel>.panel-body{margin-top:10px;}
+/* Struktura grupy — interaktywne drzewo (2026-09-19) */
+.gtree, .gtree ul{list-style:none;margin:0;padding:0}
+.gtree ul{padding-left:38px;position:relative}
+.gtree li{position:relative;padding:8px 0 8px 22px}
+.gtree ul>li::before{content:'';position:absolute;left:0;top:0;bottom:0;border-left:2px solid var(--accent)}
+.gtree ul>li::after{content:'';position:absolute;left:0;top:34px;width:20px;border-top:2px solid var(--accent)}
+.gtree ul>li:last-child::before{bottom:auto;height:34px}
+.gnode{display:inline-block;min-width:340px;max-width:720px;border:2px solid var(--accent);border-radius:10px;padding:8px 12px;background:var(--panel);cursor:pointer;transition:box-shadow .15s,transform .15s;vertical-align:top}
+.gnode:hover{box-shadow:0 6px 18px rgba(0,0,0,.12);transform:translateY(-1px)}
+.gnode.root{background:var(--accent);color:#fff;border-color:var(--accent)}
+.gnode.root .muted,.gnode.root .gsub{color:#d9efe2}
+.gnode.holding{background:var(--accent-bg)}
+.gnode.pending{border-style:dashed;border-color:#b7791f;background:#fff8e6}
+.gnode.external{border-color:#8a97a3;background:#f1f3f2}
+.gnode .gtitle{font-weight:700;font-size:14.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gnode .gsub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.gshare{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;background:#eef7f1;color:var(--accent);border:1px solid var(--accent);margin-right:4px}
+.gshare.ext{background:#f1f3f2;color:#3b4a44;border-color:#8a97a3}
+.gshare.warn{background:var(--danger-bg);color:var(--danger);border-color:var(--danger)}
+.geff{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;background:#fff;color:var(--accent);border:1px solid var(--accent)}
+.gnode.root .geff{background:#fff}
+.gtoggle{display:inline-block;width:18px;height:18px;line-height:16px;text-align:center;border:1px solid var(--border);border-radius:5px;font-size:12px;color:var(--muted);background:var(--panel);cursor:pointer}
+.gzoom{transform-origin:top left}
+
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 .filters select,.filters input{width:auto;min-width:130px;}
 @media print{
@@ -866,6 +890,7 @@ var NAV = [
   {key:'employees',label:'Pracownicy',icon:'👤'},
   {key:'projects',label:'Projekty',icon:'🏗️'},
   {key:'portfolio',label:'Portfel farm (zarządczy)',icon:'🌞'},
+  {key:'group',label:'Struktura grupy',icon:'🏢'},
   {key:'grzegorz',label:'Budżet Farm PV (Grzegorz)',icon:'📐'},
   {key:'costs',label:'Koszty',icon:'💰'},
   {key:'fixedcosts',label:'Koszty stałe',icon:'📌'},
@@ -883,7 +908,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-18-21 (Portfel farm - widok zarzadczy; spojne sumy w modulach)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-22 (Struktura grupy - interaktywne drzewo spolek)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1036,6 +1061,7 @@ function render(){
     case 'employees': c.innerHTML = viewEmployees(); break;
     case 'projects': c.innerHTML = viewProjects(); break;
     case 'portfolio': c.innerHTML = viewPortfolio(); break;
+    case 'group': c.innerHTML = viewGroup(); break;
     case 'grzegorz': c.innerHTML = viewGrzegorz(); break;
     case 'costs': c.innerHTML = viewCosts(false); break;
     case 'fixedcosts': c.innerHTML = viewCosts(true); break;
@@ -1361,6 +1387,163 @@ function viewConsistency(){
   '<div class="panel"><h3>Koszty jednorazowe wliczone w okres ('+fmtMoney0(pm.oneTimeCosts)+')</h3>'+costsTable(oneTimeList,false)+'</div>';
 }
 
+
+
+/* ============================= STRUKTURA GRUPY ============================= */
+// Na prośbę Kamila (2026-09-19): schemat spółek "w aktywnej, plastycznej
+// formie" — drzewo rysowane na żywo z STATE.groupStructure (AppSetting
+// "groupStructure", zapis PUT /api/settings), z edycją każdej spółki
+// (udziałowcy, zarząd/prokura, status KRS, przypięte farmy), dodawaniem i
+// usuwaniem spółek, zwijaniem gałęzi, powiększaniem, oraz wyliczanym
+// udziałem efektywnym FFP (iloczyn udziałów po ścieżce od spółki-matki).
+var GROUP_COLLAPSED = {};
+var GROUP_ZOOM = 1;
+function gs(){ return STATE.groupStructure || {version:1, asOfLabel:'', entities:[], shares:[]}; }
+function gEntity(id){ return gs().entities.find(function(e){return e.id===id;}); }
+function gOwnersOf(id){ return gs().shares.filter(function(sh){return sh.owned===id;}); }
+function gChildrenOf(id){ return gs().shares.filter(function(sh){return sh.owner===id;}).map(function(sh){return sh.owned;}).filter(function(v,i,a){return a.indexOf(v)===i;}); }
+function gRoot(){ var g=gs(); return g.entities.find(function(e){return e.kind==='parent';}) || g.entities.find(function(e){return e.kind!=='external' && !gOwnersOf(e.id).some(function(sh){var o=gEntity(sh.owner); return o && o.kind!=='external';});}); }
+// Udział efektywny: suma po wszystkich ścieżkach od root (iloczyn %).
+function gEffective(){
+  var root=gRoot(); var eff={}; if(!root) return eff;
+  var g=gs(); var memo={};
+  function calc(id, stack){
+    if(memo.hasOwnProperty(id)) return memo[id];
+    if(id===root.id) return 1;
+    if(stack.indexOf(id)>=0) return 0; // cykl
+    var owners=gOwnersOf(id); var total=0;
+    owners.forEach(function(sh){ var o=gEntity(sh.owner); if(!o||o.kind==='external') return; total += calc(sh.owner, stack.concat([id]))*(Number(sh.pct)||0)/100; });
+    memo[id]=total; return total;
+  }
+  g.entities.forEach(function(e){ if(e.kind!=='external') eff[e.id]=calc(e.id,[]); });
+  return eff;
+}
+function gOrphans(){ var root=gRoot(); return gs().entities.filter(function(e){ if(e.kind==='external') return false; if(root && e.id===root.id) return false; return !gOwnersOf(e.id).some(function(sh){var o=gEntity(sh.owner); return o && o.kind!=='external';}); }); }
+function gProjectsOf(e){ return (e.projectIds||[]).map(function(id){return byId(STATE.projects,id);}).filter(Boolean); }
+function gStatusPill(st){ var cls = st==='aktywna'?'pill-ok':(st==='KRS w toku'?'pill-warn':(st==='sprzedana'?'pill-danger':'pill-muted')); return '<span class="pill '+cls+'" style="font-size:11px">'+esc(st||'—')+'</span>'; }
+function renderGroupNode(id, eff, depth, visited){
+  var e=gEntity(id); if(!e) return '';
+  visited = visited||{}; if(visited[id]) return '<li><div class="gnode pending">'+esc(e.name)+' (cykl udziałów!)</div></li>'; visited[id]=1;
+  var owners=gOwnersOf(id); var children=gChildrenOf(id).filter(function(cid){var c=gEntity(cid); return c && c.kind!=='external';});
+  var isRoot=e.kind==='parent'; var pct=owners.reduce(function(s,sh){return s+(Number(sh.pct)||0);},0);
+  var cls='gnode'+(isRoot?' root':'')+(children.length&&!isRoot?' holding':'')+(e.status==='KRS w toku'||owners.some(function(sh){return sh.pending;})?' pending':'');
+  var collapsed=!!GROUP_COLLAPSED[id];
+  var sharesHtml=owners.map(function(sh){ var o=gEntity(sh.owner); return '<span class="gshare'+(o&&o.kind==='external'?' ext':'')+'" title="'+esc(sh.note||'')+'">'+esc(o?(o.short||o.name):sh.owner)+' '+esc(String(sh.pct))+'%'+(sh.pending?' ⏳':'')+'</span>'; }).join('');
+  if(!isRoot && owners.length && Math.abs(pct-100)>0.01) sharesHtml+='<span class="gshare warn" title="Udziały nie sumują się do 100%">Σ '+pct+'%</span>';
+  var roles=(e.roles||[]).map(function(r){return esc(r.person)+' — '+esc(r.role);}).join(' • ');
+  var farms=gProjectsOf(e).map(function(p){return '<span class="pill pill-muted" style="font-size:11px">☀ '+esc(p.name)+(p.mwPower?' '+esc(p.mwPower)+' MW':'')+'</span>';}).join(' ');
+  var effPct = eff[id]!==undefined && !isRoot ? '<span class="geff" title="Udział efektywny FFP (pośredni)">FFP '+(Math.round(eff[id]*1000)/10)+'%</span>' : '';
+  var html='<li><div class="'+cls+'" onclick="openGroupEntity(\''+e.id+'\')">'+
+    '<div class="gtitle">'+(children.length?'<span class="gtoggle" onclick="event.stopPropagation();toggleGroupNode(\''+e.id+'\')" title="zwiń/rozwiń">'+(collapsed?'+':'−')+'</span>':'')+
+      '<span>'+esc(e.name)+'</span>'+(e.type&&e.type!=='Sp. z o.o.'&&e.type!=='S.A.'?'<span class="muted" style="font-weight:400">'+esc(e.type)+'</span>':'')+gStatusPill(e.status)+effPct+
+      (collapsed&&children.length?'<span class="muted" style="font-weight:400">('+children.length+' spółek ukrytych)</span>':'')+'</div>'+
+    (owners.length?'<div class="gsub" style="margin-top:6px">'+sharesHtml+'</div>':'')+
+    (roles?'<div class="gsub">'+roles+'</div>':'')+
+    (e.note?'<div class="gsub" style="font-style:italic">'+esc(e.note)+'</div>':'')+
+    (farms?'<div class="gsub" style="margin-top:5px">'+farms+'</div>':'')+
+  '</div>';
+  if(children.length && !collapsed){
+    // kolejność: jak w liście spółek (kolejność wpisania), spółki z własnymi córkami na końcu
+    var order={}; gs().entities.forEach(function(x,i){order[x.id]=i;});
+    var sorted=children.slice().sort(function(a,b){ var ha=gChildrenOf(a).length?1:0, hb=gChildrenOf(b).length?1:0; if(ha!==hb) return ha-hb; return (order[a]||0)-(order[b]||0); });
+    html+='<ul>'+sorted.map(function(cid){return renderGroupNode(cid,eff,depth+1,Object.assign({},visited));}).join('')+'</ul>';
+  }
+  return html+'</li>';
+}
+function viewGroup(){
+  var g=gs(); var root=gRoot(); var eff=gEffective(); var orphans=gOrphans();
+  var externals=g.entities.filter(function(e){return e.kind==='external';});
+  var assigned={}; g.entities.forEach(function(e){(e.projectIds||[]).forEach(function(pid){assigned[pid]=e.id;});});
+  var unassigned=STATE.projects.filter(function(p){return !p.isDemo && !assigned[p.id] && ['sprzedany','zamknięty'].indexOf(p.status)<0;});
+  var companies=g.entities.filter(function(e){return e.kind!=='external';}).length;
+  var warnings=[];
+  g.entities.forEach(function(e){ if(e.kind==='external'||e.kind==='parent') return; var pct=gOwnersOf(e.id).reduce(function(s,sh){return s+(Number(sh.pct)||0);},0); if(gOwnersOf(e.id).length && Math.abs(pct-100)>0.01) warnings.push(e.name+': udziały sumują się do '+pct+'%'); });
+  orphans.forEach(function(e){ warnings.push(e.name+': brak właściciela z grupy (nie jest podpięta pod drzewo)'); });
+  var pendingCount=g.entities.filter(function(e){return e.status==='KRS w toku';}).length + g.shares.filter(function(sh){return sh.pending;}).length;
+  var tree = root? '<ul class="gtree">'+renderGroupNode(root.id,eff,0,{})+'</ul>' : '<div class="empty">Brak spółki-matki. Dodaj spółkę i oznacz ją jako „spółka-matka”.</div>';
+  return '<h2 class="page-title">Struktura grupy</h2>'+
+  '<div class="page-sub">'+companies+' spółek w grupie • '+externals.length+' wspólników zewnętrznych • '+(pendingCount?pendingCount+' zmian czeka na wpis KRS • ':'')+'stan: '+esc(g.asOfLabel||'—')+'. Kliknij spółkę, żeby edytować (udziały, zarząd, status KRS, przypięte farmy). Udział efektywny FFP = iloczyn udziałów po ścieżce od spółki-matki.</div>'+
+  '<div class="toolbar no-print"><div>'+
+    (STATE.restricted?'':'<button class="btn btn-primary" onclick="openGroupEntity(null)">+ Dodaj spółkę / wspólnika</button> ')+
+    '<button class="btn btn-sm" onclick="groupZoom(-0.1)">−</button> <button class="btn btn-sm" onclick="groupZoom(0.1)">+</button> <button class="btn btn-sm" onclick="groupZoom(0)">100%</button> '+
+    '<button class="btn btn-sm" onclick="groupCollapseAll(false)">Rozwiń wszystko</button> <button class="btn btn-sm" onclick="groupCollapseAll(true)">Zwiń do 1 poziomu</button> '+
+    '<button class="btn btn-sm" onclick="window.print()">🖶 Drukuj / PDF</button>'+
+  '</div>'+(STATE.restricted?'':'<button class="btn btn-sm" onclick="editGroupMeta()">Data aktualności</button>')+'</div>'+
+  (warnings.length?'<div class="panel" style="border-color:var(--danger)"><h3 style="color:var(--danger)">Do sprawdzenia ('+warnings.length+')</h3><ul style="margin:6px 0 0 18px;font-size:13px">'+warnings.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul></div>':'')+
+  '<div class="panel" style="overflow:auto"><div class="gzoom" style="transform:scale('+GROUP_ZOOM+')">'+tree+
+    (orphans.length?'<div class="section-title" style="margin-top:14px">Spółki bez właściciela z grupy</div><ul class="gtree">'+orphans.map(function(e){return renderGroupNode(e.id,eff,0,{});}).join('')+'</ul>':'')+
+  '</div></div>'+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Wspólnicy zewnętrzni</h3>'+(externals.length?'<table><tbody>'+externals.map(function(e){ var holds=gs().shares.filter(function(sh){return sh.owner===e.id;}); return '<tr><td><span class="link" onclick="openGroupEntity(\''+e.id+'\')">'+esc(e.name)+'</span></td><td class="muted" style="font-size:12.5px">'+holds.map(function(sh){var o=gEntity(sh.owned); return (o?o.name:sh.owned)+' '+sh.pct+'%';}).join(' • ')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="empty">Brak</div>')+'</div>'+
+    '<div class="panel"><h3>Farmy bez przypisanej spółki ('+unassigned.length+')</h3>'+(unassigned.length?'<table><tbody>'+unassigned.map(function(p){ return '<tr><td>'+esc(p.name)+(p.mwPower?' <span class="muted">'+esc(p.mwPower)+' MW</span>':'')+'</td><td>'+(STATE.restricted?'':'<select onchange="assignProjectToEntity(\''+p.id+'\',this.value)"><option value="">— przypisz do spółki —</option>'+g.entities.filter(function(e){return e.kind!=='external';}).map(function(e){return '<option value="'+esc(e.id)+'">'+esc(e.name)+'</option>';}).join('')+'</select>')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="empty">Wszystkie farmy mają spółkę</div>')+'</div>'+
+  '</div>';
+}
+function groupZoom(d){ GROUP_ZOOM = d===0? 1 : Math.max(0.5, Math.min(2, Math.round((GROUP_ZOOM+d)*10)/10)); render(); }
+function toggleGroupNode(id){ GROUP_COLLAPSED[id]=!GROUP_COLLAPSED[id]; render(); }
+function groupCollapseAll(collapse){ GROUP_COLLAPSED={}; if(collapse){ var root=gRoot(); if(root) gChildrenOf(root.id).forEach(function(cid){ if(gChildrenOf(cid).length) GROUP_COLLAPSED[cid]=true; }); } render(); }
+function saveGroupStructure(next){
+  next.version = 1;
+  return afterMutation(apiCall('PUT','/api/settings',{key:'groupStructure',value:next})).catch(function(e){ alert('Nie udało się zapisać struktury: '+e.message); });
+}
+function assignProjectToEntity(projectId, entityId){
+  var g=JSON.parse(JSON.stringify(gs()));
+  g.entities.forEach(function(e){ e.projectIds=(e.projectIds||[]).filter(function(id){return id!==projectId;}); });
+  if(entityId){ var e=g.entities.find(function(x){return x.id===entityId;}); if(e) e.projectIds.push(projectId); }
+  saveGroupStructure(g);
+}
+function editGroupMeta(){
+  var v=prompt('Data / opis aktualności struktury (np. „19.09.2026 — wg KRS”):', gs().asOfLabel||''); if(v===null) return;
+  var g=JSON.parse(JSON.stringify(gs())); g.asOfLabel=v; saveGroupStructure(g);
+}
+function openGroupEntity(id){
+  if(STATE.restricted && !id) return;
+  var g=gs(); var e = id? gEntity(id) : {id:'', name:'', short:'', type:'Sp. z o.o.', kind:'company', status:'aktywna', note:'', roles:[], projectIds:[]};
+  if(!e) return;
+  var owners=id? gOwnersOf(id) : [];
+  var candidates=g.entities.filter(function(x){return x.id!==e.id;});
+  function ownerRow(sh,i){ return '<tr class="gowner-row"><td>'+selectHtml('owner_'+i, candidates.map(function(x){return {v:x.id,l:x.name+(x.kind==='external'?' (zewn.)':'')};}), sh?sh.owner:'', '— udziałowiec —')+'</td><td><input type="number" step="0.01" min="0" max="100" name="pct_'+i+'" value="'+esc(sh?sh.pct:'')+'" style="width:90px"> %</td><td><label style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" name="pending_'+i+'" style="width:auto" '+(sh&&sh.pending?'checked':'')+'>KRS w toku</label></td></tr>'; }
+  var rows=owners.map(ownerRow); while(rows.length<owners.length+2) rows.push(ownerRow(null,rows.length));
+  var farmsList=STATE.projects.filter(function(p){return !p.isDemo;}).map(function(p){ return '<label style="display:inline-flex;align-items:center;gap:6px;margin:2px 10px 2px 0;font-weight:400"><input type="checkbox" name="farm_'+p.id+'" style="width:auto" '+((e.projectIds||[]).indexOf(p.id)>=0?'checked':'')+'>'+esc(p.name)+'</label>'; }).join('');
+  var ro = STATE.restricted;
+  openModalHtml('<h3>'+(id?'Spółka: '+esc(e.name):'Nowa spółka / wspólnik')+'</h3>'+
+    '<form id="group-entity-form" onsubmit="return saveGroupEntity(event,\''+esc(e.id)+'\')">'+
+    '<div class="form-row2"><div><label>Nazwa</label><input name="name" value="'+esc(e.name)+'" required'+(ro?' disabled':'')+'></div><div><label>Skrót (do etykiet udziałów)</label><input name="short" value="'+esc(e.short||'')+'"'+(ro?' disabled':'')+'></div></div>'+
+    '<div class="form-row2"><div><label>Forma</label>'+selectHtml('type',['S.A.','Sp. z o.o.','zewnętrzny','osoba'],e.type)+'</div><div><label>Rola w grupie</label>'+selectHtml('kind',[{v:'parent',l:'spółka-matka (szczyt drzewa)'},{v:'company',l:'spółka w grupie'},{v:'external',l:'wspólnik zewnętrzny (poza grupą)'}],e.kind)+'</div></div>'+
+    '<div class="form-row2"><div><label>Status</label>'+selectHtml('status',['aktywna','KRS w toku','planowana','sprzedana'],e.status)+'</div><div><label>Notatka</label><input name="note" value="'+esc(e.note||'')+'"></div></div>'+
+    '<label>Zarząd / prokura — jedna osoba w linii: <i>Imię Nazwisko — Funkcja</i></label><textarea name="roles" rows="4">'+esc((e.roles||[]).map(function(r){return r.person+' — '+r.role;}).join('\n'))+'</textarea>'+
+    '<label style="margin-top:10px">Udziałowcy tej spółki</label><table><thead><tr><th>Udziałowiec</th><th>Udział</th><th></th></tr></thead><tbody>'+rows.join('')+'</tbody></table>'+
+    '<label style="margin-top:10px">Farmy / projekty w tej spółce</label><div style="max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px">'+(farmsList||'<span class="muted">brak projektów</span>')+'</div>'+
+    '<div class="modal-actions" style="margin-top:14px;display:flex;gap:8px;justify-content:space-between">'+
+      '<div>'+(id&&!ro?'<button type="button" class="btn btn-danger" onclick="deleteGroupEntity(\''+esc(e.id)+'\')">Usuń</button>':'')+'</div>'+
+      '<div><button type="button" class="btn" onclick="closeModal()">Anuluj</button> '+(ro?'':'<button type="submit" class="btn btn-primary">Zapisz</button>')+'</div>'+
+    '</div></form>');
+}
+function saveGroupEntity(ev, id){
+  ev.preventDefault();
+  var f=new FormData(ev.target); var g=JSON.parse(JSON.stringify(gs()));
+  var eid = id || ('e'+Date.now().toString(36));
+  var roles=String(f.get('roles')||'').split('\n').map(function(l){return l.trim();}).filter(Boolean).map(function(l){ var m=l.split(/\s+[—–-]\s+/); return {person:(m[0]||'').trim(), role:(m.slice(1).join(' — ')||'').trim()}; });
+  var projectIds=[]; STATE.projects.forEach(function(p){ if(f.get('farm_'+p.id)==='on') projectIds.push(p.id); });
+  var ent={id:eid, name:String(f.get('name')||'').trim(), short:String(f.get('short')||'').trim(), type:f.get('type'), kind:f.get('kind'), status:f.get('status'), note:String(f.get('note')||'').trim(), roles:roles, projectIds:projectIds};
+  if(!ent.name){ alert('Nazwa jest wymagana.'); return false; }
+  if(ent.kind==='parent') g.entities.forEach(function(x){ if(x.id!==eid && x.kind==='parent') x.kind='company'; });
+  // farmy przypięte tu — odepnij od innych spółek
+  g.entities.forEach(function(x){ if(x.id!==eid) x.projectIds=(x.projectIds||[]).filter(function(pid){return projectIds.indexOf(pid)<0;}); });
+  var idx=g.entities.findIndex(function(x){return x.id===eid;}); if(idx>=0) g.entities[idx]=ent; else g.entities.push(ent);
+  // udziałowcy: zastąp wszystkie wpisy owned===eid
+  g.shares=g.shares.filter(function(sh){return sh.owned!==eid;});
+  for(var i=0;i<40;i++){ var o=f.get('owner_'+i); if(o===null) continue; var pct=Number(f.get('pct_'+i)); if(!o||!(pct>0)) continue; g.shares.push({owner:o, owned:eid, pct:pct, pending:f.get('pending_'+i)==='on'}); }
+  closeModal(); saveGroupStructure(g); return false;
+}
+function deleteGroupEntity(id){
+  var e=gEntity(id); if(!e) return;
+  var kids=gChildrenOf(id).length;
+  if(!confirm('Usunąć „'+e.name+'” ze struktury?'+(kids?' Jej '+kids+' spółek zależnych zostanie bez właściciela (pojawią się w sekcji „bez właściciela”).':''))) return;
+  var g=JSON.parse(JSON.stringify(gs()));
+  g.entities=g.entities.filter(function(x){return x.id!==id;});
+  g.shares=g.shares.filter(function(sh){return sh.owner!==id && sh.owned!==id;});
+  closeModal(); saveGroupStructure(g);
+}
 
 /* ============================= PORTFEL FARM (widok zarządczy) ============================= */
 // Na prośbę Kamila (2026-09-18): "extra dane dla mnie jako zarządzającego
@@ -1749,6 +1932,7 @@ function projectDetail(p){
   '<div class="page-sub">SPV: '+esc(p.spv||'—')+' • '+esc(p.location||'—')+' • '+esc(p.mwPower||'—')+' MW • '+projectStatusPill(p.status)+'</div>'+
   '<div class="page-sub">Operator sieci: '+esc(p.gridOperator||'—')+' • Odbiorca energii / pośrednik zakupu: '+esc(p.energyBuyer||'—')+'</div>'+
   '<div class="kpi-grid">'+
+    (function(){ var ent=(STATE.groupStructure&&STATE.groupStructure.entities||[]).find(function(e){return (e.projectIds||[]).indexOf(p.id)>=0;}); return kpi('Spółka celowa (Struktura grupy)', ent? '<span class="link" onclick="goTab(\'group\')">'+esc(ent.name)+'</span>' : '<span class="muted">nieprzypisana</span>'); })()+
     kpi('Przychód miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)):'—',true)+
     kpi('Zysk miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0)):'—',true)+
     kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
