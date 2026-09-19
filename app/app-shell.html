@@ -955,9 +955,10 @@ var NAV = [
   {key:'simulator',label:'Symulator oszczędności',icon:'✂️'},
   {key:'consistency',label:'Kontrola spójności',icon:'🔍'},
   {key:'documents',label:'Dokumenty',icon:'📎'},
-  {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
+  {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
+  {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-25 (alerty, platnosci z rejestrem, kompletnosc danych, raport zarzadczy)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-26 (szybkie uzupelnianie, propozycje spolek, pomoc, testy modulow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1119,6 +1120,7 @@ function render(){
     case 'maciej': c.innerHTML = viewFinance(); break;
     case 'deadlines': c.innerHTML = viewDeadlines(); break;
     case 'report': c.innerHTML = viewReport(); break;
+    case 'help': c.innerHTML = viewHelp(); break;
     case 'costs': c.innerHTML = viewCosts(false); break;
     case 'fixedcosts': c.innerHTML = viewCosts(true); break;
     case 'contracts': c.innerHTML = viewContracts(); break;
@@ -1616,6 +1618,7 @@ function viewGroup(){
   '</div></div>'+
   '<div class="grid2">'+
     '<div class="panel"><h3>Wspólnicy zewnętrzni</h3>'+(externals.length?'<table><tbody>'+externals.map(function(e){ var holds=gs().shares.filter(function(sh){return sh.owner===e.id;}); return '<tr><td><span class="link" onclick="openGroupEntity(\''+e.id+'\')">'+esc(e.name)+'</span></td><td class="muted" style="font-size:12.5px">'+holds.map(function(sh){var o=gEntity(sh.owned); return (o?o.name:sh.owned)+' '+sh.pct+'%';}).join(' • ')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="empty">Brak</div>')+'</div>'+
+    spvSuggestionsPanel()+
     '<div class="panel"><h3>Farmy bez przypisanej spółki ('+unassigned.length+')</h3>'+(unassigned.length?'<table><tbody>'+unassigned.map(function(p){ return '<tr><td>'+esc(p.name)+(p.mwPower?' <span class="muted">'+esc(p.mwPower)+' MW</span>':'')+'</td><td>'+(STATE.restricted?'':'<select onchange="assignProjectToEntity(\''+p.id+'\',this.value)"><option value="">— przypisz do spółki —</option>'+g.entities.filter(function(e){return e.kind!=='external';}).map(function(e){return '<option value="'+esc(e.id)+'">'+esc(e.name)+'</option>';}).join('')+'</select>')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="empty">Wszystkie farmy mają spółkę</div>')+'</div>'+
   '</div>';
 }
@@ -3236,7 +3239,7 @@ function completenessModules(){
   var mods=[];
   function mod(name, tab, rows){
     var req=0, ok=0, gaps=[];
-    rows.forEach(function(r){ req+=r.checks.length; var miss=r.checks.filter(function(c){return !c.ok;}).map(function(c){return c.label;}); ok+=r.checks.length-miss.length; if(miss.length) gaps.push({label:r.label, missing:miss, action:r.action}); });
+    rows.forEach(function(r){ req+=r.checks.length; var miss=r.checks.filter(function(c){return !c.ok;}).map(function(c){return c.label;}); ok+=r.checks.length-miss.length; if(miss.length) gaps.push({label:r.label, missing:miss, action:r.action, entity:r.entity||null, id:r.id||null}); });
     mods.push({name:name, tab:tab, req:req, ok:ok, pct: req? Math.round(ok/req*100) : 100, gaps:gaps, count:rows.length});
   }
   // Projekty / farmy
@@ -3268,11 +3271,11 @@ function completenessModules(){
       checks.push({label:'decyzja środowiskowa', ok:hasStatus(p.environmentalDecisionStatus)});
       checks.push({label:'MPZP / WZ', ok:hasStatus(p.zoningStatus)});
     }
-    return {label:p.name, checks:checks, action:"openForm('projects','"+p.id+"')"};
+    return {label:p.name, checks:checks, action:"openForm('projects','"+p.id+"')", entity:'projects', id:p.id};
   }));
   // Finansowania
   mod('Finansowanie (kredyty, leasingi)','maciej', STATE.financings.map(function(f){
-    return {label:f.lender+(f.subject?' — '+f.subject:''), action:"openForm('financing','"+f.id+"')", checks:[
+    return {label:f.lender+(f.subject?' — '+f.subject:''), action:"openForm('financing','"+f.id+"')", entity:'financing', id:f.id, checks:[
       {label:'rodzaj', ok:hasVal(f.type)},
       {label:'kwota początkowa', ok:hasNum(f.initialAmount)},
       {label:'saldo pozostałe', ok:hasNum(f.remainingBalance)},
@@ -3294,7 +3297,7 @@ function completenessModules(){
       {label:'przypisanie do projektów / centrali', ok:!!(e.allocations&&e.allocations.length)}
     ];
     if(!STATE.restricted) checks.push({label:'koszt pracodawcy / wynagrodzenie', ok:hasNum(e.employerCost)||hasNum(e.grossSalary)});
-    return {label:empName(e), checks:checks, action:"openForm('employees','"+e.id+"')"};
+    return {label:empName(e), checks:checks, action:"openForm('employees','"+e.id+"')", entity:'employees', id:e.id};
   }));
   // Koszty
   var costs = STATE.costs.filter(function(c){return !c.isDemo && c.paymentStatus!=='anulowany';});
@@ -3308,11 +3311,11 @@ function completenessModules(){
       {label:'ocena konieczności', ok:hasVal(c.necessity)}
     ];
     if(!rec) checks.push({label:'termin płatności', ok:hasVal(c.dueDate)||c.paymentStatus==='zapłacony'});
-    return {label:c.name, checks:checks, action:"openForm('costs','"+c.id+"')"};
+    return {label:c.name, checks:checks, action:"openForm('costs','"+c.id+"')", entity:'costs', id:c.id};
   }));
   // Umowy
   mod('Umowy i abonamenty','contracts', STATE.contracts.map(function(c){
-    return {label:c.name, action:"openForm('contracts','"+c.id+"')", checks:[
+    return {label:c.name, action:"openForm('contracts','"+c.id+"')", entity:'contracts', id:c.id, checks:[
       {label:'kontrahent', ok:hasVal(c.vendorId)},
       {label:'kwota', ok:hasNum(c.amount)},
       {label:'cykl', ok:hasVal(c.frequency)},
@@ -3324,7 +3327,7 @@ function completenessModules(){
   }));
   // Dostawcy
   mod('Dostawcy','vendors', STATE.vendors.filter(function(v){return !v.isDemo;}).map(function(v){
-    return {label:v.name, action:"openForm('vendors','"+v.id+"')", checks:[
+    return {label:v.name, action:"openForm('vendors','"+v.id+"')", entity:'vendors', id:v.id, checks:[
       {label:'NIP', ok:hasVal(v.nip)},
       {label:'rodzaj usług', ok:hasVal(v.serviceType)},
       {label:'kontakt (osoba / e-mail / telefon)', ok:hasVal(v.contactPerson)||hasVal(v.email)||hasVal(v.phone)}
@@ -3357,7 +3360,7 @@ function completenessPanel(compact){
     var open = !!COMPL_OPEN[m.tab];
     return '<div style="padding:8px 0;border-top:1px solid var(--border)">'+
       '<div style="display:flex;align-items:center;gap:10px"><div style="flex:0 0 240px;font-weight:600"><span class="link" onclick="goTab(\''+m.tab+'\')">'+esc(m.name)+'</span> <span class="muted" style="font-weight:400">('+m.count+')</span></div><div style="flex:1">'+bar(m.pct)+'</div><div style="flex:0 0 60px;text-align:right;font-weight:700">'+m.pct+'%</div><div style="flex:0 0 110px;text-align:right">'+(m.gaps.length&&!compact?'<span class="link" onclick="COMPL_OPEN[\''+m.tab+'\']=!COMPL_OPEN[\''+m.tab+'\'];render()">'+(open?'zwiń':m.gaps.length+' braków ▾')+'</span>':(m.gaps.length?'<span class="muted">'+m.gaps.length+' braków</span>':'<span class="pill pill-ok">komplet</span>'))+'</div></div>'+
-      (open&&!compact? '<ul style="margin:6px 0 0 18px;padding:0;font-size:12.5px">'+m.gaps.map(function(g){ return '<li><span class="link" onclick="'+esc(g.action)+'">'+esc(g.label)+'</span>: <span class="muted">'+g.missing.map(esc).join(', ')+'</span></li>'; }).join('')+'</ul>' : '')+
+      (open&&!compact? '<div style="margin:6px 0 0 8px">'+(m.gaps.some(function(g){return g.entity;})?'<button class="btn btn-sm btn-primary" onclick="startQuickFillQueue(\''+m.tab+'\')">Uzupełnij kolejno ('+m.gaps.filter(function(g){return g.entity;}).length+')</button>':'')+'</div><ul style="margin:6px 0 0 18px;padding:0;font-size:12.5px">'+m.gaps.map(function(g){ return '<li><span class="link" onclick="'+esc(g.action)+'">'+esc(g.label)+'</span>: <span class="muted">'+g.missing.map(esc).join(', ')+'</span>'+(g.entity?' <span class="link" style="font-size:11px" onclick="openQuickFill(\''+g.entity+'\',\''+g.id+'\','+esc(JSON.stringify(g.missing))+')">uzupełnij ↗</span>':'')+'</li>'; }).join('')+'</ul>' : '')+
     '</div>';
   }).join('');
   return '<div class="panel"><h3 style="display:flex;justify-content:space-between;align-items:center">Kompletność danych <span style="font-size:22px;color:'+(overall>=90?'var(--ok)':overall>=70?'var(--warn)':'var(--danger)')+'">'+overall+'%</span></h3>'+
@@ -3454,6 +3457,192 @@ function viewReport(){
     completenessPanel(true)+
   '</div>'+
   '<div class="muted" style="font-size:11px">Wygenerowano '+fmtDate(today)+' z aplikacji FFP Cost Control. Wartości docelowe = rok 1 po uruchomieniu wszystkich farm, bez degradacji i eskalacji; projekcje wg dat i kwot z kart projektów (model Grzegorza), nie gwarancja wyniku.</div>';
+}
+
+/* ============================= SZYBKIE UZUPEŁNIANIE BRAKÓW ============================= */
+// Z panelu „Kompletność danych": zamiast otwierać cały formularz, pokazujemy
+// TYLKO brakujące pola danego rekordu. „Uzupełnij kolejno" przechodzi po
+// wszystkich brakach modułu jeden po drugim (Kamil, 2026-09-19: „aż do 97%").
+// Zapis = PUT pełnego rekordu z nadpisanymi polami (te same endpointy co
+// formularze), więc wszystkie walidacje i uprawnienia serwera działają tak samo.
+var QUICK_API = {projects:'/api/projects/', financing:'/api/financings/', employees:'/api/employees/', costs:'/api/costs/', contracts:'/api/contracts/', vendors:'/api/vendors/'};
+function quickFieldDefs(entity){
+  var projOpts = STATE.projects.filter(function(p){return !p.isDemo;}).map(function(p){return {v:p.id,l:p.name};});
+  var deptOpts = STATE.departments.map(function(d){return {v:d.id,l:d.name};});
+  var vendOpts = STATE.vendors.map(function(v){return {v:v.id,l:v.name};});
+  var defs = {
+    projects: {
+      'kod':{k:'code',t:'text',ph:'np. PV-WYL'}, 'moc MW':{k:'mwPower',t:'number',step:'0.01'}, 'lokalizacja':{k:'location',t:'text'},
+      'CAPEX':{k:'capex',t:'number',step:'1'}, 'przychód / mies.':{k:'revenueMonthly',t:'number',step:'1'},
+      'operator sieci (OSD)':{k:'gridOperator',t:'text',ph:'np. PGE Dystrybucja'}, 'odbiorca energii / PPA':{k:'energyBuyer',t:'text',ph:'np. spółka obrotu / PPA'},
+      'data uruchomienia':{k:'endDate',t:'date'}, 'data startu prac':{k:'startDate',t:'date'},
+      'warunki przyłączenia':{k:'connectionConditionsStatus',t:'select',opts:CONNECTION_STATUS_OPTS}, 'umowa przyłączeniowa':{k:'connectionAgreementStatus',t:'select',opts:AGREEMENT_STATUS_OPTS},
+      'pozwolenia':{k:'permitsStatus',t:'select',opts:PERMIT_STATUS_OPTS}, 'decyzja środowiskowa':{k:'environmentalDecisionStatus',t:'select',opts:ENV_DECISION_STATUS_OPTS}, 'MPZP / WZ':{k:'zoningStatus',t:'select',opts:ZONING_STATUS_OPTS}
+    },
+    financing: {
+      'rodzaj':{k:'type',t:'select',opts:FINANCING_TYPE_OPTS}, 'kwota początkowa':{k:'initialAmount',t:'number',step:'0.01'}, 'saldo pozostałe':{k:'remainingBalance',t:'number',step:'0.01'},
+      'rata':{k:'monthlyPayment',t:'number',step:'0.01'}, 'oprocentowanie':{k:'interestRate',t:'number',step:'0.01',ph:'% rocznie'}, 'liczba rat':{k:'numInstallments',t:'number',step:'1'},
+      'pozostałe raty':{k:'remainingInstallments',t:'number',step:'1'}, 'data następnej raty':{k:'nextPaymentDate',t:'date'}, 'data końca':{k:'endDate',t:'date'}, 'projekt (farma)':{k:'projectId',t:'select',opts:projOpts,ph:'—'}
+    },
+    employees: {
+      'stanowisko':{k:'position',t:'text'}, 'dział':{k:'departmentId',t:'select',opts:deptOpts,ph:'—'}, 'koszt pracodawcy / wynagrodzenie':{k:'employerCost',t:'number',step:'0.01',ph:'koszt całkowity pracodawcy / mies.'}
+    },
+    costs: {
+      'kategoria':{k:'category',t:'select',opts:STATE.costCategories}, 'kwota':{k:'grossAmount',t:'number',step:'0.01'}, 'data':{k:'costDate',t:'date'},
+      'projekt lub dział':{k:'projectId',t:'select',opts:projOpts,ph:'— (bez projektu)'}, 'ocena konieczności':{k:'necessity',t:'select',opts:NECESSITY_OPTS}, 'termin płatności':{k:'dueDate',t:'date'}
+    },
+    contracts: {
+      'kontrahent':{k:'vendorId',t:'select',opts:vendOpts,ph:'—'}, 'kwota':{k:'amount',t:'number',step:'0.01'}, 'cykl':{k:'frequency',t:'select',opts:RECURRENCE_OPTS}, 'data startu':{k:'startDate',t:'date'},
+      'koniec lub auto-odnowienie':{k:'endDate',t:'date'}, 'najwcześniejsze wypowiedzenie':{k:'earliestTerminationDate',t:'date'}, 'właściciel (osoba)':{k:'owner',t:'text',ph:'kto pilnuje tej umowy'}
+    },
+    vendors: {
+      'NIP':{k:'nip',t:'text'}, 'rodzaj usług':{k:'serviceType',t:'text'}, 'kontakt (osoba / e-mail / telefon)':{k:'contactPerson',t:'text',ph:'osoba kontaktowa'}
+    }
+  };
+  return defs[entity]||{};
+}
+var QUICK_QUEUE = [];
+function openQuickFill(entity, id, missing, queueInfo){
+  var rec = byId(STATE[ENTITY_STATE_KEY[entity]||entity], id); if(!rec){ alert('Nie znaleziono rekordu.'); return; }
+  var defs = quickFieldDefs(entity);
+  var fields = missing.map(function(lbl){ return defs[lbl]? Object.assign({label:lbl}, defs[lbl]) : null; }).filter(Boolean);
+  var other = missing.filter(function(lbl){ return !defs[lbl]; });
+  var title = entity==='employees'? empName(rec) : (rec.name || rec.lender || '');
+  var body = fields.map(function(f){
+    var input;
+    if(f.t==='select') input = selectHtml('q_'+f.k, f.opts, rec[f.k]||'', f.ph||null);
+    else input = '<input name="q_'+f.k+'" type="'+f.t+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(rec[f.k]==null?'':rec[f.k])+'"'+(f.ph?' placeholder="'+esc(f.ph)+'"':'')+'>';
+    return '<label>'+esc(f.label)+'</label>'+input;
+  }).join('');
+  var otherHtml = other.length? '<div class="muted" style="font-size:12px;margin-top:8px">Poza tym formularzem: '+other.map(function(o){
+      if(/OPEX/.test(o)) return '<span class="link" onclick="closeModal();openForm(\'costs\',null,{projectId:\''+id+'\'})">dodaj koszt OPEX</span>';
+      if(/spółka celowa/.test(o)) return '<span class="link" onclick="closeModal();goTab(\'group\')">przypisz spółkę w Strukturze grupy</span>';
+      if(/finansowanie/.test(o)) return '<span class="link" onclick="closeModal();openFinancingForProject(\''+id+'\')">dodaj finansowanie</span>';
+      if(/przypisanie do projektów/.test(o)) return '<span class="link" onclick="closeModal();openForm(\'employees\',\''+id+'\')">przypisz w karcie pracownika</span>';
+      return esc(o);
+    }).join(' • ')+'</div>' : '';
+  var html = '<button class="close-x" onclick="closeModal()">✕</button><h3>Uzupełnij: '+esc(title)+'</h3>'+
+    (queueInfo? '<div class="muted" style="font-size:12px;margin-bottom:8px">Pozycja '+queueInfo.idx+' z '+queueInfo.total+' w kolejce „uzupełnij kolejno"</div>':'')+
+    '<form onsubmit="return quickFillSave(event,\''+entity+'\',\''+id+'\')">'+(body||'<div class="muted">Brakujące elementy nie są polami tej karty:</div>')+otherHtml+
+    '<div class="modal-actions">'+(queueInfo?'<button type="button" class="btn" onclick="quickFillNext()">Pomiń →</button>':'')+'<button type="button" class="btn" onclick="QUICK_QUEUE=[];closeModal()">Zamknij</button>'+(body?'<button type="submit" class="btn btn-primary">Zapisz'+(queueInfo?' i dalej':'')+'</button>':'')+'</div></form>';
+  openModalHtml(html);
+  var first = document.querySelector('#modal form input, #modal form select'); if(first) first.focus();
+}
+function quickFillSave(ev, entity, id){
+  ev.preventDefault();
+  var rec = byId(STATE[ENTITY_STATE_KEY[entity]||entity], id); if(!rec) return false;
+  var fd = new FormData(ev.target), changes = {};
+  fd.forEach(function(v,k){ if(k.indexOf('q_')===0) changes[k.slice(2)] = v; });
+  var obj = Object.assign({}, rec, changes);
+  var p = apiCall('PUT', QUICK_API[entity]+id, obj);
+  afterMutation(p).then(function(){ if(QUICK_QUEUE.length) quickFillNext(); else closeModal(); })
+    .catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+  return false;
+}
+function quickFillNext(){
+  var nxt = QUICK_QUEUE.shift();
+  if(!nxt){ closeModal(); return; }
+  openQuickFill(nxt.entity, nxt.id, nxt.missing, {idx: nxt.idx, total: nxt.total});
+}
+function startQuickFillQueue(tab){
+  var mods = completenessModules();
+  var m = mods.find(function(x){return x.tab===tab;}); if(!m) return;
+  var items = m.gaps.filter(function(g){return g.entity && g.id;});
+  if(!items.length){ alert('Brak pozycji do uzupełnienia w tym module (albo braki wymagają innych modułów).'); return; }
+  QUICK_QUEUE = items.map(function(g,i){ return {entity:g.entity, id:g.id, missing:g.missing, idx:i+1, total:items.length}; });
+  quickFillNext();
+}
+
+
+/* ============================= STRUKTURA GRUPY — PROPOZYCJE PRZYPISANIA ============================= */
+// Dopasowanie farm do spółek po nazwach: "F9 Chludowo" -> Farma F9 Sp. z o.o.,
+// "Miejsce Piastowe — BESS 2 MW" -> Miejsce Piastowe Sp. z o.o., "ES 68"/
+// "Elektrownia Słoneczna 68" -> Elektrownia Słoneczna 68 Sp. z o.o. Tylko
+// propozycje — Kamil zatwierdza jednym kliknięciem.
+function normTxt(t){ return String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ł/g,'l'); }
+function suggestSpvMapping(){
+  var g = gs(); var ents = (g.entities||[]).filter(function(e){return e.kind==='company';});
+  var assigned = {}; ents.forEach(function(e){ (e.projectIds||[]).forEach(function(id){ assigned[id]=e.id; }); });
+  var out=[];
+  STATE.projects.filter(function(p){return !p.isDemo && !assigned[p.id] && ['sprzedany','zamknięty'].indexOf(p.status)<0;}).forEach(function(p){
+    var txt = normTxt(p.name+' '+(p.code||'')), hit=null, why='';
+    var mF = txt.match(/(?:^|[^a-z0-9])f(\d{1,2})(?![0-9])/); if(mF){ hit = ents.find(function(e){return e.id==='f'+mF[1];}); why='numer farmy F'+mF[1]; }
+    if(!hit){ var mE = txt.match(/(?:es\s?|elektrownia sloneczna\s?)(\d{2,3})/); if(mE){ hit = ents.find(function(e){return e.id==='es'+mE[1];}); why='numer ES'+mE[1]; } }
+    if(!hit){ ents.forEach(function(e){ if(hit) return; var base = normTxt(e.name).replace(/\s*sp\.?\s*z\s*o\.?\s*o\.?.*$/,'').replace(/^farma\s+/,'').trim(); if(base.length>=5 && txt.indexOf(base)>=0){ hit=e; why='nazwa „'+e.name.replace(/\s*Sp\. z o\.o\..*$/,'')+'”'; } }); }
+    if(hit) out.push({project:p, entity:hit, why:why});
+  });
+  return out;
+}
+function applySpvSuggestions(){
+  var boxes = document.querySelectorAll('input[data-spv-sugg]:checked'); if(!boxes.length){ alert('Zaznacz propozycje do zastosowania.'); return; }
+  var g=JSON.parse(JSON.stringify(gs()));
+  boxes.forEach(function(b){ var pid=b.getAttribute('data-spv-sugg'), eid=b.value; g.entities.forEach(function(e){ e.projectIds=(e.projectIds||[]).filter(function(id){return id!==pid;}); }); var e=g.entities.find(function(x){return x.id===eid;}); if(e) e.projectIds.push(pid); });
+  saveGroupStructure(g);
+}
+function spvSuggestionsPanel(){
+  if(STATE.restricted) return '';
+  var sugg = suggestSpvMapping(); if(!sugg.length) return '';
+  return '<div class="panel" style="border-color:var(--accent)"><h3>Propozycje przypisania po nazwach ('+sugg.length+')</h3><div class="muted" style="font-size:12px;margin-bottom:8px">Dopasowane po numerze farmy (F…), numerze ES lub nazwie spółki. Zaznacz i zastosuj — resztę przypiszesz ręcznie niżej.</div>'+
+    '<table><tbody>'+sugg.map(function(x){ return '<tr><td><input type="checkbox" style="width:auto" checked data-spv-sugg="'+esc(x.project.id)+'" value="'+esc(x.entity.id)+'"></td><td>'+esc(x.project.name)+'</td><td>→ <b>'+esc(x.entity.name)+'</b></td><td class="muted" style="font-size:12px">'+esc(x.why)+'</td></tr>'; }).join('')+'</tbody></table>'+
+    '<div style="margin-top:8px"><button class="btn btn-sm btn-primary" onclick="applySpvSuggestions()">Zastosuj zaznaczone</button></div></div>';
+}
+
+/* ============================= POMOC / INSTRUKCJA ============================= */
+// Krótka instrukcja w aplikacji — dla Kamila, Macieja, Grzegorza i każdego
+// nowego konta: co gdzie jest, jak aplikacja liczy, jak uzupełniać dane.
+function helpSection(title, html, open){ return '<details class="panel"'+(open?' open':'')+'><summary style="cursor:pointer;font-weight:700;font-size:14.5px">'+title+'</summary><div style="margin-top:10px;font-size:13.5px;line-height:1.5">'+html+'</div></details>'; }
+function viewHelp(){
+  var p = function(t){ return '<p style="margin:0 0 8px">'+t+'</p>'; };
+  var tabLink = function(key,label){ return '<span class="link" onclick="goTab(\''+key+'\')">'+label+'</span>'; };
+  return '<h2 class="page-title">📘 Pomoc — jak korzystać z FFP Cost Control</h2>'+
+  '<div class="page-sub">Wersja: '+esc(APP_BUILD_TAG)+'. Wszystkie moduły liczą z tych samych kart i tymi samymi regułami — ta strona wyjaśnia, co gdzie wpisać i jak czytać liczby.</div>'+
+  helpSection('Od czego zacząć (5 minut)',
+    p('1. '+tabLink('dashboard','Dashboard')+' — panel „Co wymaga uwagi dziś” i kafelki działów. To pierwszy ekran każdego dnia.')+
+    p('2. '+tabLink('consistency','Kontrola spójności')+' → „Kompletność danych” — pokazuje, ile procent potrzebnych danych jest wpisanych i co dokładnie brakuje. Przycisk „Uzupełnij kolejno” prowadzi przez braki jeden po drugim, pokazując tylko brakujące pola.')+
+    p('3. '+tabLink('payments','Płatności')+' — co jest do zapłaty w tym i następnym miesiącu; po opłaceniu zaznacz ✓, żeby pozycja nie trafiła do zaległych.')+
+    p('4. '+tabLink('report','Raport zarządczy')+' — jedna strona do druku/PDF dla zarządu, rady, banku.'), true)+
+  helpSection('Jak aplikacja liczy — reguły „od kiedy liczyć” (ustalone 18.09.2026)',
+    p('<b>Koszt dziś (run-rate)</b> = aktywni pracownicy (koszt pracodawcy + dodatki) + koszty cykliczne, które już ruszyły (data startu ≤ koniec bieżącego miesiąca, status inny niż „anulowany”) + raty finansowań, które już się zaczęły (pierwsza rata ≤ koniec miesiąca albo kredyt w trakcie spłaty, do daty końca). Umowy/abonamenty, koszty jednorazowe i DEMO nie wchodzą.')+
+    p('<b>Przychód dziś</b> = suma „Przychód / mies.” tylko projektów ze statusem „operacyjny”. <b>Przychód docelowy</b> = wszystkie farmy poza sprzedanymi, zamkniętymi i zawieszonymi — to założenie z kart, nie wynik.')+
+    p('<b>Projekcja miesiąc po miesiącu</b> (Dashboard, Portfel, Wykresy): każda farma liczy się od miesiąca uruchomienia (data uruchomienia w karcie), każdy koszt cykliczny od swojej daty, każda rata od pierwszej raty. Harmonogram z Założeń jest tylko porównaniem.')+
+    p('<b>Rata malejąca</b> = kapitał / liczba rat + odsetki od bieżącego salda. Tak liczy przestrzeń Macieja i tak liczył model Grzegorza przy resecie portfela. „Rata wyliczona” obok „raty wpisanej” wychwytuje rozjazdy > 5%.')+
+    p('<b>„Dziś”</b> = koniec bieżącego miesiąca kalendarzowego (bez okna +45 dni). Serwer liczy w strefie Europe/Warsaw, przeglądarka lokalnie — test w kodzie pilnuje, że obie wersje dają to samo.')+
+    p('Wzory z podstawionymi liczbami: '+tabLink('consistency','Kontrola spójności')+' → „Jak liczone są liczby na Dashboardzie”.'))+
+  helpSection('Moduły — co gdzie wpisać',
+    '<table><tbody>'+
+    [['dashboard','Dashboard','alerty, kafelki działów, wyniki wg okresu, trzy stany portfela (dziś / docelowo / referencja), struktura kosztów'],
+     ['projects','Projekty','karta farmy: moc, CAPEX, przychód/mies., daty startu prac i uruchomienia, przyłącze i pozwolenia, koszty, osoby, finansowanie, terminy, produkcja rzeczywista'],
+     ['portfolio','Portfel farm','widok zarządczy: MW, CAPEX/dług/equity, EBITDA, DSCR, zwrot, luka kasowa, oś czasu, analiza wrażliwości, produkcja rzeczywista vs model'],
+     ['group','Struktura grupy','drzewo spółek FFP → Farmy Sp. z o.o. → spółki celowe, udziały, zarząd, KRS, przypisanie farm (z propozycjami po nazwach)'],
+     ['grzegorz','Budżet Farm PV (Grzegorz)','kalkulator opłacalności Grzegorza osadzony w aplikacji — niezależny od danych w Projektach'],
+     ['maciej','Finansowanie (Maciej Zapart)','kredyty, leasingi, pożyczki: zadłużenie, raty dziś/docelowo, harmonogram rat, kalendarz rat, DSCR/LTV per farma, braki w kartach, zadania i notatki, eksport CSV'],
+     ['deadlines','Rejestr terminów','warunki przyłączenia, umowy przyłączeniowe, pozwolenia, decyzje, PPA, kowenanty — z osobą odpowiedzialną; terminy automatyczne z kart'],
+     ['costs','Koszty / Koszty stałe','faktury i koszty cykliczne (data startu = od kiedy liczyć; „anulowany” = nie liczy się); OPEX farm przypięty do projektu'],
+     ['contracts','Umowy i abonamenty','umowy z terminem wypowiedzenia — NIE wchodzą do kosztu spółki (żeby nie dublować z Kosztami), pokazywane osobno'],
+     ['financing','Leasingi / kredyty','prosta lista finansowań (edycja kart); analiza w przestrzeni Macieja'],
+     ['payments','Płatności','terminarz: koszty cykliczne wg cyklu, jednorazowe wg terminu, raty z harmonogramu; ✓ = zapłacone (rejestr miesiąc po miesiącu)'],
+     ['employees','Pracownicy','koszt pracodawcy, dział, przypisanie % do projektów / centrali; konta ograniczone nie widzą kwot'],
+     ['analysis','Analiza / Wykresy / Symulator','struktura kosztów, projekcje, „co jeśli wytniemy” (zaznaczone pozycje = potencjalne oszczędności)'],
+     ['assumptions','Założenia / Akcjonariat','arkusz kontrolera (referencyjny) i struktura akcjonariatu'],
+     ['consistency','Kontrola spójności','kontrole automatyczne, wzory z liczbami, kompletność danych + szybkie uzupełnianie'],
+     ['report','Raport zarządczy','jedna strona do druku: KPI, alerty, portfel, finansowanie, terminy, zaległości, kompletność'],
+     ['settings','Ustawienia','słowniki, konta, kopie zapasowe i przywracanie, reset portfela (admin), dziennik zmian']
+    ].map(function(r){ return '<tr><td style="white-space:nowrap">'+tabLink(r[0],r[1])+'</td><td class="muted">'+r[2]+'</td></tr>'; }).join('')+'</tbody></table>')+
+  helpSection('Kto za co odpowiada (przestrzenie zespołu)',
+    p('<b>Kamil Kita</b> — Prezes; Dashboard, Portfel, Raport, decyzje o danych (reset, poprawki).')+
+    p('<b>Maciej Zapart</b> — kredyty, leasingi, dane finansowe: przestrzeń '+tabLink('maciej','Finansowanie')+' (karty finansowań, harmonogram, braki, zadania, notatki, terminy finansowe).')+
+    p('<b>Grzegorz</b> — model budżetowy farm: '+tabLink('grzegorz','Budżet Farm PV')+'; dane z modelu trafiły do Projektów resetem portfela (2026-09-19).')+
+    p('Konta zakłada admin w '+tabLink('settings','Ustawieniach')+' → Konta. Konto „ograniczone” nie widzi wynagrodzeń ani kosztów małych grup (1–2 osoby) i nie może zmieniać Założeń, Akcjonariatu ani Struktury grupy.'))+
+  helpSection('Uzupełnianie danych — co daje największy efekt',
+    p('1. Każda farma: moc, CAPEX, przychód/mies., data uruchomienia, koszt OPEX (koszt cykliczny przypięty do farmy), finansowanie, spółka celowa. Bez tego Portfel i DSCR są niepełne.')+
+    p('2. Każdy kredyt: kwota, oprocentowanie, liczba rat, data pierwszej/następnej raty, koniec — wtedy harmonogram rat i „rata wyliczona” działają.')+
+    p('3. Płatności: zaznaczaj ✓ po opłaceniu — od pierwszego użycia rejestru zaległości są prawdziwe.')+
+    p('4. Farmy operacyjne: co miesiąc produkcja (MWh) i przychód z faktury w Portfelu → porównanie z modelem.')+
+    p('5. Terminy: ważność warunków przyłączenia, umowy przyłączeniowe, pozwolenia, PPA — z osobą odpowiedzialną.'))+
+  helpSection('Kopie zapasowe, bezpieczeństwo, telefon',
+    p('Kopie automatyczne i „Utwórz kopię teraz” zawierają wszystkie dane i ustawienia (Założenia, Struktura grupy, rejestry). Przywracanie tylko dla admina i tylko z pełnego pliku.')+
+    p('Aplikacja działa jak apka na telefonie (dodaj do ekranu głównego); dolny pasek ma najczęstsze sekcje, „Więcej” otwiera całe menu.')+
+    p('Każda zmiana trafia do dziennika zmian (Ustawienia). Dane DEMO nigdy nie wchodzą do liczb spółki.'));
 }
 
 /* ============================= DOCUMENTS ============================= */
