@@ -13,7 +13,8 @@ export const OBJECT_SETTING_KEYS = [
   "financeWorkspace",     // przestrzeń Macieja Zaparta: notatki, zadania, ustalenia finansowania
   "deadlines",            // rejestr terminów (pozwolenia, umowy przyłączeniowe, PPA, decyzje)
   "farmActuals",          // produkcja/przychód rzeczywisty per farma i miesiąc (vs model)
-  "paymentLedger"         // rejestr opłaconych miesięcy kosztów cyklicznych i rat ("cost:<id>"/"fin:<id>" -> {RRRR-MM: {...}})
+  "paymentLedger",        // rejestr opłaconych miesięcy kosztów cyklicznych i rat ("cost:<id>"/"fin:<id>" -> {RRRR-MM: {...}})
+  "scenarios"             // scenariusze Symulatora oszczędności (lista zestawów id pozycji do redukcji)
 ] as const;
 
 // Klucze proste (lista nazw / waluta).

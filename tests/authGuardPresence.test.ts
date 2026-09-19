@@ -110,7 +110,7 @@ for (const relPath of [
   "app/api/vendors/route.ts", "app/api/vendors/[id]/route.ts",
   "app/api/departments/route.ts", "app/api/departments/[id]/route.ts",
   "app/api/documents/route.ts", "app/api/documents/[id]/route.ts",
-  "app/api/changelog/route.ts", "app/api/bootstrap/route.ts", "app/api/settings/route.ts"
+  "app/api/changelog/route.ts", "app/api/bootstrap/route.ts", "app/api/settings/route.ts", "app/api/export/xlsx/route.ts"
 ]) {
   test(`sesja sprawdzana w bazie: ${relPath}`, () => {
     const src = readFileSync(join(ROOT, relPath), "utf-8");

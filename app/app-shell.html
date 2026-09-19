@@ -958,7 +958,7 @@ var NAV = [
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
   {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-26 (szybkie uzupelnianie, propozycje spolek, pomoc, testy modulow)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-27 (scenariusze, plan vs zaplacone, KPI zespolu, eksport Excel)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1890,7 +1890,18 @@ function viewEmployees(){
   var m = metrics();
   var restricted = !!STATE.restricted;
   var list = STATE.employees.filter(applySearchFilter);
+  var activeE = STATE.employees.filter(function(e){return !e.isDemo && e.status!=='zakończona współpraca';});
+  var badAlloc = activeE.filter(function(e){ var sum=(e.allocations||[]).reduce(function(s,a){return s+(Number(a.pct)||0);},0); return e.allocations && e.allocations.length && Math.abs(sum-100)>0.5; });
+  var opMw = STATE.projects.filter(function(p){return !p.isDemo && p.status==='operacyjny';}).reduce(function(s,p){return s+(Number(p.mwPower)||0);},0);
+  var totMw = STATE.projects.filter(projectCountsAsFuture).reduce(function(s,p){return s+(Number(p.mwPower)||0);},0);
+  var onProjects = activeE.filter(function(e){return (e.allocations||[]).some(function(a){return a.projectId && a.projectId!=='ADMIN' && Number(a.pct)>0;});}).length;
   return '<h2 class="page-title">Pracownicy</h2><div class="page-sub">'+(restricted?'':'Łączny koszt miesięczny: '+fmtMoney0(m.monthlyPayroll)+' • ')+STATE.employees.length+' osób</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Aktywni', activeE.length+' <span class="sub">'+onProjects+' na projektach, '+(activeE.length-onProjects)+' centrala</span>')+
+    (restricted?'':kpi('Koszt zespołu / MW operacyjny', opMw? fmtMoney0(m.monthlyPayroll/opMw)+'/mies.' : '—', false, false))+
+    (restricted?'':kpi('Koszt zespołu / MW docelowy', totMw? fmtMoney0(m.monthlyPayroll/totMw)+'/mies. <span class="sub">po uruchomieniu '+totMw+' MW</span>' : '—'))+
+    kpi('Alokacje ≠ 100%', badAlloc.length? badAlloc.length+' <span class="sub">'+badAlloc.slice(0,3).map(empName).map(esc).join(', ')+'</span>' : '0', false, badAlloc.length>0)+
+  '</div>'+
   '<div class="toolbar"><div class="filters">'+
     '<select onchange="empFilterDept(this.value)"><option value="">Wszystkie działy</option>'+STATE.departments.map(function(d){return '<option value="'+d.id+'">'+esc(d.name)+'</option>';}).join('')+'</select>'+
     '<select onchange="empFilterStatus(this.value)"><option value="">Wszystkie statusy</option>'+STATUS_OPTS_EMP.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('')+'</select>'+
@@ -2563,6 +2574,7 @@ function viewAnalysis(){
   var byVendor = groupSum(function(c){return c.vendorId||'brak';}, function(k){return k==='brak'?'Brak dostawcy':vendorName(k);});
   return '<h2 class="page-title">Analiza kosztów</h2><div class="page-sub">Cash burn: '+fmtMoney0(m.totalBurn)+'/mies. • Run-rate roczny: '+fmtMoney0(m.annualRunRate)+'</div>'+
   '<div class="kpi-grid">'+kpi('Miesięczny cash burn',fmtMoney0(m.totalBurn),true)+kpi('Roczny run-rate',fmtMoney0(m.annualRunRate),true)+kpi('Koszty stałe (pracownicy + stałe + raty)',fmtMoney0(m.monthlyFixed))+kpi('Koszty zewnętrzne razem (w tym stałe)',fmtMoney0(m.monthlyExternal))+'</div>'+
+  planVsPaidPanel()+
   '<div class="grid2">'+
   '<div class="panel"><h3>TOP 20 największych kosztów</h3>'+costsTable(top20)+'</div>'+
   '<div class="panel"><h3>TOP 20 największych kosztów stałych</h3>'+costsTable(top20fixed)+'</div>'+
@@ -2791,6 +2803,7 @@ function viewSimulator(){
     kpi('Procent redukcji',pct+'%')+
     kpi('Nowy koszt roczny',fmtMoney0(newTotal*12))+
   '</div>'+
+  scenariosPanel(m)+
   '<div class="panel"><h3>Zaznaczeni pracownicy do redukcji</h3>'+(selEmp.length?'<table><tbody>'+selEmp.map(function(e){return '<tr><td>'+esc(empName(e))+'</td><td>'+esc(e.position)+'</td>'+(STATE.restricted?'':'<td class="right">'+fmtMoney(totalMonthlyCostEmployee(e))+'/mies.</td>')+'<td><span class="link" onclick="toggleSimEmp(\''+e.id+'\')">usuń z symulacji</span></td></tr>';}).join('')+'</tbody></table>':'<div class="empty">Brak — oznacz pracownika w jego karcie „Uwzględnij w symulatorze”.</div>')+'</div>'+
   '<div class="panel"><h3>Zaznaczone koszty / abonamenty do redukcji</h3>'+(selCosts.length?costsTable(selCosts):'<div class="empty">Brak — oznacz koszt jako „Uwzględnij w symulatorze” w formularzu kosztu.</div>')+'</div>'+
   (selContracts.length?'<div class="panel"><h3>Zaznaczone umowy do wypowiedzenia</h3>'+selContracts.map(function(c){return '<div>'+esc(c.name)+' — '+fmtMoney(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.</div>';}).join('')+'</div>':'')+
@@ -3426,7 +3439,7 @@ function viewReport(){
   var mods = completenessModules(), compl = completenessOverall(mods);
   var sorted = rows.slice().sort(function(a,b){ var ka=a.p.status==='operacyjny'?'0':(a.p.endDate||'9999'); var kb=b.p.status==='operacyjny'?'0':(b.p.endDate||'9999'); return ka<kb?-1:ka>kb?1:0; });
   function pct(x){ return x===null||!isFinite(x)?'—':x.toFixed(2); }
-  return '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Raport zarządczy</h2><div><button class="btn btn-sm btn-primary" onclick="window.print()">🖶 Drukuj / zapisz PDF</button></div></div>'+
+  return '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Raport zarządczy</h2><div><a class="btn btn-sm" href="/api/export/xlsx" download>Excel — wszystkie moduły</a> <button class="btn btn-sm btn-primary" onclick="window.print()">🖶 Drukuj / zapisz PDF</button></div></div>'+
   '<div style="display:none" class="print-only"><h2 class="page-title">Farmy Fotowoltaiki Polska S.A. — raport zarządczy</h2></div>'+
   '<div class="page-sub">Stan na '+fmtDate(today)+' • '+APP_BUILD_TAG+' • liczby z kart projektów, kosztów, finansowań i rejestrów (te same reguły co Dashboard: „od kiedy liczyć" 18.09).</div>'+
   '<div class="kpi-grid">'+
@@ -3645,6 +3658,79 @@ function viewHelp(){
     p('Każda zmiana trafia do dziennika zmian (Ustawienia). Dane DEMO nigdy nie wchodzą do liczb spółki.'));
 }
 
+
+/* ============================= SYMULATOR — SCENARIUSZE ============================= */
+// Zapisany scenariusz = zestaw pozycji do redukcji (id kosztów, osób, umów,
+// finansowań) w AppSetting "scenarios". Porównanie liczy każdy scenariusz
+// z bieżących kart (aktywne dziś — te same reguły co "Koszt dziś"), więc
+// liczby są zawsze aktualne. "Wczytaj" ustawia zaznaczenia w kartach.
+function scenariosList(){ return Array.isArray(STATE.scenarios)? STATE.scenarios : []; }
+function scenarioMetrics(sc){
+  var asOf = runRateAsOfISO();
+  var costs = STATE.costs.filter(function(c){return !c.isDemo && (sc.costIds||[]).indexOf(c.id)>=0 && recurringCostActive(c, asOf);}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  var emps = STATE.employees.filter(function(e){return !e.isDemo && e.status!=='zakończona współpraca' && (sc.employeeIds||[]).indexOf(e.id)>=0;});
+  var empCost = emps.reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0);
+  var fins = STATE.financings.filter(function(f){return (sc.financingIds||[]).indexOf(f.id)>=0 && financingActive(f, asOf);}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+  var contracts = STATE.contracts.filter(function(c){return (sc.contractIds||[]).indexOf(c.id)>=0;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0);
+  var hidden = STATE.restricted && emps.length>0 && emps.length<3;
+  var total = costs+fins+(hidden?0:empCost);
+  return {costs:costs, empCost:hidden?null:empCost, fins:fins, contracts:contracts, total:hidden?null:total, hidden:hidden, count:(sc.costIds||[]).length+(sc.employeeIds||[]).length+(sc.financingIds||[]).length+(sc.contractIds||[]).length};
+}
+function saveScenarioFromCurrent(){
+  var name = prompt('Nazwa scenariusza (np. „Plan B — bez biura i 2 etatów”):'); if(!name) return;
+  var sc = {id:'s'+Date.now().toString(36), name:name.trim(), createdAt:todayISO(),
+    costIds: STATE.costs.filter(function(c){return c.excludeFromSimulation;}).map(function(c){return c.id;}),
+    employeeIds: STATE.employees.filter(function(e){return e.excludeFromSimulation;}).map(function(e){return e.id;}),
+    financingIds: STATE.financings.filter(function(f){return f.excludeFromSimulation;}).map(function(f){return f.id;}),
+    contractIds: STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).map(function(c){return c.id;})};
+  if(!sc.costIds.length && !sc.employeeIds.length && !sc.financingIds.length && !sc.contractIds.length){ alert('Najpierw zaznacz pozycje do redukcji.'); return; }
+  var list = scenariosList().slice(); list.push(sc);
+  afterMutation(apiCall('PUT','/api/settings',{key:'scenarios',value:list})).catch(function(e){ alert('Nie udało się zapisać scenariusza: '+e.message); });
+}
+function deleteScenario(id){ if(!confirm('Usunąć scenariusz?')) return; afterMutation(apiCall('PUT','/api/settings',{key:'scenarios',value:scenariosList().filter(function(x){return x.id!==id;})})).catch(function(e){ alert(e.message); }); }
+function loadScenario(id){
+  var sc = scenariosList().find(function(x){return x.id===id;}); if(!sc) return;
+  if(!confirm('Wczytać scenariusz „'+sc.name+'”? Zaznaczenia w kartach zostaną ustawione według scenariusza (to zmienia pole „Uwzględnij w symulatorze” w kartach).')) return;
+  var ops=[];
+  STATE.costs.forEach(function(c){ var want=(sc.costIds||[]).indexOf(c.id)>=0; if(!!c.excludeFromSimulation!==want) ops.push(['/api/costs/'+c.id, Object.assign({},c,{excludeFromSimulation:want})]); });
+  STATE.employees.forEach(function(e){ var want=(sc.employeeIds||[]).indexOf(e.id)>=0; if(!!e.excludeFromSimulation!==want) ops.push(['/api/employees/'+e.id, Object.assign({},e,{excludeFromSimulation:want})]); });
+  STATE.financings.forEach(function(f){ var want=(sc.financingIds||[]).indexOf(f.id)>=0; if(!!f.excludeFromSimulation!==want) ops.push(['/api/financings/'+f.id, Object.assign({},f,{excludeFromSimulation:want})]); });
+  STATE.contracts.forEach(function(c){ var want=(sc.contractIds||[]).indexOf(c.id)>=0; if(!!c.excludeFromSimulation!==want) ops.push(['/api/contracts/'+c.id, Object.assign({},c,{excludeFromSimulation:want})]); });
+  var chain = Promise.resolve();
+  ops.forEach(function(op){ chain = chain.then(function(){ return apiCall('PUT', op[0], op[1]); }); });
+  afterMutation(chain).catch(function(e){ alert('Nie udało się wczytać scenariusza w całości: '+e.message); });
+}
+function scenariosPanel(m){
+  var list = scenariosList();
+  var cur = {costIds:STATE.costs.filter(function(c){return c.excludeFromSimulation;}).map(function(c){return c.id;}), employeeIds:STATE.employees.filter(function(e){return e.excludeFromSimulation;}).map(function(e){return e.id;}), financingIds:STATE.financings.filter(function(f){return f.excludeFromSimulation;}).map(function(f){return f.id;}), contractIds:STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).map(function(c){return c.id;})};
+  var rows = [{name:'Bieżące zaznaczenie', sc:cur, current:true}].concat(list.map(function(sc){return {name:sc.name, sc:sc, id:sc.id, createdAt:sc.createdAt};}));
+  return '<div class="panel"><div class="toolbar"><h3 style="margin:0">Scenariusze</h3><button class="btn btn-sm btn-primary" onclick="saveScenarioFromCurrent()">Zapisz bieżące zaznaczenie jako scenariusz</button></div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Scenariusz</th><th class="right">Pozycji</th><th class="right">Oszczędność / mies.</th><th class="right">Nowy koszt / mies.</th><th class="right">Redukcja</th><th class="right">Rocznie</th><th class="right">+ umowy / mies.</th><th></th></tr></thead><tbody>'+
+    rows.map(function(r){ var x=scenarioMetrics(r.sc); var nt = x.total===null? null : m.totalBurn-x.total; return '<tr'+(r.current?' style="background:var(--accent-bg)"':'')+'><td><b>'+esc(r.name)+'</b>'+(r.createdAt?'<div class="muted" style="font-size:11px">'+fmtDate(r.createdAt)+'</div>':'')+'</td><td class="right">'+x.count+'</td><td class="right">'+(x.total===null?'<span class="muted">ukryte</span>':fmtMoney0(x.total))+'</td><td class="right">'+(nt===null?'—':fmtMoney0(nt))+'</td><td class="right">'+(x.total===null||!m.totalBurn?'—':Math.round(x.total/m.totalBurn*100)+'%')+'</td><td class="right">'+(x.total===null?'—':fmtMoney0(x.total*12))+'</td><td class="right">'+(x.contracts?fmtMoney0(x.contracts):'—')+'</td><td style="white-space:nowrap">'+(r.id?'<span class="link" onclick="loadScenario(\''+r.id+'\')">wczytaj</span> · <span class="link" onclick="deleteScenario(\''+r.id+'\')">usuń</span>':'')+'</td></tr>'; }).join('')+
+    '</tbody></table></div><div class="muted" style="font-size:11px;margin-top:6px">Każdy scenariusz liczony jest na bieżąco z kart (pozycje aktywne dziś), więc porównanie jest zawsze aktualne. „Wczytaj” ustawia zaznaczenia w kartach według scenariusza.</div></div>';
+}
+
+
+/* ============================= ANALIZA — PLAN VS ZAPŁACONE ============================= */
+// Z rejestru płatności: dla ostatnich 6 miesięcy suma pozycji do zapłaty
+// (koszty cykliczne, jednorazowe, raty) vs oznaczone jako zapłacone.
+function planVsPaidPanel(){
+  var rows=[]; var t=new Date();
+  for(var i=5;i>=0;i--){
+    var d=new Date(t.getFullYear(), t.getMonth()-i, 1); var end=new Date(d.getFullYear(), d.getMonth()+1, 0);
+    var items = paymentItems(localISO(d), localISO(end));
+    var plan = items.reduce(function(s,it){return s+it.amount;},0), paid = items.filter(function(it){return it.paid;}).reduce(function(s,it){return s+it.amount;},0);
+    rows.push({ym: localISO(d).slice(0,7), plan:plan, paid:paid, n:items.length, np:items.filter(function(it){return it.paid;}).length});
+  }
+  var max = Math.max.apply(null, rows.map(function(r){return r.plan;}).concat([1]));
+  var anyPaid = rows.some(function(r){return r.paid>0;});
+  return '<div class="panel"><h3>Plan vs zapłacone — ostatnie 6 miesięcy <span class="muted" style="font-weight:400;font-size:11.5px">(z rejestru płatności)</span></h3>'+
+    (anyPaid? '' : '<div class="muted" style="font-size:12px;margin-bottom:8px">Rejestr płatności nie ma jeszcze oznaczeń „zapłacone” — kolumna „zapłacone” wypełni się, gdy zaczniesz zaznaczać ✓ w Płatnościach.</div>')+
+    '<div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th class="right">Plan (pozycje do zapłaty)</th><th class="right">Zapłacone</th><th class="right">Niezapłacone</th><th class="right">%</th><th style="min-width:160px"></th></tr></thead><tbody>'+
+    rows.map(function(r){ var pct = r.plan? Math.round(r.paid/r.plan*100) : 0; var before = r.ym < ledgerStart().slice(0,7); return '<tr><td>'+r.ym+'</td><td class="right">'+fmtMoney0(r.plan)+' <span class="muted" style="font-size:11px">('+r.n+')</span></td><td class="right">'+(before?'<span class="muted">przed rejestrem</span>':fmtMoney0(r.paid)+' <span class="muted" style="font-size:11px">('+r.np+')</span>')+'</td><td class="right'+(!before&&r.plan-r.paid>0&&r.ym<todayISO().slice(0,7)?'" style="color:var(--danger)':'')+'">'+(before?'—':fmtMoney0(r.plan-r.paid))+'</td><td class="right">'+(before?'—':pct+'%')+'</td><td><div class="progress-bar" style="height:8px"><div style="width:'+Math.round(r.plan/max*100)+'%;background:var(--border)"></div></div><div class="progress-bar" style="height:8px;margin-top:2px"><div style="width:'+Math.round(r.paid/max*100)+'%"></div></div></td></tr>'; }).join('')+
+    '</tbody></table></div></div>';
+}
+
 /* ============================= DOCUMENTS ============================= */
 function viewDocuments(){
   return '<h2 class="page-title">Dokumenty</h2><div class="page-sub">'+STATE.documents.length+' dokumentów (linki)</div>'+
@@ -3691,6 +3777,7 @@ function viewSettings(){
   '<details class="panel" data-key="storage" '+settingsOpenAttr('storage')+' ontoggle="onSettingsToggle(this)"><summary><h3>Gdzie przechowywane są dane</h3><span class="muted">baza, kopia ręczna</span></summary><div class="panel-body"><div class="muted">Dane FFP Cost Control są zapisywane WYŁĄCZNIE w bazie PostgreSQL (przez Prisma ORM i API tej aplikacji) i widoczne dla każdego, kto otworzy tę aplikację — niezależnie od urządzenia i przeglądarki. Status ostatniego zapisu widać w pasku górnym. Pełne szczegóły (gdzie fizycznie stoi baza, jak wygląda backup, jak wdrożyć aplikację ponownie) znajdują się w pliku README repozytorium.</div>'+
   '<div class="section-title">Ręczna kopia zapasowa (JSON) — dodatkowe zabezpieczenie</div>'+
   '<button class="btn btn-sm" onclick="exportBackupJson()">Pobierz kopię zapasową (.json)</button> '+
+  '<a class="btn btn-sm" href="/api/export/xlsx" download>Eksport wszystkich modułów do Excela (.xlsx)</a> '+
   '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
   '</div></details>'+
   '<details class="panel" data-key="backups" '+settingsOpenAttr('backups')+' ontoggle="onSettingsToggle(this)"><summary><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3><span class="muted">kliknij „Utwórz kopię teraz” przed zmianami</span></summary><div class="panel-body">'+

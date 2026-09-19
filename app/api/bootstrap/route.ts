@@ -267,6 +267,7 @@ export async function GET(req: Request) {
     deadlines: settingsMap.deadlines ?? [],
     farmActuals: settingsMap.farmActuals ?? {},
     paymentLedger: settingsMap.paymentLedger ?? {},
+    scenarios: settingsMap.scenarios ?? [],
     serverMetrics: serverMetricsOut,
     currentUser: await currentLogin(req),
     restricted,

@@ -55,6 +55,9 @@ export async function PUT(req: Request) {
   } else if (key === "deadlines") {
     if (!Array.isArray(v)) return bad("Rejestr terminów musi być listą.");
     if (!v.every((d: any) => d && typeof d.id === "string" && typeof d.title === "string" && (!d.date || /^\d{4}-\d{2}-\d{2}$/.test(String(d.date))))) return bad("Każdy termin musi mieć id, tytuł i datę RRRR-MM-DD.");
+  } else if (key === "scenarios") {
+    if (!Array.isArray(v)) return bad("Scenariusze muszą być listą.");
+    if (!v.every((sc: any) => sc && typeof sc.id === "string" && typeof sc.name === "string" && ["costIds", "employeeIds", "financingIds", "contractIds"].every((k) => sc[k] === undefined || (Array.isArray(sc[k]) && sc[k].every((x: unknown) => typeof x === "string"))))) return bad("Każdy scenariusz: id, nazwa i listy id.");
   } else if (key === "paymentLedger") {
     if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Rejestr płatności musi być obiektem.");
     for (const k of Object.keys(v)) {
