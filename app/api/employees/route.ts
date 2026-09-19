@@ -5,7 +5,7 @@ import {
   toEnum, EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP
 } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
-import { isRestrictedUser } from "@/lib/access";
+import { isRestrictedUser, requireSession } from "@/lib/access";
 import { redactEmployeeSalary, preserveSalaryFieldsIfRestricted } from "@/lib/serverMetrics";
 
 function toData(body: any) {
@@ -49,6 +49,8 @@ function allocationsData(body: any) {
 
 // Tworzenie pracownika + jego przypisań do projektów w jednej transakcji.
 export async function POST(req: Request) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const body = await req.json();
   if (!body?.firstName || !body?.lastName || !body?.position) {
     return NextResponse.json({ error: "invalid_input", message: "Imię, nazwisko i stanowisko są wymagane." }, { status: 400 });

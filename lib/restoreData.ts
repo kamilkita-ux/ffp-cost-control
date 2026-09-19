@@ -5,15 +5,14 @@ import {
   RECURRENCE_MAP, PAYMENT_STATUS_MAP, NECESSITY_MAP, FINANCING_TYPE_MAP
 } from "./serialize";
 import { looksLikeRealBackup } from "./backupShape";
+import { OBJECT_SETTING_KEYS } from "./settingKeys";
 
 // Przywraca CAŁĄ bazę z obiektu danych o kształcie zwracanym przez
 // buildSnapshot() / /api/bootstrap (dokładnie ten sam format).
 //
-// To jest kopia logiki z app/api/restore/route.ts — celowo zduplikowana,
-// a nie zaimportowana z tamtego pliku, żeby NIE dotykać już działającego,
-// zweryfikowanego na produkcji endpointu ręcznego przywracania z pliku
-// JSON. Używana przez /api/admin/backups/[id]/restore (przywracanie z
-// automatycznego punktu backupu zapisanego w tabeli Backup).
+// Od audytu 2026-09-19 (pkt 25) to JEDYNA implementacja przywracania —
+// używa jej zarówno /api/restore (plik JSON z przeglądarki), jak i
+// /api/admin/backups/[id]/restore (punkt backupu z tabeli Backup).
 //
 // Operacja niszcząca: usuwa bieżące dane i zastępuje je zawartością
 // snapshotu, w jednej transakcji (albo wszystko się powiedzie, albo nic
@@ -236,7 +235,7 @@ export async function restoreSnapshot(db: typeof prisma, data: any) {
     if (data.currency) {
       await tx.appSetting.upsert({ where: { key: "currency" }, create: { key: "currency", value: data.currency }, update: { value: data.currency } });
     }
-    for (const k of ["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]) {
+    for (const k of OBJECT_SETTING_KEYS) {
       if (data[k]) {
         await tx.appSetting.upsert({ where: { key: k }, create: { key: k, value: data[k] }, update: { value: data[k] } });
       }

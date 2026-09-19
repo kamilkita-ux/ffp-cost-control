@@ -114,3 +114,19 @@ export async function isAdminCaller(req: Request): Promise<boolean> {
   }
   return false;
 }
+
+// AUDYT 2026-09-19 (pkt 1, część 2): w trybie kont (AUTH_MODE=accounts) każdy
+// endpoint danych sprawdza w BAZIE, czy konto z tokenu nadal istnieje i jest
+// aktywne (middleware sprawdza tylko podpis tokenu — nie ma dostępu do bazy).
+// Zwraca gotową odpowiedź 401 do zwrócenia z handlera, albo null gdy OK.
+// W trybie Basic Auth (produkcja dziś) nic nie blokuje — middleware już
+// zweryfikował login i hasło.
+export async function requireSession(req: Request): Promise<Response | null> {
+  if (process.env.AUTH_MODE !== "accounts") return null;
+  const session = await getVerifiedSession(req);
+  if (session) return null;
+  return new Response(JSON.stringify({ error: "not_authenticated" }), {
+    status: 401,
+    headers: { "content-type": "application/json" }
+  });
+}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import {
   serializeCost, str, numOrNull, bool, toDate,
@@ -36,6 +37,8 @@ function toData(body: any) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const body = await req.json();
   if (!body?.name) return NextResponse.json({ error: "invalid_input", message: "Nazwa kosztu jest wymagana." }, { status: 400 });
   const created = await prisma.cost.create({ data: toData(body) });

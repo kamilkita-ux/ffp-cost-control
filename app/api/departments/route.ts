@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { serializeDepartment } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
 
 export async function POST(req: Request) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const body = await req.json();
   if (!body?.name) {
     return NextResponse.json({ error: "invalid_input", message: "Nazwa działu jest wymagana." }, { status: 400 });

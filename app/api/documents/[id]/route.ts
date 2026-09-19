@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { serializeDocument, str, toDate } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
@@ -20,6 +21,8 @@ function toData(body: any) {
 }
 
 export async function PUT(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   const body = await req.json();
   try {
@@ -32,6 +35,8 @@ export async function PUT(req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const updated = await prisma.document.update({ where: { id }, data: { deletedAt: new Date() } });

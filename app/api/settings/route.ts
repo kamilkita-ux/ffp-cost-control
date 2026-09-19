@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logChange } from "@/lib/audit";
-import { isRestrictedUser } from "@/lib/access";
+import { isRestrictedUser, requireSession } from "@/lib/access";
+import { ALL_SETTING_KEYS, RESTRICTED_FORBIDDEN_SETTING_KEYS } from "@/lib/settingKeys";
 
-const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]);
+const ALLOWED_KEYS = new Set<string>(ALL_SETTING_KEYS);
 
 // Klucze finansowe/wrażliwe — patrz SETTINGS_PERMISSION_MATRIX w raporcie
 // nocnym (2026-09-08), zatwierdzone przez Kamila: konto ograniczone (bez
@@ -12,7 +13,7 @@ const ALLOWED_KEYS = new Set(["currency", "costCategories", "costCenters", "assu
 // zawiera dokładnie te nazwiska/kwoty, które redactFixedCostLineItem ukrywa
 // przy odczycie — bez tego ograniczenia dało by się je nadpisać przez samo
 // wywołanie API, mimo że w interfejsie nie ma do tego żadnego formularza).
-const RESTRICTED_FORBIDDEN_KEYS = new Set(["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]);
+const RESTRICTED_FORBIDDEN_KEYS = new Set<string>(RESTRICTED_FORBIDDEN_SETTING_KEYS);
 
 // PUT /api/settings  { key: "currency" | "costCategories" | "costCenters" | "assumptions" | "fixedCostSchedule" | "shareholderStructure", value: ... }
 // Proste słowniki (kategorie kosztów, centra kosztów) i ustawienia (waluta)
@@ -23,6 +24,8 @@ const RESTRICTED_FORBIDDEN_KEYS = new Set(["assumptions", "fixedCostSchedule", "
 // liczba akcji, wycena aktywów i lista akcjonariuszy — edytowalne z modułu
 // "Akcjonariat".
 export async function PUT(req: Request) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const body = await req.json();
   const key = String(body?.key ?? "");
   if (!ALLOWED_KEYS.has(key)) {
@@ -45,6 +48,15 @@ export async function PUT(req: Request) {
     if (!v.shares.every((s: any) => s && typeof s.owner === "string" && typeof s.owned === "string" && Number.isFinite(Number(s.pct)))) return bad("Każdy udział musi mieć właściciela, spółkę i procent.");
   } else if (key === "shareholderStructure") {
     if (!v || typeof v !== "object" || !Array.isArray(v.shareholders)) return bad("Akcjonariat musi mieć listę shareholders.");
+  } else if (key === "financeWorkspace") {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Przestrzeń finansowania musi być obiektem.");
+    if (v.tasks !== undefined && !Array.isArray(v.tasks)) return bad("tasks musi być listą.");
+    if (v.notes !== undefined && typeof v.notes !== "string") return bad("notes musi być tekstem.");
+  } else if (key === "deadlines") {
+    if (!Array.isArray(v)) return bad("Rejestr terminów musi być listą.");
+    if (!v.every((d: any) => d && typeof d.id === "string" && typeof d.title === "string" && (!d.date || /^\d{4}-\d{2}-\d{2}$/.test(String(d.date))))) return bad("Każdy termin musi mieć id, tytuł i datę RRRR-MM-DD.");
+  } else if (key === "farmActuals") {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Dane rzeczywiste muszą być obiektem {projectId: {RRRR-MM: {mwh, revenue}}}.");
   } else if (key === "assumptions" || key === "fixedCostSchedule") {
     if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Oczekiwano obiektu ustawień.");
   }

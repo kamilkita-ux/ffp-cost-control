@@ -72,30 +72,54 @@ test("PUT /api/settings blokuje konto ograniczone dla kluczy finansowych/wrażli
     /await isRestrictedUser\(req\)/,
     "app/api/settings/route.ts musi realnie wywoływać isRestrictedUser(req)"
   );
-  for (const key of ["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]) {
-    assert.match(
-      src,
-      new RegExp(`["']${key}["']`),
-      `RESTRICTED_FORBIDDEN_KEYS musi obejmować "${key}"`
-    );
-  }
 });
 
-// AUDYT 2026-09-19: kopia zapasowa (snapshot) musi zawierać KAŻDY klucz
-// ustawień, który przywraca /api/restore — inaczej przywrócenie backupu
-// po cichu gubiłoby Założenia / harmonogram / strukturę grupy.
-test("snapshot obejmuje wszystkie klucze ustawień, które przywraca restore", () => {
+// AUDYT 2026-09-19: kopia zapasowa (snapshot), przywracanie i /api/settings
+// muszą korzystać z JEDNEJ listy kluczy ustawień (lib/settingKeys.ts) —
+// inaczej nowy klucz po cichu wypadałby z kopii/przywracania.
+test("snapshot, restore i settings korzystają ze wspólnej listy kluczy ustawień", () => {
   const snap = readFileSync(join(ROOT, "lib/snapshot.ts"), "utf-8");
-  const restore = readFileSync(join(ROOT, "app/api/restore/route.ts"), "utf-8");
-  const m = restore.match(/for \(const k of \[([^\]]*)\]\)/);
-  assert.ok(m, "restore musi iterować po liście kluczy ustawień");
-  const keys = m![1].split(",").map((k) => k.trim().replace(/["']/g, "")).filter(Boolean);
-  assert.ok(keys.length >= 4);
-  const snapKeysM = snap.match(/SNAPSHOT_SETTING_KEYS = \[([^\]]*)\]/);
-  assert.ok(snapKeysM, "lib/snapshot.ts musi eksportować SNAPSHOT_SETTING_KEYS");
-  const snapKeys = snapKeysM![1].split(",").map((k) => k.trim().replace(/["']/g, "")).filter(Boolean);
-  for (const k of keys) assert.ok(snapKeys.includes(k), `snapshot musi zawierać klucz ustawień "${k}"`);
+  const restoreData = readFileSync(join(ROOT, "lib/restoreData.ts"), "utf-8");
+  const restoreRoute = readFileSync(join(ROOT, "app/api/restore/route.ts"), "utf-8");
+  const settings = readFileSync(join(ROOT, "app/api/settings/route.ts"), "utf-8");
+  assert.match(snap, /from ["']\.\/settingKeys["']/, "lib/snapshot.ts musi importować settingKeys");
+  assert.match(snap, /OBJECT_SETTING_KEYS\.map/, "snapshot musi zapisywać wszystkie OBJECT_SETTING_KEYS");
+  assert.match(restoreData, /for \(const k of OBJECT_SETTING_KEYS\)/, "restoreData musi przywracać wszystkie OBJECT_SETTING_KEYS");
+  assert.match(restoreRoute, /restoreSnapshot\(prisma, data\)/, "/api/restore musi używać wspólnego restoreSnapshot (bez duplikatu logiki)");
+  assert.doesNotMatch(restoreRoute, /\$transaction/, "/api/restore nie może mieć własnej kopii transakcji przywracania");
+  assert.match(settings, /new Set<string>\(ALL_SETTING_KEYS\)/, "settings: ALLOWED_KEYS z ALL_SETTING_KEYS");
+  assert.match(settings, /new Set<string>\(RESTRICTED_FORBIDDEN_SETTING_KEYS\)/, "settings: lista zakazanych z settingKeys");
 });
+
+test("klucze wrażliwe pozostają zablokowane dla konta ograniczonego", () => {
+  const keys = readFileSync(join(ROOT, "lib/settingKeys.ts"), "utf-8");
+  const m = keys.match(/RESTRICTED_FORBIDDEN_SETTING_KEYS = \[([^\]]*)\]/);
+  assert.ok(m);
+  const list = m![1].split(",").map((k) => k.trim().replace(/["']/g, "")).filter(Boolean);
+  for (const k of ["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"]) assert.ok(list.includes(k), k);
+});
+
+// AUDYT 2026-09-19 (pkt 1): w trybie kont każdy endpoint danych sprawdza
+// sesję w bazie (requireSession) — nie tylko podpis tokenu w middleware.
+for (const relPath of [
+  "app/api/costs/route.ts", "app/api/costs/[id]/route.ts",
+  "app/api/projects/route.ts", "app/api/projects/[id]/route.ts",
+  "app/api/employees/route.ts", "app/api/employees/[id]/route.ts",
+  "app/api/contracts/route.ts", "app/api/contracts/[id]/route.ts",
+  "app/api/financings/route.ts", "app/api/financings/[id]/route.ts",
+  "app/api/vendors/route.ts", "app/api/vendors/[id]/route.ts",
+  "app/api/departments/route.ts", "app/api/departments/[id]/route.ts",
+  "app/api/documents/route.ts", "app/api/documents/[id]/route.ts",
+  "app/api/changelog/route.ts", "app/api/bootstrap/route.ts", "app/api/settings/route.ts"
+]) {
+  test(`sesja sprawdzana w bazie: ${relPath}`, () => {
+    const src = readFileSync(join(ROOT, relPath), "utf-8");
+    const handlers = (src.match(/export async function (GET|POST|PUT|PATCH|DELETE)\(/g) || []).length;
+    const checks = (src.match(/await requireSession\(req\)/g) || []).length;
+    assert.ok(handlers > 0);
+    assert.equal(checks, handlers, `${relPath}: każdy handler (${handlers}) musi wywołać requireSession (znaleziono ${checks})`);
+  });
+}
 
 // AUDYT 2026-09-19: starsze importy (CF, model Grzegorza, scalanie, naprawa
 // przychodów) po resecie portfela muszą być zablokowane (409), żeby nie

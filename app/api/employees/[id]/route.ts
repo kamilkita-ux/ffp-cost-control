@@ -5,7 +5,7 @@ import {
   toEnum, EMPLOYEE_STATUS_MAP, CONTRACT_TYPE_MAP, CRITICAL_RATING_MAP
 } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
-import { isRestrictedUser } from "@/lib/access";
+import { isRestrictedUser, requireSession } from "@/lib/access";
 import { redactEmployeeSalary, preserveSalaryFieldsIfRestricted } from "@/lib/serverMetrics";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -65,6 +65,8 @@ function allocationsData(body: any) {
 // wartości już zapisanych w bazie — niezależnie od tego, co faktycznie
 // przyszło w żądaniu.
 export async function PUT(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   const body = await req.json();
   const restricted = await isRestrictedUser(req);
@@ -91,6 +93,8 @@ export async function PUT(req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const updated = await prisma.employee.update({ where: { id }, data: { deletedAt: new Date() } });

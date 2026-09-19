@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
 // (patrz lib/audit.ts). Tylko odczyt, bez paginacji kursorowej — dziennik
 // przegląda się okazjonalnie w Ustawieniach, nie potrzeba na razie więcej.
 export async function GET(req: Request) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { searchParams } = new URL(req.url);
   const limitParam = parseInt(searchParams.get("limit") || "200", 10);
   const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 1000) : 200;

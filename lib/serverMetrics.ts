@@ -16,29 +16,9 @@
 // plik (nie import z .html) dlatego, że app-shell.html to statyczny
 // plik wysyłany do przeglądarki, nie moduł Node.
 
+import { monthlyEquivalent, monthlyEquivalentGeneric, runRateAsOfISO, recurringCostActive, financingActive } from "./rules";
+
 type AnyRec = Record<string, any>;
-
-function monthlyEquivalent(cost: AnyRec): number {
-  const g = Number(cost.grossAmount) || Number(cost.netAmount) || 0;
-  switch (cost.recurrence) {
-    case "miesięczny": return g;
-    case "kwartalny": return g / 3;
-    case "półroczny": return g / 6;
-    case "roczny": return g / 12;
-    default: return 0; // jednorazowy / nieregularny
-  }
-}
-
-function monthlyEquivalentGeneric(amount: any, freq: string): number {
-  const a = Number(amount) || 0;
-  switch (freq) {
-    case "miesięczny": return a;
-    case "kwartalny": return a / 3;
-    case "półroczny": return a / 6;
-    case "roczny": return a / 12;
-    default: return 0; // jednorazowy / nieregularny — nie jest kosztem miesięcznym (audyt 2026-09-19)
-  }
-}
 
 function totalMonthlyCostEmployee(e: AnyRec): number {
   if (e.status === "zakończona współpraca") return 0;
@@ -51,36 +31,6 @@ function totalMonthlyCostEmployee(e: AnyRec): number {
     (Number(e.computer) || 0) +
     (Number(e.otherBenefits) || 0);
   return base + extra;
-}
-
-// Reguły "od kiedy liczyć" — kopia z app-shell.html (recurringCostActive /
-// financingActive / runRateAsOfISO), 2026-09-18: koszt cykliczny liczony od
-// costDate i nigdy gdy anulowany; rata od nextPaymentDate do endDate.
-function localISO(d: Date): string {
-  const p2 = (n: number) => (n < 10 ? "0" : "") + n;
-  return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
-}
-// AUDYT 2026-09-19: "dziś" liczone w strefie Europe/Warsaw (serwer na Railway
-// działa w UTC — 1-go dnia miesiąca 00:00-02:00 czasu PL liczyłby jeszcze
-// poprzedni miesiąc, inaczej niż przeglądarka).
-function warsawToday(): Date {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Warsaw", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-  return new Date(get("year"), get("month") - 1, get("day"));
-}
-function runRateAsOfISO(): string { const d = warsawToday(); return localISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
-function recurringCostActive(c: AnyRec, asOfISO: string): boolean {
-  if (c.paymentStatus === "anulowany") return false;
-  if (c.costDate && String(c.costDate) > asOfISO) return false;
-  return true;
-}
-function financingActive(f: AnyRec, asOfISO: string): boolean {
-  if (f.endDate && String(f.endDate) < asOfISO.slice(0, 7) + "-01") return false;
-  if (!f.nextPaymentDate) return true;
-  if (String(f.nextPaymentDate) <= asOfISO) return true;
-  const n = Number(f.numInstallments) || 0, r = Number(f.remainingInstallments) || 0;
-  if (n > 0 && r > 0 && r < n) return true; // już w spłacie
-  return false;
 }
 
 function empAllocPct(e: AnyRec, projectId: string): number {

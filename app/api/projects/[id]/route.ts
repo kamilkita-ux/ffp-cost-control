@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { serializeProject, str, numOrNull, toDate, toEnum, PROJECT_STATUS_MAP } from "@/lib/serialize";
 import { logChange } from "@/lib/audit";
@@ -34,6 +35,8 @@ function toData(body: any) {
 }
 
 export async function PUT(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   const body = await req.json();
   try {
@@ -47,6 +50,8 @@ export async function PUT(req: Request, { params }: Ctx) {
 
 // Soft delete — projekt jest odwoływany z kosztów/umów/leasingów/przypisań pracowników.
 export async function DELETE(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const updated = await prisma.project.update({ where: { id }, data: { deletedAt: new Date() } });

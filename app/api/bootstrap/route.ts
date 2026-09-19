@@ -10,7 +10,7 @@ import {
   serializeFinancing,
   serializeDocument
 } from "@/lib/serialize";
-import { currentLogin, isRestrictedUser, isAdminCaller } from "@/lib/access";
+import { currentLogin, isRestrictedUser, isAdminCaller, requireSession } from "@/lib/access";
 import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem, redactSmallGroupsForRestricted } from "@/lib/serverMetrics";
 import { DEFAULT_GROUP_STRUCTURE } from "@/lib/groupStructureSeed";
 
@@ -191,6 +191,8 @@ const DEFAULT_SHAREHOLDER_STRUCTURE = {
 //      kwot per-pracownik, gdy STATE.restricted===true. Dla kont
 //      pełnych nic się nie zmienia — liczą jak dotychczas w przeglądarce.
 export async function GET(req: Request) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const [departments, projects, employees, vendors, costs, contracts, financings, documents, settings] =
     await prisma.$transaction([
       prisma.department.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } }),
@@ -259,6 +261,11 @@ export async function GET(req: Request) {
     fixedCostSchedule,
     shareholderStructure: settingsMap.shareholderStructure ?? DEFAULT_SHAREHOLDER_STRUCTURE,
     groupStructure: settingsMap.groupStructure ?? DEFAULT_GROUP_STRUCTURE,
+    // Nowe przestrzenie zarządcze (2026-09-19): finansowanie (Maciej Zapart),
+    // rejestr terminów, produkcja rzeczywista vs model.
+    financeWorkspace: settingsMap.financeWorkspace ?? { notes: "", tasks: [], updatedAt: null },
+    deadlines: settingsMap.deadlines ?? [],
+    farmActuals: settingsMap.farmActuals ?? {},
     serverMetrics: serverMetricsOut,
     currentUser: await currentLogin(req),
     restricted,

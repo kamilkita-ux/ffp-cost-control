@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import {
   serializeCost, str, numOrNull, bool, toDate,
@@ -38,6 +39,8 @@ function toData(body: any) {
 }
 
 export async function PUT(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   const body = await req.json();
   try {
@@ -53,6 +56,8 @@ export async function PUT(req: Request, { params }: Ctx) {
 // stosujemy soft delete, żeby żaden zapis finansowy nigdy nie znikał bezpowrotnie
 // przez pomyłkę (zgodnie z zasadą "brak bezpowrotnego kasowania danych").
 export async function DELETE(req: Request, { params }: Ctx) {
+  const denied = await requireSession(req);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const updated = await prisma.cost.update({ where: { id }, data: { deletedAt: new Date() } });

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { OBJECT_SETTING_KEYS, ALL_SETTING_KEYS } from "./settingKeys";
 import {
   serializeDepartment,
   serializeProject,
@@ -54,13 +55,10 @@ export async function buildSnapshot(db: typeof prisma = prisma) {
     // AUDYT 2026-09-19: punkty przywracania muszą zawierać też ustawienia
     // (Założenia, harmonogram kosztów stałych, Akcjonariat, Struktura grupy)
     // — inaczej "przywróć" nie cofa zmian w tych modułach.
-    assumptions: settingsMap.assumptions ?? null,
-    fixedCostSchedule: settingsMap.fixedCostSchedule ?? null,
-    shareholderStructure: settingsMap.shareholderStructure ?? null,
-    groupStructure: settingsMap.groupStructure ?? null
+    ...Object.fromEntries(OBJECT_SETTING_KEYS.map((k) => [k, settingsMap[k] ?? null]))
   };
 }
 
 // Klucze ustawień, które buildSnapshot zapisuje i restoreSnapshot przywraca —
 // jedno miejsce, żeby test pilnował, że kopia i przywracanie są symetryczne.
-export const SNAPSHOT_SETTING_KEYS = ["costCategories", "costCenters", "currency", "assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure"] as const;
+export const SNAPSHOT_SETTING_KEYS = ALL_SETTING_KEYS;
