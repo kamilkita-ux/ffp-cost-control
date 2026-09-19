@@ -12,7 +12,8 @@ export const OBJECT_SETTING_KEYS = [
   "groupStructure",       // Struktura grupy (drzewo spółek)
   "financeWorkspace",     // przestrzeń Macieja Zaparta: notatki, zadania, ustalenia finansowania
   "deadlines",            // rejestr terminów (pozwolenia, umowy przyłączeniowe, PPA, decyzje)
-  "farmActuals"           // produkcja/przychód rzeczywisty per farma i miesiąc (vs model)
+  "farmActuals",          // produkcja/przychód rzeczywisty per farma i miesiąc (vs model)
+  "paymentLedger"         // rejestr opłaconych miesięcy kosztów cyklicznych i rat ("cost:<id>"/"fin:<id>" -> {RRRR-MM: {...}})
 ] as const;
 
 // Klucze proste (lista nazw / waluta).

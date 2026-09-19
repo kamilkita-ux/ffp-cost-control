@@ -266,6 +266,7 @@ export async function GET(req: Request) {
     financeWorkspace: settingsMap.financeWorkspace ?? { notes: "", tasks: [], updatedAt: null },
     deadlines: settingsMap.deadlines ?? [],
     farmActuals: settingsMap.farmActuals ?? {},
+    paymentLedger: settingsMap.paymentLedger ?? {},
     serverMetrics: serverMetricsOut,
     currentUser: await currentLogin(req),
     restricted,

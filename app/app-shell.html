@@ -123,7 +123,13 @@ details.panel>.panel-body{margin-top:10px;}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 .filters select,.filters input{width:auto;min-width:130px;}
 @media print{
-  .no-print{display:none!important;}
+  .no-print,#sidebar,#topbar,#mobile-tabbar,#sidebar-overlay,#save-status-mobile{display:none!important;}
+  .print-only{display:block!important;}
+  #main{width:100%;} #content{padding:0;max-width:none;}
+  .tiles{display:none;}
+  .kpi-grid{grid-template-columns:repeat(4,1fr);}
+  table{font-size:11px;} th,td{padding:4px 6px;}
+  h2.page-title{font-size:18px;}
   body{background:#fff;color:#000;}
   .panel{box-shadow:none;border:1px solid #999;break-inside:avoid;}
   .kpi{border:1px solid #999;break-inside:avoid;}
@@ -658,18 +664,9 @@ function metricsUncached(){
   // Płatności (audyt 2026-09-19): koszty cykliczne dostają termin wyliczany co
   // miesiąc (dzień z terminu/daty startu) i nigdy nie są "zaległe na zawsze";
   // zaległe = tylko jednorazowe z minionym terminem.
-  function upcomingIn(days){
-    return realCosts.filter(function(c){
-      if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
-      if(monthlyEquivalent(c)>0 && !recurringCostActive(c, asOf)) return false;
-      var d = daysUntil(effectiveDue(c)); return d!==null && d>=0 && d<=days;
-    });
-  }
-  var overdue = realCosts.filter(function(c){
-    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
-    if(monthlyEquivalent(c)>0) return false;
-    var d = daysUntil(c.dueDate); return d!==null && d<0;
-  });
+  // Płatności (2026-09-19): z rejestru paymentItems — koszty cykliczne wg cyklu,
+  // jednorazowe wg terminu, raty finansowań; "zapłacone" z paymentLedger.
+  var upcoming7 = upcomingPayments(7), upcoming30 = upcomingPayments(30), overdue = overduePayments();
 
   // Oszczędności liczone TYMI SAMYMI regułami co "Koszt dziś" (audyt 2026-09-19):
   // tylko pozycje aktywne dziś; umowy osobno (nie wchodzą do kosztu spółki).
@@ -742,7 +739,7 @@ function metricsUncached(){
     nonOperationalProjectsCount:nonOperationalProjects.length,
     monthlyProfit:monthlyProfit, annualProfit:monthlyProfit*12,
     monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
-    upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
+    upcoming7:upcoming7, upcoming30:upcoming30, overdue:overdue,
     potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:(potentialSavingsMonthly===null?null:potentialSavingsMonthly*12), potentialSavingsContractsMonthly:potentialSavingsContractsMonthly,
     activeEmployees:activeEmployees,
     futureCapitalNeed:futureCapitalNeed, totalFutureCapitalNeed:totalFutureCapitalNeed,
@@ -943,6 +940,7 @@ var NAV = [
   {key:'grzegorz',label:'Budżet Farm PV (Grzegorz)',icon:'📐'},
   {key:'maciej',label:'Finansowanie (Maciej Zapart)',icon:'💼'},
   {key:'deadlines',label:'Rejestr terminów',icon:'📆'},
+  {key:'report',label:'Raport zarządczy (druk)',icon:'🖨️'},
   {key:'costs',label:'Koszty',icon:'💰'},
   {key:'fixedcosts',label:'Koszty stałe',icon:'📌'},
   {key:'contracts',label:'Umowy i abonamenty',icon:'📄'},
@@ -959,7 +957,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-24 (audyt 25/25 + przestrzen Maciej Zapart, rejestr terminow, produkcja vs model)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-25 (alerty, platnosci z rejestrem, kompletnosc danych, raport zarzadczy)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1032,6 +1030,9 @@ function onGlobalSearch(v){
   STATE.vendors.forEach(function(v2){ if((v2.name+v2.serviceType).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Dostawca',label:v2.name,action:"openForm('vendors','"+v2.id+"')"}); });
   STATE.costs.forEach(function(c){ if((c.name+c.category+c.description).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Koszt',label:c.name+' — '+fmtMoney(c.grossAmount),action:"openForm('costs','"+c.id+"')"}); });
   STATE.contracts.forEach(function(c){ if((c.name).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Umowa',label:c.name,action:"openForm('contracts','"+c.id+"')"}); });
+  STATE.financings.forEach(function(f){ if(((f.lender||'')+' '+(f.subject||'')).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Finansowanie',label:f.lender+(f.subject?' — '+f.subject:''),action:"openForm('financing','"+f.id+"')"}); });
+  deadlinesList().forEach(function(d){ if(((d.title||'')+' '+(d.type||'')).toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Termin',label:fmtDate(d.date)+' — '+d.title,action:"goTab('deadlines')"}); });
+  (STATE.groupStructure&&STATE.groupStructure.entities||[]).forEach(function(e){ if((e.name||'').toLowerCase().indexOf(searchQuery)>=0) results.push({type:'Spółka',label:e.name,action:"goTab('group');setTimeout(function(){openGroupEntity('"+e.id+"');},50)"}); });
   results = results.slice(0,20);
   box.style.cssText='position:fixed;top:52px;left:50%;transform:translateX(-50%);width:min(500px,92vw);background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.2);z-index:60;max-height:60vh;overflow-y:auto;display:block;';
   box.innerHTML = results.length ? results.map(function(r){
@@ -1117,6 +1118,7 @@ function render(){
     case 'grzegorz': c.innerHTML = viewGrzegorz(); break;
     case 'maciej': c.innerHTML = viewFinance(); break;
     case 'deadlines': c.innerHTML = viewDeadlines(); break;
+    case 'report': c.innerHTML = viewReport(); break;
     case 'costs': c.innerHTML = viewCosts(false); break;
     case 'fixedcosts': c.innerHTML = viewCosts(true); break;
     case 'contracts': c.innerHTML = viewContracts(); break;
@@ -1181,8 +1183,43 @@ function teamTiles(){
     tile('deadlines','📆','Terminy','Pozwolenia, przyłącza, umowy, decyzje — rejestr',
       '<div><span>W 60 dni:</span> <b>'+dl.length+'</b></div><div><span>Po terminie:</span> <b>'+dl.filter(function(d){return d.days<0;}).length+'</b></div><div><span>Najbliższy:</span> <b>'+(dl.length?fmtDate(dl[0].date)+' • '+esc(dl[0].title):'—')+'</b></div>',
       dl.filter(function(d){return d.days<0;}).length? 'po terminie' : (dl.length? dl.length+' wkrótce' : 'brak'), !dl.filter(function(d){return d.days<=7;}).length)+
+    (function(){ var ch=consistencyChecks(); var ne=ch.filter(function(c){return c.level==='err';}).length, nw=ch.filter(function(c){return c.level==='warn';}).length; var compl=completenessOverall(completenessModules());
+      return tile('consistency','🔍','Kontrola spójności','Wzory, kontrole automatyczne, kompletność danych',
+        '<div><span>Błędy / uwagi:</span> <b>'+ne+' / '+nw+'</b></div><div><span>Kompletność danych:</span> <b>'+compl+'%</b></div><div><span>Reguły:</span> <b>„od kiedy liczyć" 18.09</b></div>',
+        ne? ne+' błędów' : (nw? nw+' uwag' : 'czysto'), !ne&&!nw); })()+
     tile('group','🏢','Struktura grupy','FFP → Farmy Sp. z o.o. → spółki celowe',
       '<div><span>Spółki:</span> <b>'+gsEnt+'</b></div><div><span>Farmy bez spółki:</span> <b>'+STATE.projects.filter(function(p){return !p.isDemo && !((STATE.groupStructure&&STATE.groupStructure.entities||[]).some(function(e){return (e.projectIds||[]).indexOf(p.id)>=0;})) && ['sprzedany','zamknięty'].indexOf(p.status)<0;}).length+'</b></div>', null)+
+  '</div>';
+}
+// Panel "Co wymaga uwagi dziś" — jedna lista na górze Dashboardu (2026-09-19):
+// zaległe płatności, płatności w 3 dni, terminy po czasie / w 7 dni, błędy i
+// uwagi z Kontroli spójności, farmy z sygnałami ostrzegawczymi. Każdy wiersz
+// prowadzi do modułu, w którym się to załatwia.
+function attentionItems(){
+  var items=[];
+  var od = overduePayments(); if(od.length) items.push({level:'err', text:od.length+' zaległych płatności — '+fmtMoney0(od.reduce(function(s,i){return s+i.amount;},0)), tab:'payments'});
+  var soonPay = upcomingPayments(3); if(soonPay.length) items.push({level:'warn', text:soonPay.length+' płatności w ciągu 3 dni — '+fmtMoney0(soonPay.reduce(function(s,i){return s+i.amount;},0)), tab:'payments'});
+  var dl = upcomingDeadlines(7); var dlOver = dl.filter(function(d){return d.days<0;}), dlSoon = dl.filter(function(d){return d.days>=0;});
+  if(dlOver.length) items.push({level:'err', text:dlOver.length+' terminów po czasie: '+dlOver.slice(0,3).map(function(d){return d.title;}).join(', ')+(dlOver.length>3?'…':''), tab:'deadlines'});
+  if(dlSoon.length) items.push({level:'warn', text:dlSoon.length+' terminów w 7 dni: '+dlSoon.slice(0,3).map(function(d){return fmtDate(d.date)+' '+d.title;}).join(', ')+(dlSoon.length>3?'…':''), tab:'deadlines'});
+  consistencyChecks().forEach(function(c){
+    if(c.level!=='err' && c.level!=='warn') return;
+    if(/terminów w rejestrze/.test(c.title)) return; // już wyżej
+    var tab = /Rata wpisana|finansowań/.test(c.title)? 'maciej' : /przychód rzeczywisty|Przychód rzeczywisty/.test(c.title)? 'portfolio' : 'consistency';
+    items.push({level:c.level, text:c.title+(c.details&&c.details.length?' ('+c.details.length+')':''), tab:tab});
+  });
+  var flagged = farmRows().filter(function(r){ return r.flags.some(function(f){return /DSCR|rata wyższa|minęła/.test(f);}); });
+  if(flagged.length) items.push({level:'warn', text:flagged.length+' farm z sygnałem finansowym/terminowym: '+flagged.slice(0,3).map(function(r){return r.p.name;}).join(', ')+(flagged.length>3?'…':''), tab:'portfolio'});
+  var openTasks = finWorkspace().tasks.filter(function(t){return !t.done && t.due && daysUntil(t.due)<=3;});
+  if(openTasks.length) items.push({level:'warn', text:openTasks.length+' zadań Macieja z terminem ≤ 3 dni', tab:'maciej'});
+  return items;
+}
+function attentionPanel(){
+  var items = attentionItems();
+  if(!items.length) return '<div class="panel" style="border-color:var(--ok);padding:10px 16px;display:flex;align-items:center;gap:10px"><span class="pill pill-ok">OK</span><span>Nic nie wymaga dziś uwagi — brak zaległości, terminów i błędów spójności.</span></div>';
+  var errs = items.filter(function(i){return i.level==='err';}).length;
+  return '<div class="panel" style="border-color:'+(errs?'var(--danger)':'var(--warn)')+'"><h3 style="margin-bottom:8px">'+(errs?'⚠ ':'')+'Co wymaga uwagi dziś ('+items.length+')</h3>'+
+    items.map(function(i){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;border-top:1px solid var(--border)"><span class="pill '+(i.level==='err'?'pill-danger':'pill-warn')+'" style="flex:none">'+(i.level==='err'?'BŁĄD':'UWAGA')+'</span><span style="flex:1">'+esc(i.text)+'</span><span class="link" style="flex:none" onclick="goTab(\''+i.tab+'\')">otwórz →</span></div>'; }).join('')+
   '</div>';
 }
 function viewDashboard(){
@@ -1209,6 +1246,7 @@ function viewDashboard(){
   return ''+
   '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Dashboard Prezesa</h2><button class="btn btn-sm" onclick="window.print()">🖶 Eksportuj raport (PDF/druk)</button></div>'+
   '<div class="page-sub">Stan na '+fmtDate(todayISO())+' • dane aktualizowane na bieżąco</div>'+
+  attentionPanel()+
   teamTiles()+
   '<div class="panel">'+
     '<h3>Wyniki wg okresu</h3>'+
@@ -1274,8 +1312,8 @@ function viewDashboard(){
     (STATE.restricted?'':kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll)))+
     kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
     kpi('Koszty administracyjne / mies.', fmtMoney0(m.monthlyAdmin))+
-    kpi('Płatności w 7 dni', fmtMoney0(m.upcoming7.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming7.length+' szt.', false, m.upcoming7.length>0)+
-    kpi('Płatności w 30 dni', fmtMoney0(m.upcoming30.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming30.length+' szt.')+
+    kpi('Płatności w 7 dni', fmtMoney0(m.upcoming7.reduce(function(s,it){return s+it.amount;},0))+' • '+m.upcoming7.length+' szt.', false, m.upcoming7.length>0)+
+    kpi('Płatności w 30 dni', fmtMoney0(m.upcoming30.reduce(function(s,it){return s+it.amount;},0))+' • '+m.upcoming30.length+' szt.')+
     kpi('Liczba pracowników', String(m.activeEmployees.length))+
     kpi('Aktywne projekty', String(STATE.projects.filter(function(p){return !p.isDemo && ['budowa','operacyjny','pozwolenia','RTB','development'].indexOf(p.status)>=0;}).length))+
     kpi('Potencjalne oszczędności / mies.', fmtMoney0(m.potentialSavingsMonthly), false, m.potentialSavingsMonthly>0)+
@@ -1303,7 +1341,7 @@ function viewDashboard(){
     '<div class="panel"><h3>TOP 10 największych kosztów</h3>'+costsTable(topCosts,false)+'</div>'+
   '</div>'+
   '<div class="grid3">'+
-    '<div class="panel"><h3>Najbliższe płatności (30 dni)</h3>'+costsTable(m.upcoming30.slice(0,8),false)+'</div>'+
+    '<div class="panel"><h3>Najbliższe płatności (30 dni)</h3>'+paymentsTable(m.upcoming30.slice(0,8),true)+(m.upcoming30.length>8?'<div class="muted" style="font-size:12px;margin-top:6px">… i '+(m.upcoming30.length-8)+' więcej — zakładka Płatności</div>':'')+'</div>'+
     '<div class="panel"><h3>Umowy możliwe do wypowiedzenia (90 dni)</h3>'+(terminable.length? terminable.map(function(c){return '<div style="margin-bottom:8px"><b>'+esc(c.name)+'</b><br><span class="muted">termin: '+fmtDate(c.earliestTerminationDate)+' • '+fmtMoney0(monthlyEquivalentGeneric(c.amount,c.frequency))+'/mies.</span></div>';}).join(''):'<div class="empty">Brak</div>')+'</div>'+
     '<div class="panel"><h3>Nieprzypisane</h3><div class="section-title" style="margin-top:0">Koszty bez projektu ('+m.unassignedCosts.length+')</div>'+(m.unassignedCosts.length?fmtMoney0(m.unassignedCosts.reduce(function(s,c){return s+monthlyEquivalent(c);},0))+'/mies.':'<span class="muted">Brak</span>')+
     '<div class="section-title">Osoby bez projektu ('+unassignedEmp.length+')</div>'+(unassignedEmp.length? unassignedEmp.map(function(e){return '<div>'+esc(empName(e))+'</div>';}).join(''):'<span class="muted">Brak</span>')+'</div>'+
@@ -1484,6 +1522,7 @@ function viewConsistency(){
   return '<h2 class="page-title">Kontrola spójności</h2>'+
   '<div class="page-sub">Te same funkcje, z których liczy Dashboard — z podstawionymi liczbami z bazy. Nic tu nie zmienia danych. Stan na '+fmtDate(todayISO())+'.</div>'+
   '<div class="panel"><h3>Automatyczne kontrole — '+(nErr?nErr+' błąd(y), ':'')+(nWarn?nWarn+' uwag(i)':'bez uwag')+'</h3>'+checksHtml+'</div>'+
+  completenessPanel(false)+
   '<div class="panel"><h3>Jak liczone są liczby na Dashboardzie</h3>'+formulas+'</div>'+
   '<div class="panel"><h3>Projekcja okresowa miesiąc po miesiącu</h3>'+monthly+'</div>'+
   '<div class="panel"><h3>Koszty jednorazowe wliczone w okres ('+fmtMoney0(pm.oneTimeCosts)+')</h3>'+costsTable(oneTimeList,false)+'</div>';
@@ -2090,6 +2129,8 @@ function projectDetail(p){
     '</div>'+
   '</div>'+
   '<div class="panel"><h3>Opis</h3><div>'+esc(p.description||'—')+'</div></div>'+
+  projectFinancePanel(p)+
+  '<div class="grid2">'+projectDeadlinesPanel(p)+projectActualsPanel(p)+'</div>'+
   '<div class="panel"><div class="toolbar"><h3 style="margin:0">Koszty projektu</h3><button class="btn btn-sm btn-primary" onclick="openForm(\'costs\',null,{projectId:\''+p.id+'\'})">+ dodaj koszt</button></div>'+costsTable(costs)+'</div>'+
   '<div class="panel"><h3>Osoby pracujące przy projekcie</h3>'+(emps.length?'<div class="table-wrap"><table><thead><tr><th>Osoba</th><th>Stanowisko</th><th>% czasu</th>'+(STATE.restricted?'':'<th>Koszt przypisany</th>')+'</tr></thead><tbody>'+emps.map(function(e){
     var pct = empAllocPct(e,p.id);
@@ -2337,34 +2378,133 @@ function saveVendor(ev,id){
 }
 
 /* ============================= PAYMENTS ============================= */
-function viewPayments(){
-  var groups = {zalegle:[],dzisiaj:[],d7:[],d14:[],d30:[],pozniej:[]};
-  var asOfP = runRateAsOfISO();
-  STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){
-    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return;
-    var rec = monthlyEquivalent(c)>0;
-    if(rec && !recurringCostActive(c, asOfP)) return; // jeszcze nie ruszył
-    var due = rec ? nextRecurringDue(c) : c.dueDate;
-    if(!due) return;
-    var d = daysUntil(due);
-    if(rec && d<0) return; // cykliczne nie są "zaległe na zawsze" — termin przesuwa się co miesiąc
-    if(d<0) groups.zalegle.push(c);
-    else if(d===0) groups.dzisiaj.push(c);
-    else if(d<=7) groups.d7.push(c);
-    else if(d<=14) groups.d14.push(c);
-    else if(d<=30) groups.d30.push(c);
-    else groups.pozniej.push(c);
+/* ============================= PŁATNOŚCI — REJESTR ZAPŁACONYCH ============================= */
+// 2026-09-19 (dopracowanie): koszty cykliczne i raty finansowań nie mają w bazie
+// pola "zapłacony za miesiąc X" (jedna karta = wiele płatności). Rejestr
+// STATE.paymentLedger (AppSetting "paymentLedger") zapisuje, które miesiące
+// zostały opłacone: { "cost:<id>": { "RRRR-MM": {paidAt, amount} },
+// "fin:<id>": {...}, "_start": "RRRR-MM-DD" }. "_start" = od kiedy liczymy
+// zaległości pozycji cyklicznych (ustawiane przy pierwszym oznaczeniu, żeby
+// w dniu wdrożenia nie pokazać wszystkiego jako zaległe). Koszty jednorazowe
+// dalej używają paymentStatus w karcie (oznaczenie = zapisanie "zapłacony").
+function ledger(){ return (STATE.paymentLedger && typeof STATE.paymentLedger==='object')? STATE.paymentLedger : {}; }
+function ledgerStart(){ return ledger()._start || todayISO(); }
+function ledgerPaid(key, ym){ var l=ledger(); return !!(l[key] && l[key][ym]); }
+var REC_STEP = {'miesięczny':1,'kwartalny':3,'półroczny':6,'roczny':12};
+function ymOf(iso){ return iso.slice(0,7); }
+function ymAdd(ym, n){ var y=Number(ym.slice(0,4)), m=Number(ym.slice(5,7))-1+n; var d=new Date(y, m, 1); return d.getFullYear()+'-'+(d.getMonth()+1<10?'0':'')+(d.getMonth()+1); }
+function ymDiff(a, b){ return (Number(b.slice(0,4))-Number(a.slice(0,4)))*12 + (Number(b.slice(5,7))-Number(a.slice(5,7))); }
+function dueInMonth(ym, day){ var y=Number(ym.slice(0,4)), m=Number(ym.slice(5,7)); var last=new Date(y, m, 0).getDate(); return ym+'-'+((Math.min(day,last)<10?'0':'')+Math.min(day,last)); }
+// Wszystkie pozycje do zapłaty w oknie [fromISO, toISO]: koszty cykliczne
+// (wg cyklu od daty startu), koszty jednorazowe (termin płatności) i raty
+// finansowań (harmonogram z przestrzeni Macieja). Każda ma stan "zapłacone".
+function paymentItems(fromISO, toISO){
+  var items=[], asOf = runRateAsOfISO(), fromYm = ymOf(fromISO), toYm = ymOf(toISO);
+  STATE.costs.filter(function(c){return !c.isDemo && c.paymentStatus!=='anulowany';}).forEach(function(c){
+    var step = REC_STEP[c.recurrence];
+    if(step){
+      var anchor = c.costDate || c.dueDate; if(!anchor) return;
+      var day = Number((c.dueDate||c.costDate).slice(8,10))||1;
+      for(var ym=fromYm; ym<=toYm; ym=ymAdd(ym,1)){
+        var k = ymDiff(ymOf(anchor), ym); if(k<0 || k%step!==0) continue;
+        var due = dueInMonth(ym, day); if(due<fromISO || due>toISO) continue;
+        items.push({key:'cost:'+c.id, kind:'cost', ym:ym, label:c.name, category:c.category||'', projectId:c.projectId, due:due, amount:Number(c.grossAmount)||Number(c.netAmount)||0, paid:ledgerPaid('cost:'+c.id, ym), obj:c, recurring:true});
+      }
+    } else {
+      if(!c.dueDate || c.dueDate<fromISO || c.dueDate>toISO) return;
+      items.push({key:'once:'+c.id, kind:'once', ym:ymOf(c.dueDate), label:c.name, category:c.category||'', projectId:c.projectId, due:c.dueDate, amount:Number(c.grossAmount)||Number(c.netAmount)||0, paid:c.paymentStatus==='zapłacony', obj:c, recurring:false});
+    }
   });
-  function section(title,list,color){
-    return '<div class="panel"'+(color?' style="border-color:'+color+'"':'')+'><h3'+(color?' style="color:'+color+'"':'')+'>'+title+' ('+list.length+') — '+fmtMoney0(list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+'</h3>'+costsTable(list)+'</div>';
+  STATE.financings.forEach(function(f){
+    if(!f.nextPaymentDate) return;
+    var day = Number(f.nextPaymentDate.slice(8,10))||1;
+    for(var ym=fromYm; ym<=toYm; ym=ymAdd(ym,1)){
+      var x = finInstallmentInMonth(f, ym); if(!(x.total>0)) continue;
+      var due = dueInMonth(ym, day); if(due<fromISO || due>toISO) continue;
+      items.push({key:'fin:'+f.id, kind:'fin', ym:ym, label:'Rata — '+f.lender+(f.subject?' ('+f.subject+')':''), category:'finansowanie', projectId:f.projectId, due:due, amount:x.total, paid:ledgerPaid('fin:'+f.id, ym), obj:f, recurring:true});
+    }
+  });
+  items.sort(function(a,b){return a.due<b.due?-1:a.due>b.due?1:(a.label<b.label?-1:1);});
+  return items;
+}
+// Zaległe: niezapłacone z terminem przed dziś; pozycje cykliczne tylko od
+// daty startu rejestru (żeby stare miesiące sprzed wdrożenia nie były "zaległe").
+function overduePayments(){
+  var today = todayISO(), start = ledgerStart();
+  var from = localISO(new Date(new Date().getFullYear(), new Date().getMonth()-3, 1));
+  return paymentItems(from, localISO(new Date(new Date().getTime()-86400000))).filter(function(it){ return !it.paid && it.due<today && (!it.recurring || it.due>=start); });
+}
+function upcomingPayments(days){
+  var today = todayISO();
+  var to = localISO(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()+days));
+  return paymentItems(today, to).filter(function(it){return !it.paid;});
+}
+function paymentsTable(items, showToggle){
+  if(!items.length) return '<div class="empty">Brak pozycji</div>';
+  return '<div class="table-wrap"><table><thead><tr>'+(showToggle?'<th style="width:34px"></th>':'')+'<th>Termin</th><th>Pozycja</th><th>Rodzaj</th><th>Projekt</th><th class="right">Kwota</th><th></th></tr></thead><tbody>'+
+    items.map(function(it){
+      var d = daysUntil(it.due);
+      var kindPill = it.kind==='fin'?'<span class="pill pill-muted">rata</span>':it.recurring?'<span class="pill pill-muted">'+esc(it.obj.recurrence)+'</span>':'<span class="pill pill-muted">jednorazowy</span>';
+      var when = d===null?'':(it.paid?'':(d<0?' <span style="color:var(--danger);font-size:11px">('+(-d)+' dni po terminie)</span>':d===0?' <span style="color:var(--warn);font-size:11px">(dziś)</span>':' <span class="muted" style="font-size:11px">(za '+d+' dni)</span>'));
+      return '<tr'+(it.paid?' style="opacity:.55"':'')+'>'+(showToggle?'<td><input type="checkbox" style="width:auto" '+(it.paid?'checked':'')+' title="'+(it.paid?'cofnij oznaczenie':'oznacz jako zapłacone')+'" onchange="togglePaid(\''+it.key+'\',\''+it.ym+'\','+Math.round(it.amount)+')"></td>':'')+'<td style="white-space:nowrap">'+fmtDate(it.due)+when+'</td><td>'+esc(it.label)+(it.kind==='once'&&it.obj.docNumber?'<div class="muted" style="font-size:11px">'+esc(it.obj.docNumber)+'</div>':'')+'</td><td>'+kindPill+'</td><td>'+(it.projectId?esc(projectName(it.projectId)):'—')+'</td><td class="right">'+fmtMoney(it.amount)+'</td><td>'+(it.kind==='fin'?'<span class="link" onclick="openForm(\'financing\',\''+it.obj.id+'\')">karta</span>':'<span class="link" onclick="openForm(\'costs\',\''+it.obj.id+'\')">karta</span>')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+function togglePaid(key, ym, amount){
+  if(key.indexOf('once:')===0){
+    var c = byId(STATE.costs, key.slice(5)); if(!c) return;
+    var obj = Object.assign({}, c, {paymentStatus: c.paymentStatus==='zapłacony' ? 'do zapłaty' : 'zapłacony'});
+    afterMutation(apiCall('PUT','/api/costs/'+c.id, obj)).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+    return;
   }
-  return '<h2 class="page-title">Płatności</h2><div class="page-sub">Terminarz zobowiązań: koszty jednorazowe wg terminu płatności; koszty cykliczne — najbliższa rata wyliczana co miesiąc z dnia terminu/daty startu (aktywne dziś). Pozycje bez żadnej daty nie są tu pokazywane.</div>'+
-  section('⚠ Zaległe',groups.zalegle,'var(--danger)')+
+  var next = JSON.parse(JSON.stringify(ledger()));
+  if(!next._start) next._start = localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  next[key] = next[key]||{};
+  if(next[key][ym]) delete next[key][ym]; else next[key][ym] = {paidAt: todayISO(), amount: amount};
+  if(!Object.keys(next[key]).length) delete next[key];
+  afterMutation(apiCall('PUT','/api/settings',{key:'paymentLedger',value:next})).catch(function(e){ alert('Nie udało się zapisać płatności: '+e.message); });
+}
+var PAY_SHOW_PAID = false;
+function viewPayments(){
+  var today = todayISO();
+  var endNext = localISO(new Date(new Date().getFullYear(), new Date().getMonth()+2, 0));
+  var monthStart = localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  var overdue = overduePayments();
+  var all = paymentItems(monthStart, endNext);
+  var unpaid = all.filter(function(it){return !it.paid && it.due>=today;});
+  var paidThisMonth = all.filter(function(it){return it.paid && it.ym===ymOf(today);});
+  var groups = {dzisiaj:[],d7:[],d14:[],d30:[],pozniej:[]};
+  unpaid.forEach(function(it){ var d=daysUntil(it.due); if(d===0) groups.dzisiaj.push(it); else if(d<=7) groups.d7.push(it); else if(d<=14) groups.d14.push(it); else if(d<=30) groups.d30.push(it); else groups.pozniej.push(it); });
+  var sum = function(l){ return l.reduce(function(s,it){return s+it.amount;},0); };
+  function section(title,list,color,alwaysShow){
+    if(!list.length && !alwaysShow) return '';
+    if(!list.length) return '<div class="panel" style="border-color:var(--ok);padding:10px 16px"><span class="pill pill-ok">OK</span> '+title.replace('⚠ ','')+' — brak pozycji</div>';
+    return '<div class="panel"'+(color?' style="border-color:'+color+'"':'')+'><h3'+(color?' style="color:'+color+'"':'')+'>'+title+' ('+list.length+') — '+fmtMoney0(sum(list))+'</h3>'+paymentsTable(list,true)+'</div>';
+  }
+  var thisMonthAll = all.filter(function(it){return it.ym===ymOf(today);});
+  var thisMonthPaid = thisMonthAll.filter(function(it){return it.paid;});
+  return '<h2 class="page-title">Płatności</h2><div class="page-sub">Terminarz zobowiązań: koszty cykliczne wg cyklu od daty startu, koszty jednorazowe wg terminu, raty finansowań z harmonogramu. Zaznacz ✓ po opłaceniu — pozycja znika z listy i nie trafi do zaległych. Zaległości pozycji cyklicznych liczone od '+fmtDate(ledgerStart())+' (pierwsze użycie rejestru).</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Zaległe', fmtMoney0(sum(overdue))+' • '+overdue.length+' szt.', true, overdue.length>0)+
+    kpi('Do zapłaty w 7 dni', fmtMoney0(sum(groups.dzisiaj)+sum(groups.d7))+' • '+(groups.dzisiaj.length+groups.d7.length)+' szt.', false, (groups.dzisiaj.length+groups.d7.length)>0)+
+    kpi('Do zapłaty w 30 dni', fmtMoney0(sum(groups.dzisiaj)+sum(groups.d7)+sum(groups.d14)+sum(groups.d30))+' • '+(groups.dzisiaj.length+groups.d7.length+groups.d14.length+groups.d30.length)+' szt.')+
+    kpi('Ten miesiąc: opłacone / razem', fmtMoney0(sum(thisMonthPaid))+' / '+fmtMoney0(sum(thisMonthAll))+' <span class="sub">'+thisMonthPaid.length+' z '+thisMonthAll.length+' pozycji</span>')+
+  '</div>'+
+  '<div class="toolbar"><div><button class="btn btn-sm" onclick="exportPaymentsCsv()">Eksport CSV (ten i następny miesiąc)</button></div><button class="btn btn-sm" onclick="PAY_SHOW_PAID=!PAY_SHOW_PAID;render()">'+(PAY_SHOW_PAID?'Ukryj opłacone':'Pokaż opłacone w tym miesiącu ('+paidThisMonth.length+')')+'</button></div>'+
+  (PAY_SHOW_PAID? '<div class="panel"><h3>Opłacone w tym miesiącu ('+paidThisMonth.length+') — '+fmtMoney0(sum(paidThisMonth))+'</h3>'+paymentsTable(paidThisMonth,true)+'</div>' : '')+
+  section('⚠ Zaległe',overdue,'var(--danger)',true)+
   section('Dzisiaj',groups.dzisiaj,'var(--warn)')+
   section('W 7 dni',groups.d7)+
   section('W 14 dni',groups.d14)+
   section('W 30 dni',groups.d30)+
-  section('Później',groups.pozniej);
+  section('Później (do końca następnego miesiąca)',groups.pozniej)+
+  (!unpaid.length? '<div class="empty">Brak pozycji do zapłaty do końca następnego miesiąca.</div>' : '');
+}
+function exportPaymentsCsv(){
+  var monthStart = localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  var endNext = localISO(new Date(new Date().getFullYear(), new Date().getMonth()+2, 0));
+  var rows=[['Termin','Pozycja','Rodzaj','Projekt','Kwota','Zapłacone']];
+  paymentItems(monthStart,endNext).forEach(function(it){ rows.push([it.due,it.label,it.kind==='fin'?'rata':(it.recurring?it.obj.recurrence:'jednorazowy'),it.projectId?projectName(it.projectId):'',Math.round(it.amount),it.paid?'tak':'nie']); });
+  finDownloadCsv('platnosci_'+todayISO()+'.csv', rows);
 }
 
 /* ============================= DEPARTMENTS ============================= */
@@ -3081,6 +3221,239 @@ function saveActual(){
   var next = JSON.parse(JSON.stringify(STATE.farmActuals||{}));
   next[pid] = next[pid]||{}; next[pid][ym] = {mwh: mwh>0?mwh:null, revenue: rev>0?rev:null, savedAt: todayISO()};
   afterMutation(apiCall('PUT','/api/settings',{key:'farmActuals',value:next})).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+
+/* ============================= KOMPLETNOŚĆ DANYCH ============================= */
+// Kamil (17.09): "pokaż procentowo co jest warte zrobienia". Dla każdego modułu
+// liczymy, ile z wymaganych pól jest wypełnionych (% = wypełnione / wymagane),
+// i wypisujemy braki z linkiem do karty. Wymagania są celowo praktyczne
+// (to, czego potrzebują Dashboard, Portfel, Finansowanie i Płatności), a nie
+// "wszystkie pola w formularzu".
+function hasVal(v){ return !(v===null || v===undefined || v==='' || (typeof v==='number' && !(v>0))); }
+function hasNum(v){ return Number(v)>0; }
+function hasStatus(v){ return !!v && v!=='nie dotyczy'; }
+function completenessModules(){
+  var mods=[];
+  function mod(name, tab, rows){
+    var req=0, ok=0, gaps=[];
+    rows.forEach(function(r){ req+=r.checks.length; var miss=r.checks.filter(function(c){return !c.ok;}).map(function(c){return c.label;}); ok+=r.checks.length-miss.length; if(miss.length) gaps.push({label:r.label, missing:miss, action:r.action}); });
+    mods.push({name:name, tab:tab, req:req, ok:ok, pct: req? Math.round(ok/req*100) : 100, gaps:gaps, count:rows.length});
+  }
+  // Projekty / farmy
+  var farms = STATE.projects.filter(function(p){return !p.isDemo && ['sprzedany','zamknięty'].indexOf(p.status)<0;});
+  var gsEntities = (STATE.groupStructure&&STATE.groupStructure.entities)||[];
+  mod('Projekty (farmy)','projects', farms.map(function(p){
+    var nonOp = p.status!=='operacyjny', isBess = p.assetType==='BESS';
+    var opex = STATE.costs.some(function(c){return !c.isDemo && c.projectId===p.id && monthlyEquivalent(c)>0 && c.paymentStatus!=='anulowany';});
+    var fin = STATE.financings.some(function(f){return f.projectId===p.id;});
+    var spv = gsEntities.some(function(e){return (e.projectIds||[]).indexOf(p.id)>=0;});
+    var checks=[
+      {label:'kod', ok:hasVal(p.code)},
+      {label:'moc MW', ok:hasNum(p.mwPower)},
+      {label:'lokalizacja', ok:hasVal(p.location)},
+      {label:'CAPEX', ok:hasNum(p.capex)},
+      {label:'przychód / mies.', ok:hasNum(p.revenueMonthly)},
+      {label:'OPEX (koszt cykliczny)', ok:opex || isBess},
+      {label:'spółka celowa (Struktura grupy)', ok:spv},
+      {label:'operator sieci (OSD)', ok:hasVal(p.gridOperator)},
+      {label:'odbiorca energii / PPA', ok:hasVal(p.energyBuyer)}
+    ];
+    if(nonOp){
+      checks.push({label:'data uruchomienia', ok:hasVal(p.endDate)});
+      checks.push({label:'data startu prac', ok:hasVal(p.startDate)});
+      checks.push({label:'finansowanie', ok:fin});
+      checks.push({label:'warunki przyłączenia', ok:hasStatus(p.connectionConditionsStatus)});
+      checks.push({label:'umowa przyłączeniowa', ok:hasStatus(p.connectionAgreementStatus)});
+      checks.push({label:'pozwolenia', ok:hasStatus(p.permitsStatus)});
+      checks.push({label:'decyzja środowiskowa', ok:hasStatus(p.environmentalDecisionStatus)});
+      checks.push({label:'MPZP / WZ', ok:hasStatus(p.zoningStatus)});
+    }
+    return {label:p.name, checks:checks, action:"openForm('projects','"+p.id+"')"};
+  }));
+  // Finansowania
+  mod('Finansowanie (kredyty, leasingi)','maciej', STATE.financings.map(function(f){
+    return {label:f.lender+(f.subject?' — '+f.subject:''), action:"openForm('financing','"+f.id+"')", checks:[
+      {label:'rodzaj', ok:hasVal(f.type)},
+      {label:'kwota początkowa', ok:hasNum(f.initialAmount)},
+      {label:'saldo pozostałe', ok:hasNum(f.remainingBalance)},
+      {label:'rata', ok:hasNum(f.monthlyPayment)},
+      {label:'oprocentowanie', ok:finHasRate(f)},
+      {label:'liczba rat', ok:hasNum(f.numInstallments)},
+      {label:'pozostałe raty', ok:f.remainingInstallments!==''&&f.remainingInstallments!==null&&f.remainingInstallments!==undefined},
+      {label:'data następnej raty', ok:hasVal(f.nextPaymentDate)},
+      {label:'data końca', ok:hasVal(f.endDate)},
+      {label:'projekt (farma)', ok:hasVal(f.projectId)}
+    ]};
+  }));
+  // Pracownicy
+  var emps = STATE.employees.filter(function(e){return !e.isDemo && e.status!=='zakończona współpraca';});
+  mod('Pracownicy','employees', emps.map(function(e){
+    var checks=[
+      {label:'stanowisko', ok:hasVal(e.position)},
+      {label:'dział', ok:hasVal(e.departmentId)},
+      {label:'przypisanie do projektów / centrali', ok:!!(e.allocations&&e.allocations.length)}
+    ];
+    if(!STATE.restricted) checks.push({label:'koszt pracodawcy / wynagrodzenie', ok:hasNum(e.employerCost)||hasNum(e.grossSalary)});
+    return {label:empName(e), checks:checks, action:"openForm('employees','"+e.id+"')"};
+  }));
+  // Koszty
+  var costs = STATE.costs.filter(function(c){return !c.isDemo && c.paymentStatus!=='anulowany';});
+  mod('Koszty','costs', costs.map(function(c){
+    var rec = monthlyEquivalent(c)>0;
+    var checks=[
+      {label:'kategoria', ok:hasVal(c.category)},
+      {label:'kwota', ok:hasNum(c.grossAmount)||hasNum(c.netAmount)},
+      {label:'data', ok:hasVal(c.costDate)},
+      {label:'projekt lub dział', ok:hasVal(c.projectId)||hasVal(c.departmentId)},
+      {label:'ocena konieczności', ok:hasVal(c.necessity)}
+    ];
+    if(!rec) checks.push({label:'termin płatności', ok:hasVal(c.dueDate)||c.paymentStatus==='zapłacony'});
+    return {label:c.name, checks:checks, action:"openForm('costs','"+c.id+"')"};
+  }));
+  // Umowy
+  mod('Umowy i abonamenty','contracts', STATE.contracts.map(function(c){
+    return {label:c.name, action:"openForm('contracts','"+c.id+"')", checks:[
+      {label:'kontrahent', ok:hasVal(c.vendorId)},
+      {label:'kwota', ok:hasNum(c.amount)},
+      {label:'cykl', ok:hasVal(c.frequency)},
+      {label:'data startu', ok:hasVal(c.startDate)},
+      {label:'koniec lub auto-odnowienie', ok:hasVal(c.endDate)||!!c.autoRenew},
+      {label:'najwcześniejsze wypowiedzenie', ok:hasVal(c.earliestTerminationDate)},
+      {label:'właściciel (osoba)', ok:hasVal(c.owner)}
+    ]};
+  }));
+  // Dostawcy
+  mod('Dostawcy','vendors', STATE.vendors.filter(function(v){return !v.isDemo;}).map(function(v){
+    return {label:v.name, action:"openForm('vendors','"+v.id+"')", checks:[
+      {label:'NIP', ok:hasVal(v.nip)},
+      {label:'rodzaj usług', ok:hasVal(v.serviceType)},
+      {label:'kontakt (osoba / e-mail / telefon)', ok:hasVal(v.contactPerson)||hasVal(v.email)||hasVal(v.phone)}
+    ]};
+  }));
+  // Struktura grupy
+  mod('Struktura grupy','group', gsEntities.filter(function(e){return e.status!=='sprzedana' && e.kind!=='external';}).map(function(e){
+    var shares = (STATE.groupStructure&&STATE.groupStructure.shares)||[];
+    var owned = shares.filter(function(s){return s.owned===e.id;}).reduce(function(s,x){return s+(Number(x.pct)||0);},0);
+    var isRoot = e.kind==='parent';
+    var checks=[
+      {label:'zarząd / prokura', ok:!!(e.roles&&e.roles.length)},
+      {label:'udziały = 100%', ok:isRoot || Math.abs(owned-100)<0.01}
+    ];
+    if(e.kind==='company' && e.id!=='farmy' && e.id!=='es54') checks.push({label:'przypisana farma (projekt)', ok:!!(e.projectIds&&e.projectIds.length)});
+    return {label:e.name, action:"goTab('group');setTimeout(function(){openGroupEntity('"+e.id+"');},50)", checks:checks};
+  }));
+  return mods;
+}
+function completenessOverall(mods){
+  var req = mods.reduce(function(s,m){return s+m.req;},0), ok = mods.reduce(function(s,m){return s+m.ok;},0);
+  return req? Math.round(ok/req*100) : 100;
+}
+var COMPL_OPEN = {};
+function completenessPanel(compact){
+  var mods = completenessModules();
+  var overall = completenessOverall(mods);
+  function bar(pct){ return '<div class="progress-bar" style="height:8px"><div style="width:'+pct+'%;background:'+(pct>=90?'var(--ok)':pct>=70?'var(--warn)':'var(--danger)')+'"></div></div>'; }
+  var rows = mods.map(function(m){
+    var open = !!COMPL_OPEN[m.tab];
+    return '<div style="padding:8px 0;border-top:1px solid var(--border)">'+
+      '<div style="display:flex;align-items:center;gap:10px"><div style="flex:0 0 240px;font-weight:600"><span class="link" onclick="goTab(\''+m.tab+'\')">'+esc(m.name)+'</span> <span class="muted" style="font-weight:400">('+m.count+')</span></div><div style="flex:1">'+bar(m.pct)+'</div><div style="flex:0 0 60px;text-align:right;font-weight:700">'+m.pct+'%</div><div style="flex:0 0 110px;text-align:right">'+(m.gaps.length&&!compact?'<span class="link" onclick="COMPL_OPEN[\''+m.tab+'\']=!COMPL_OPEN[\''+m.tab+'\'];render()">'+(open?'zwiń':m.gaps.length+' braków ▾')+'</span>':(m.gaps.length?'<span class="muted">'+m.gaps.length+' braków</span>':'<span class="pill pill-ok">komplet</span>'))+'</div></div>'+
+      (open&&!compact? '<ul style="margin:6px 0 0 18px;padding:0;font-size:12.5px">'+m.gaps.map(function(g){ return '<li><span class="link" onclick="'+esc(g.action)+'">'+esc(g.label)+'</span>: <span class="muted">'+g.missing.map(esc).join(', ')+'</span></li>'; }).join('')+'</ul>' : '')+
+    '</div>';
+  }).join('');
+  return '<div class="panel"><h3 style="display:flex;justify-content:space-between;align-items:center">Kompletność danych <span style="font-size:22px;color:'+(overall>=90?'var(--ok)':overall>=70?'var(--warn)':'var(--danger)')+'">'+overall+'%</span></h3>'+
+    '<div class="muted" style="font-size:12px;margin-bottom:6px">Ile z pól potrzebnych do liczenia (Dashboard, Portfel, Finansowanie, Płatności) jest wypełnionych. Kliknij „braków", żeby zobaczyć, co uzupełnić — każda pozycja otwiera kartę.</div>'+rows+'</div>';
+}
+
+
+/* ============================= KARTA PROJEKTU — SEKCJE ZARZĄDCZE ============================= */
+// Finansowanie projektu z harmonogramem 12 mies., terminy z rejestru i
+// produkcja rzeczywista vs model — żeby karta farmy była kompletna bez
+// skakania po modułach (2026-09-19).
+function projectFinancePanel(p){
+  var fins = STATE.financings.filter(function(f){return f.projectId===p.id;});
+  var head = '<div class="panel"><div class="toolbar"><h3 style="margin:0">Finansowanie projektu</h3><div><button class="btn btn-sm" onclick="goTab(\'maciej\')">Przestrzeń Macieja ↗</button> <button class="btn btn-sm btn-primary" onclick="openFinancingForProject(\''+p.id+'\')">+ dodaj kredyt / leasing</button></div></div>';
+  if(!fins.length) return head+'<div class="empty">Brak finansowania przypisanego do tego projektu.</div></div>';
+  var months=[]; var t0=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  for(var i=0;i<12;i++){ var d=new Date(t0.getFullYear(), t0.getMonth()+i, 1); months.push(d.getFullYear()+'-'+(d.getMonth()+1<10?'0':'')+(d.getMonth()+1)); }
+  var totalBal = fins.reduce(function(s,f){return s+finBalance(f);},0);
+  var rows = fins.map(function(f){
+    var comp = finComputedNextInstallment(f);
+    return '<tr><td>'+esc(f.lender)+'<div class="muted" style="font-size:11px">'+esc(f.subject||'')+'</div></td><td>'+esc(f.type||'—')+'</td><td class="right">'+(Number(f.initialAmount)>0?fmtMoney0(f.initialAmount):'—')+'</td><td class="right">'+fmtMoney0(finBalance(f))+'</td><td class="right">'+fmtMoney0(f.monthlyPayment)+(comp!==null&&Number(f.monthlyPayment)>0&&Math.abs((Number(f.monthlyPayment)-comp)/comp)>0.05?'<div style="font-size:11px;color:var(--danger)">wyliczona '+fmtMoney0(comp)+'</div>':'')+'</td><td>'+(f.interestRate!==''&&f.interestRate!==null&&f.interestRate!==undefined?Number(f.interestRate).toFixed(2)+'%':'—')+'</td><td>'+fmtDate(f.nextPaymentDate)+' → '+fmtDate(f.endDate)+'</td><td><span class="link" onclick="openForm(\'financing\',\''+f.id+'\')">edytuj</span></td></tr>';
+  }).join('');
+  var sched = months.map(function(ym){ var tot=0, it=0; fins.forEach(function(f){ var x=finInstallmentInMonth(f,ym); tot+=x.total; it+=x.interest; }); return {ym:ym,total:tot,interest:it}; });
+  var maxT = Math.max.apply(null, sched.map(function(r){return r.total;}).concat([1]));
+  var chart = '<div style="display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:8px">'+sched.map(function(r){ return '<div title="'+r.ym+': '+fmtMoney0(r.total)+'" style="flex:1;height:'+Math.max(2,Math.round(r.total/maxT*66))+'px;background:var(--chart-1);border-radius:2px 2px 0 0"></div>'; }).join('')+'</div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>'+months[0]+'</span><span>'+months[11]+'</span></div>';
+  var next12 = sched.reduce(function(s,r){return s+r.total;},0);
+  return head+'<div class="kpi-grid" style="margin-bottom:10px">'+kpi('Saldo do spłaty', fmtMoney0(totalBal))+kpi('Raty w najbliższych 12 mies.', fmtMoney0(next12)+' <span class="sub">w tym odsetki '+fmtMoney0(sched.reduce(function(s,r){return s+r.interest;},0))+'</span>')+kpi('Pozycji', String(fins.length))+'</div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Finansujący</th><th>Rodzaj</th><th class="right">Kwota</th><th class="right">Saldo</th><th class="right">Rata</th><th>Opr.</th><th>Okres</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div class="section-title">Raty — 12 miesięcy</div>'+chart+'</div>';
+}
+function openFinancingForProject(pid){ openForm('financing'); var sel=document.querySelector('#modal select[name="projectId"]'); if(sel) sel.value=pid; }
+function projectDeadlinesPanel(p){
+  var list = deadlinesList().filter(function(d){return d.projectId===p.id;}).sort(function(a,b){ return (a.done?1:0)-(b.done?1:0) || ((a.date||'9999')<(b.date||'9999')?-1:1); });
+  return '<div class="panel"><div class="toolbar"><h3 style="margin:0">Terminy projektu</h3><button class="btn btn-sm btn-primary" onclick="openDeadlineFormForProject(\''+p.id+'\')">+ termin</button></div>'+
+    (list.length? '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Status</th><th>Co</th><th></th></tr></thead><tbody>'+list.map(function(d){ var n=d.date?daysUntil(d.date):null; return '<tr'+(d.done?' style="opacity:.55"':'')+'><td style="white-space:nowrap">'+fmtDate(d.date)+'</td><td>'+dlPill(n,d.done)+'</td><td>'+esc(d.title)+' <span class="pill pill-muted">'+esc(d.type||'inne')+'</span>'+(d.owner?'<div class="muted" style="font-size:11px">'+esc(d.owner)+'</div>':'')+'</td><td><span class="link" onclick="openDeadlineForm(\''+d.id+'\')">edytuj</span></td></tr>'; }).join('')+'</tbody></table></div>' : '<div class="empty">Brak terminów — dodaj np. ważność warunków przyłączenia, pozwolenia, PPA.</div>')+'</div>';
+}
+function openDeadlineFormForProject(pid){ openDeadlineForm(); var sel=document.querySelector('#modal select[name="projectId"]'); if(sel) sel.value=pid; }
+function projectActualsPanel(p){
+  var months = lastMonths(12);
+  var a = actualsOf(p.id), s = actualsSummary(p, months);
+  var rows = months.filter(function(ym){return a[ym];}).map(function(ym){ var r=a[ym]; var rev=Number(r.revenue)||0; var diff = s.model? (rev-s.model)/s.model*100 : null; return '<tr><td>'+ym+'</td><td class="right">'+(Number(r.mwh)>0?Number(r.mwh).toFixed(1):'—')+'</td><td class="right">'+(rev?fmtMoney0(rev):'—')+'</td><td class="right'+(diff!==null&&diff<-10?'" style="color:var(--danger)':'')+'">'+(diff===null||!rev?'—':(diff>0?'+':'')+diff.toFixed(1)+'%')+'</td></tr>'; }).join('');
+  return '<div class="panel"><div class="toolbar"><h3 style="margin:0">Produkcja i przychód rzeczywisty</h3><button class="btn btn-sm" onclick="goTab(\'portfolio\')">wpisz w Portfelu ↗</button></div>'+
+    (p.status!=='operacyjny'? '<div class="empty">Farma nie jest jeszcze operacyjna — dane rzeczywiste wpisuje się po uruchomieniu.</div>' :
+    (rows? '<div class="kpi-grid" style="margin-bottom:10px">'+kpi('Model / mies.', fmtMoney0(s.model))+kpi('Rzeczywisty śr. / mies.', fmtMoney0(s.avgRev)+' <span class="sub">'+s.count+' mies.</span>', false, s.diffPct!==null&&s.diffPct<-10)+kpi('Różnica', (s.diffPct===null?'—':(s.diffPct>0?'+':'')+s.diffPct.toFixed(1)+'%'))+'</div><div class="table-wrap"><table><thead><tr><th>Miesiąc</th><th class="right">MWh</th><th class="right">Przychód</th><th class="right">vs model</th></tr></thead><tbody>'+rows+'</tbody></table></div>' : '<div class="empty">Brak wpisów — dodaj produkcję/przychód za miesiąc w Portfelu farm.</div>'))+'</div>';
+}
+
+
+/* ============================= RAPORT ZARZĄDCZY (DRUK / PDF) ============================= */
+// Jedna strona dla zarządu / rady nadzorczej / banku: stan dziś, co wymaga
+// uwagi, portfel, finansowanie, terminy, płatności, kompletność danych.
+// Wszystko z tych samych funkcji co moduły (nic nie jest liczone osobno).
+function viewReport(){
+  var m = metrics(), today = todayISO();
+  var rows = farmRows();
+  var totMw = rows.reduce(function(s,r){return s+r.mw;},0), opMw = rows.filter(function(r){return r.p.status==='operacyjny';}).reduce(function(s,r){return s+r.mw;},0);
+  var totCapex = rows.reduce(function(s,r){return s+r.capex;},0), totDebt = rows.reduce(function(s,r){return s+r.debt;},0);
+  var totRev = rows.reduce(function(s,r){return s+r.rev;},0), totOpex = rows.reduce(function(s,r){return s+r.opex;},0), totInst = rows.reduce(function(s,r){return s+r.installment;},0);
+  var dscr = totInst>0? (totRev-totOpex)/totInst : null;
+  var fins = STATE.financings, bal = fins.reduce(function(s,f){return s+finBalance(f);},0), instNow = fins.reduce(function(s,f){return s+activeMonthlyPayment(f);},0);
+  var pm = periodMetrics('2y'); var cum=0, minCum=0, minAt=null; (pm.rows||[]).forEach(function(rw){ cum+=(rw.revenue-rw.cost)*rw.frac; if(cum<minCum){minCum=cum;minAt=rw.period;} });
+  var od = overduePayments(), up30 = upcomingPayments(30);
+  var dl = upcomingDeadlines(90), auto = autoDeadlines(90);
+  var mods = completenessModules(), compl = completenessOverall(mods);
+  var sorted = rows.slice().sort(function(a,b){ var ka=a.p.status==='operacyjny'?'0':(a.p.endDate||'9999'); var kb=b.p.status==='operacyjny'?'0':(b.p.endDate||'9999'); return ka<kb?-1:ka>kb?1:0; });
+  function pct(x){ return x===null||!isFinite(x)?'—':x.toFixed(2); }
+  return '<div class="toolbar no-print"><h2 class="page-title" style="margin:0">Raport zarządczy</h2><div><button class="btn btn-sm btn-primary" onclick="window.print()">🖶 Drukuj / zapisz PDF</button></div></div>'+
+  '<div style="display:none" class="print-only"><h2 class="page-title">Farmy Fotowoltaiki Polska S.A. — raport zarządczy</h2></div>'+
+  '<div class="page-sub">Stan na '+fmtDate(today)+' • '+APP_BUILD_TAG+' • liczby z kart projektów, kosztów, finansowań i rejestrów (te same reguły co Dashboard: „od kiedy liczyć" 18.09).</div>'+
+  '<div class="kpi-grid">'+
+    kpi('Przychód dziś (operacyjne)', fmtMoney0(m.monthlyRevenue)+'/mies.', true)+
+    kpi('Koszt dziś (run-rate)', fmtMoney0(m.totalBurn)+'/mies.', true)+
+    kpi('Wynik dziś', fmtMoney0(m.monthlyProfit)+'/mies.', true, m.monthlyProfit<0)+
+    kpi('Przychód docelowy (po uruchomieniu)', fmtMoney0(totRev)+'/mies.')+
+    kpi('Moc portfela', totMw+' MW <span class="sub">operacyjne '+opMw+' MW</span>')+
+    kpi('CAPEX / dług / equity', fmtMoney0(totCapex)+' <span class="sub">'+fmtMoney0(totDebt)+' / '+fmtMoney0(Math.max(0,totCapex-totDebt))+'</span>')+
+    kpi('Zadłużenie do spłaty', fmtMoney0(bal)+' <span class="sub">raty dziś '+fmtMoney0(instNow)+'/mies.</span>')+
+    kpi('DSCR portfela (docelowy)', pct(dscr), false, dscr!==null&&dscr<1.2)+
+    kpi('Luka kasowa (2 lata)', minAt? fmtMoney0(minCum)+' w '+minAt : 'brak', false, !!minAt)+
+    kpi('Zaległe płatności', fmtMoney0(od.reduce(function(s,i){return s+i.amount;},0))+' <span class="sub">'+od.length+' szt.</span>', false, od.length>0)+
+    kpi('Do zapłaty w 30 dni', fmtMoney0(up30.reduce(function(s,i){return s+i.amount;},0))+' <span class="sub">'+up30.length+' szt.</span>')+
+    kpi('Kompletność danych', compl+'%', false, compl<70)+
+  '</div>'+
+  attentionPanel()+
+  '<div class="panel"><h3>Portfel farm</h3><div class="table-wrap"><table><thead><tr><th>Farma</th><th>Status</th><th class="right">MW</th><th>Uruchomienie</th><th class="right">CAPEX</th><th class="right">Dług</th><th class="right">Przychód/mies.</th><th class="right">OPEX/mies.</th><th class="right">EBITDA/mies.</th><th class="right">Rata/mies.</th><th class="right">DSCR</th></tr></thead><tbody>'+
+    sorted.map(function(r){ return '<tr><td>'+esc(r.p.name)+'</td><td>'+projectStatusPill(r.p.status)+'</td><td class="right">'+(r.mw||'—')+'</td><td>'+(r.p.status==='operacyjny'?'działa':(r.p.endDate?fmtDate(r.p.endDate):'—'))+'</td><td class="right">'+(r.capex?fmtMoney0(r.capex):'—')+'</td><td class="right">'+(r.debt?fmtMoney0(r.debt):'—')+'</td><td class="right">'+fmtMoney0(r.rev)+'</td><td class="right">'+fmtMoney0(r.opex)+'</td><td class="right">'+fmtMoney0(r.ebitda)+'</td><td class="right">'+(r.installment?fmtMoney0(r.installment):'—')+'</td><td class="right'+(r.dscr!==null&&r.dscr<1.2?'" style="color:var(--danger)':'')+'">'+pct(r.dscr)+'</td></tr>'; }).join('')+
+    '<tr style="font-weight:600"><td>Razem</td><td></td><td class="right">'+totMw+'</td><td></td><td class="right">'+fmtMoney0(totCapex)+'</td><td class="right">'+fmtMoney0(totDebt)+'</td><td class="right">'+fmtMoney0(totRev)+'</td><td class="right">'+fmtMoney0(totOpex)+'</td><td class="right">'+fmtMoney0(totRev-totOpex)+'</td><td class="right">'+fmtMoney0(totInst)+'</td><td class="right">'+pct(dscr)+'</td></tr>'+
+  '</tbody></table></div></div>'+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Finansowanie</h3>'+(fins.length?'<div class="table-wrap"><table><thead><tr><th>Finansujący</th><th>Farma</th><th class="right">Saldo</th><th class="right">Rata</th><th>Następna</th></tr></thead><tbody>'+fins.slice().sort(function(a,b){return finBalance(b)-finBalance(a);}).map(function(f){ return '<tr><td>'+esc(f.lender)+'</td><td>'+(f.projectId?esc(projectName(f.projectId)):'—')+'</td><td class="right">'+fmtMoney0(finBalance(f))+'</td><td class="right">'+fmtMoney0(f.monthlyPayment)+'</td><td>'+fmtDate(f.nextPaymentDate)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Brak</div>')+'</div>'+
+    '<div class="panel"><h3>Terminy — 90 dni</h3>'+((dl.length||auto.length)?'<div class="table-wrap"><table><thead><tr><th>Data</th><th>Co</th><th>Źródło</th></tr></thead><tbody>'+dl.map(function(d){ return '<tr><td style="white-space:nowrap">'+fmtDate(d.date)+'</td><td>'+esc(d.title)+(d.projectId?' ('+esc(projectName(d.projectId))+')':'')+'</td><td>'+dlPill(d.days,false)+'</td></tr>'; }).join('')+auto.map(function(a){ return '<tr><td style="white-space:nowrap">'+fmtDate(a.date)+'</td><td>'+esc(a.title)+'</td><td><span class="pill pill-muted">'+esc(a.src)+'</span></td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Brak terminów w 90 dni</div>')+'</div>'+
+  '</div>'+
+  '<div class="grid2">'+
+    '<div class="panel"><h3>Zaległe płatności ('+od.length+')</h3>'+(od.length?paymentsTable(od,false):'<div class="empty">Brak zaległości</div>')+'</div>'+
+    completenessPanel(true)+
+  '</div>'+
+  '<div class="muted" style="font-size:11px">Wygenerowano '+fmtDate(today)+' z aplikacji FFP Cost Control. Wartości docelowe = rok 1 po uruchomieniu wszystkich farm, bez degradacji i eskalacji; projekcje wg dat i kwot z kart projektów (model Grzegorza), nie gwarancja wyniku.</div>';
 }
 
 /* ============================= DOCUMENTS ============================= */

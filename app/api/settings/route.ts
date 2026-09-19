@@ -55,6 +55,13 @@ export async function PUT(req: Request) {
   } else if (key === "deadlines") {
     if (!Array.isArray(v)) return bad("Rejestr terminów musi być listą.");
     if (!v.every((d: any) => d && typeof d.id === "string" && typeof d.title === "string" && (!d.date || /^\d{4}-\d{2}-\d{2}$/.test(String(d.date))))) return bad("Każdy termin musi mieć id, tytuł i datę RRRR-MM-DD.");
+  } else if (key === "paymentLedger") {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Rejestr płatności musi być obiektem.");
+    for (const k of Object.keys(v)) {
+      if (k === "_start") { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v[k]))) return bad("_start musi być datą RRRR-MM-DD."); continue; }
+      if (!/^(cost|fin):/.test(k) || !v[k] || typeof v[k] !== "object") return bad("Klucze rejestru: cost:<id> / fin:<id> z obiektem miesięcy.");
+      for (const ym of Object.keys(v[k])) if (!/^\d{4}-\d{2}$/.test(ym)) return bad("Miesiące w rejestrze: RRRR-MM.");
+    }
   } else if (key === "farmActuals") {
     if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Dane rzeczywiste muszą być obiektem {projectId: {RRRR-MM: {mwh, revenue}}}.");
   } else if (key === "assumptions" || key === "fixedCostSchedule") {
