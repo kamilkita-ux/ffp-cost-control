@@ -191,3 +191,24 @@ test("metrics(): DEMO i anulowane nie wchodzą; koszt dziś = pracownik + biuro 
   assert.equal(m.monthlyRevenue, 60000);
   assert.equal(Math.round(m.totalBurn), Math.round(10000 + 3000 + 1200 / 3 + 2500));
 });
+
+test("widoczność modułów: allowedTabs ogranicza zakładki (Dashboard i Pomoc zawsze), null = wszystkie", () => {
+  const st = baseState(); st.allowedTabs = ["maciej", "payments"];
+  const ctx = loadFront(st);
+  assert.equal(vm.runInContext("tabAllowed('maciej')", ctx), true);
+  assert.equal(vm.runInContext("tabAllowed('costs')", ctx), false);
+  assert.equal(vm.runInContext("tabAllowed('dashboard')", ctx), true);
+  assert.equal(vm.runInContext("tabAllowed('help')", ctx), true);
+  assert.equal(vm.runInContext("tabAllowed('detail:projects:p1')", ctx), false);
+  const st2 = baseState(); st2.allowedTabs = null;
+  assert.equal(vm.runInContext("tabAllowed('costs')", loadFront(st2)), true);
+});
+
+test("scenariusze Symulatora: oszczędność liczona z pozycji aktywnych dziś (kredyt przed pierwszą ratą nie liczy się)", () => {
+  const ctx = loadFront(baseState());
+  const m = vm.runInContext("scenarioMetrics({costIds:['c1','c4'], employeeIds:['e1'], financingIds:['f1','f2'], contractIds:[]})", ctx);
+  assert.equal(Math.round(m.costs), 3000, "anulowany c4 nie liczy się");
+  assert.equal(Math.round(m.empCost), 10000);
+  assert.equal(Math.round(m.fins), 2500, "f1 rusza za miesiąc — nie liczy się, f2 tak");
+  assert.equal(Math.round(m.total), 15500);
+});

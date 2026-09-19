@@ -427,7 +427,7 @@ function svgStepLine(rows, key, opts){
       path += ' L'+x+','+prevY+' L'+x+','+y;
       if(!stepAnnotation && Number(rows[i][key])!==Number(rows[i-1][key])){
         stepAnnotation = '<circle cx="'+x+'" cy="'+y+'" r="4" fill="var(--chart-seq-2)"></circle>'+
-          '<text x="'+x+'" y="'+(y-10)+'" text-anchor="middle" class="viz-value-label" fill="var(--chart-seq-2)">'+esc(rows[i].label)+': '+fmtMoney0(rows[i][key])+'</text>';
+          '<text x="'+x+'" y="'+(y-10)+'" text-anchor="middle" class="viz-value-label" fill="var(--chart-seq-2)">'+esc(rows[i].label||rows[i].period||'')+': '+fmtMoney0(rows[i][key])+'</text>';
       }
     }
   }
@@ -958,9 +958,9 @@ var NAV = [
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
   {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-27 (scenariusze, plan vs zaplacone, KPI zespolu, eksport Excel)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-28 (konta i widocznosc modulow, wykresy projekcji, rat i platnosci)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
-  var html = NAV.map(function(n){
+  var html = NAV.filter(function(n){return tabAllowed(n.key);}).map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
   }).join('');
   document.getElementById('nav-list').innerHTML = html;
@@ -991,13 +991,14 @@ function renderMobileTabbar(){
   var bar = document.getElementById('mobile-tabbar');
   if(!bar) return;
   var isKnownTab = MOBILE_TABS.some(function(t){ return t.key===currentTab; });
-  var html = MOBILE_TABS.map(function(t){
+  var html = MOBILE_TABS.filter(function(t){return tabAllowed(t.key);}).map(function(t){
     return '<div class="mt-item'+(currentTab===t.key?' active':'')+'" onclick="goTab(\''+t.key+'\')"><span class="mt-icon">'+t.icon+'</span>'+t.label+'</div>';
   }).join('');
   html += '<div class="mt-item'+(!isKnownTab?' active':'')+'" onclick="openMobileNav()"><span class="mt-icon">☰</span>Więcej</div>';
   bar.innerHTML = html;
 }
 function goTab(key){
+  if(!tabAllowed(key)) key = 'dashboard';
   currentTab = key;
   try{ localStorage.setItem('ffp_tab',key); }catch(e){}
   closeMobileNav();
@@ -1171,6 +1172,7 @@ function teamTiles(){
   var gsEnt = (STATE.groupStructure&&STATE.groupStructure.entities||[]).length;
   var dl = upcomingDeadlines(60);
   function tile(tab, icon, title, who, rowsHtml, flag, flagOk){
+    if(!tabAllowed(tab)) return '';
     return '<div class="tile" onclick="goTab(\''+tab+'\')">'+(flag?'<span class="t-flag'+(flagOk?' ok':'')+'">'+esc(flag)+'</span>':'')+'<div class="t-head"><span class="t-icon">'+icon+'</span><div><div class="t-title">'+esc(title)+'</div><div class="t-who">'+esc(who)+'</div></div></div><div class="t-rows">'+rowsHtml+'</div></div>';
   }
   return '<div class="tiles">'+
@@ -2617,6 +2619,20 @@ function viewCharts(){
   '<div class="panel"><h3>Koszty miesięczne wg kategorii (aktywne dziś)</h3>'+
     (costByCategory.length? svgBarChart(costByCategory,{color:'var(--chart-seq-2)'}) : '<div class="empty">Brak danych</div>')+
   '</div>'+
+  (function(){
+    // 2026-09-19: wykresy z rejestrów i harmonogramów (te same funkcje co moduły).
+    var pm = periodMetrics('2y'); var rows = (pm.rows||[]).map(function(r){ return {period:r.period, pracownicy:r.payroll, cykliczne:r.recurring, raty:r.financing, przychod:r.revenue}; });
+    var sched = finScheduleRows(36).map(function(r){ return {period:r.ym, kapital:r.capital, odsetki:r.interest}; });
+    var t=new Date(), pv=[]; for(var i=5;i>=0;i--){ var d=new Date(t.getFullYear(), t.getMonth()-i, 1), e=new Date(d.getFullYear(), d.getMonth()+1, 0); var it=paymentItems(localISO(d), localISO(e)); var paid=it.filter(function(x){return x.paid;}).reduce(function(s2,x){return s2+x.amount;},0); pv.push({period:localISO(d).slice(0,7), zaplacone:paid, niezaplacone:it.reduce(function(s2,x){return s2+x.amount;},0)-paid}); }
+    var ops = STATE.projects.filter(function(p){return !p.isDemo && p.status==='operacyjny';});
+    var actualsHtml = ops.map(function(p){ var a=actualsOf(p.id); var months=lastMonths(12).reverse(); if(!months.some(function(ym){return a[ym];})) return ''; var items=months.map(function(ym){ return {label:ym.slice(2), value: a[ym]? Number(a[ym].revenue)||0 : 0}; }); return '<div class="panel"><h3>Przychód rzeczywisty — '+esc(p.name)+' <span class="muted" style="font-weight:400;font-size:11.5px">(model: '+fmtMoney0(p.revenueMonthly)+'/mies.)</span></h3>'+svgBarChart(items,{color:'var(--chart-1)'})+'</div>'; }).join('');
+    return '<div class="panel"><h3>Projekcja 24 mies. — przychód (linia) vs koszty (słupki: pracownicy, cykliczne, raty)</h3>'+
+      svgStackedBarChart(rows, [{key:'pracownicy',label:'Pracownicy',color:'var(--chart-1)'},{key:'cykliczne',label:'Koszty cykliczne',color:'var(--chart-2)'},{key:'raty',label:'Raty finansowań',color:'var(--chart-3)'}])+
+      '<div class="section-title">Przychód z kart projektów (od miesiąca uruchomienia)</div>'+svgStepLine(rows,'przychod')+'</div>'+
+      '<div class="panel"><h3>Raty finansowań — 36 miesięcy (kapitał / odsetki, harmonogram malejący)</h3>'+(sched.some(function(r){return r.kapital+r.odsetki>0;})? svgStackedBarChart(sched, [{key:'kapital',label:'Kapitał',color:'var(--chart-1)'},{key:'odsetki',label:'Odsetki',color:'var(--chart-4)'}]) : '<div class="empty">Brak finansowań z harmonogramem</div>')+'</div>'+
+      '<div class="panel"><h3>Płatności — plan vs zapłacone, 6 miesięcy (rejestr płatności)</h3>'+svgStackedBarChart(pv, [{key:'zaplacone',label:'Zapłacone',color:'var(--chart-1)'},{key:'niezaplacone',label:'Niezapłacone / do zapłaty',color:'var(--chart-other)'}])+'</div>'+
+      actualsHtml;
+  })()+
   '<div class="panel"><h3>Koszty stałe — harmonogram miesięczny 2026–2028 (dane kontrolera)</h3>'+
     '<div class="muted" style="margin-bottom:8px">Suma kosztów stałych rośnie z '+fmtMoney0((fc.monthlySchedule&&fc.monthlySchedule[0])?fc.monthlySchedule[0].suma:0)+'/mies. do '+fmtMoney0((fc.monthlySchedule&&fc.monthlySchedule.length)?fc.monthlySchedule[fc.monthlySchedule.length-1].suma:0)+'/mies. — szczegóły i założenia w zakładce „Założenia”.</div>'+
     svgStepLine(fc.monthlySchedule||[], 'suma')+
@@ -3645,7 +3661,7 @@ function viewHelp(){
     p('<b>Kamil Kita</b> — Prezes; Dashboard, Portfel, Raport, decyzje o danych (reset, poprawki).')+
     p('<b>Maciej Zapart</b> — kredyty, leasingi, dane finansowe: przestrzeń '+tabLink('maciej','Finansowanie')+' (karty finansowań, harmonogram, braki, zadania, notatki, terminy finansowe).')+
     p('<b>Grzegorz</b> — model budżetowy farm: '+tabLink('grzegorz','Budżet Farm PV')+'; dane z modelu trafiły do Projektów resetem portfela (2026-09-19).')+
-    p('Konta zakłada admin w '+tabLink('settings','Ustawieniach')+' → Konta. Konto „ograniczone” nie widzi wynagrodzeń ani kosztów małych grup (1–2 osoby) i nie może zmieniać Założeń, Akcjonariatu ani Struktury grupy.'))+
+    p('Konta zakłada admin w '+tabLink('settings','Ustawieniach')+' → „Konta i widoczność modułów” (hasło tymczasowe generuje serwer; konta działają po przełączeniu AUTH_MODE=accounts w Railway). Tam też ustawia się, które moduły widzi dana osoba — np. Maciej tylko Finansowanie, Płatności, Terminy. Konto „ograniczone” nie widzi wynagrodzeń ani kosztów małych grup (1–2 osoby) i nie może zmieniać Założeń, Akcjonariatu ani Struktury grupy.'))+
   helpSection('Uzupełnianie danych — co daje największy efekt',
     p('1. Każda farma: moc, CAPEX, przychód/mies., data uruchomienia, koszt OPEX (koszt cykliczny przypięty do farmy), finansowanie, spółka celowa. Bez tego Portfel i DSCR są niepełne.')+
     p('2. Każdy kredyt: kwota, oprocentowanie, liczba rat, data pierwszej/następnej raty, koniec — wtedy harmonogram rat i „rata wyliczona” działają.')+
@@ -3731,6 +3747,96 @@ function planVsPaidPanel(){
     '</tbody></table></div></div>';
 }
 
+/* ============================= KONTA I WIDOCZNOŚĆ MODUŁÓW ============================= */
+// Panel administracyjny (2026-09-19): lista kont (AppUser), zakładanie konta
+// (hasło tymczasowe generuje SERWER i pokazuje je raz — admin przekazuje je
+// osobie, która zmienia je po pierwszym logowaniu), rola pełna/ograniczona,
+// aktywacja, reset hasła, usunięcie. Do tego „widoczność modułów” per login
+// (AppSetting moduleVisibility: {login: [klucze zakładek]}) — działa zarówno
+// dla kont, jak i dla loginów Basic Auth. Dashboard i Pomoc zawsze widoczne.
+var USERS_LIST = null; // null = nie wczytano, 'loading', [] / [...]
+var TEMP_PASSWORD_NOTE = null; // {username, password} — pokazane raz po utworzeniu / resecie
+function ensureUsersLoaded(force){
+  if(!STATE.isAdmin) return;
+  if(USERS_LIST!==null && !force) return;
+  USERS_LIST = 'loading';
+  fetch('/api/admin/users').then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(list){ USERS_LIST = list; if(currentTab==='settings') render(); })
+    .catch(function(){ USERS_LIST = []; if(currentTab==='settings') render(); });
+}
+function allowedTabsFor(login){ var mv = STATE.moduleVisibility||{}; return Array.isArray(mv[login])? mv[login] : null; }
+function tabAllowed(key){
+  var at = STATE.allowedTabs;
+  if(!Array.isArray(at)) return true;
+  if(key==='dashboard' || key==='help') return true;
+  if(key.indexOf('detail:')===0){ var t = key.split(':')[1]; return at.indexOf(t)>=0 || at.indexOf(t==='projects'?'projects':t)>=0; }
+  return at.indexOf(key)>=0;
+}
+function createUser(){
+  var u = (document.getElementById('nu-username')||{}).value||''; u = u.trim();
+  var role = (document.getElementById('nu-role')||{}).value||'restricted';
+  if(!u){ alert('Podaj login.'); return; }
+  apiCall('POST','/api/admin/users',{username:u, role:role}).then(function(res){
+    TEMP_PASSWORD_NOTE = {username:res.username, password:res.tempPassword};
+    ensureUsersLoaded(true);
+  }).catch(function(e){ alert('Nie udało się utworzyć konta: '+e.message); });
+}
+function updateUser(id, patch){
+  apiCall('PUT','/api/admin/users/'+id, patch).then(function(res){
+    if(res && res.tempPassword) TEMP_PASSWORD_NOTE = {username:res.username, password:res.tempPassword};
+    ensureUsersLoaded(true);
+  }).catch(function(e){ alert('Nie udało się zapisać: '+e.message); });
+}
+function deleteUser(id, name){
+  if(!confirm('Usunąć konto „'+name+'”? Osoba straci dostęp od razu.')) return;
+  apiCall('DELETE','/api/admin/users/'+id).then(function(){ ensureUsersLoaded(true); }).catch(function(e){ alert(e.message); });
+}
+function saveVisibility(login){
+  login = String(login||'').trim(); if(!login) return;
+  var boxes = document.querySelectorAll('input[data-vis-login="'+login+'"]');
+  var keys=[]; boxes.forEach(function(b){ if(b.checked) keys.push(b.value); });
+  var next = Object.assign({}, STATE.moduleVisibility||{});
+  var all = NAV.filter(function(n){return n.key!=='dashboard' && n.key!=='help';}).length;
+  if(keys.length>=all) delete next[login]; else next[login] = keys;
+  afterMutation(apiCall('PUT','/api/settings',{key:'moduleVisibility',value:next})).then(function(){ ensureUsersLoaded(true); }).catch(function(e){ alert('Nie udało się zapisać widoczności: '+e.message); });
+}
+function addVisibilityLogin(){
+  var el = document.getElementById('vis-new-login'); var login=(el&&el.value||'').trim(); if(!login){ alert('Podaj login.'); return; }
+  var next = Object.assign({}, STATE.moduleVisibility||{}); if(!next[login]) next[login] = NAV.filter(function(n){return n.key!=='dashboard' && n.key!=='help';}).map(function(n){return n.key;});
+  afterMutation(apiCall('PUT','/api/settings',{key:'moduleVisibility',value:next})).catch(function(e){ alert(e.message); });
+}
+function removeVisibilityLogin(login){
+  var next = Object.assign({}, STATE.moduleVisibility||{}); delete next[login];
+  afterMutation(apiCall('PUT','/api/settings',{key:'moduleVisibility',value:next})).catch(function(e){ alert(e.message); });
+}
+function visibilityEditor(login){
+  var allowed = allowedTabsFor(login);
+  var tabs = NAV.filter(function(n){return n.key!=='dashboard' && n.key!=='help';});
+  return '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0">'+tabs.map(function(n){ var on = allowed===null || allowed.indexOf(n.key)>=0; return '<label style="font-weight:400;font-size:12.5px;white-space:nowrap"><input type="checkbox" style="width:auto" data-vis-login="'+esc(login)+'" value="'+n.key+'" '+(on?'checked':'')+'> '+n.icon+' '+esc(n.label)+'</label>'; }).join('')+'</div>'+
+    '<div><button class="btn btn-sm btn-primary" onclick="saveVisibility(\''+esc(login)+'\')">Zapisz widoczność</button> '+(allowed!==null?'<button class="btn btn-sm" onclick="removeVisibilityLogin(\''+esc(login)+'\')">Przywróć wszystkie moduły</button>':'<span class="muted" style="font-size:12px">widzi wszystko (domyślnie)</span>')+'</div>';
+}
+function accountsPanel(){
+  if(!STATE.isAdmin) return '';
+  ensureUsersLoaded();
+  var mode = STATE.authMode==='accounts';
+  var users = Array.isArray(USERS_LIST)? USERS_LIST : [];
+  var mv = STATE.moduleVisibility||{};
+  var extraLogins = Object.keys(mv).filter(function(l){ return !users.some(function(u){return u.username===l;}); });
+  var tempNote = TEMP_PASSWORD_NOTE? '<div class="panel" style="border-color:var(--warn);background:var(--warn-bg)"><b>Hasło tymczasowe dla „'+esc(TEMP_PASSWORD_NOTE.username)+'”:</b> <code style="font-size:15px;user-select:all">'+esc(TEMP_PASSWORD_NOTE.password)+'</code><div class="muted" style="font-size:12px;margin-top:4px">Pokazane tylko raz — przekaż osobie bezpiecznym kanałem; przy pierwszym logowaniu zmieni je na własne. <span class="link" onclick="TEMP_PASSWORD_NOTE=null;render()">ukryj</span></div></div>' : '';
+  var usersHtml = USERS_LIST==='loading'? '<div class="muted">Wczytywanie kont…</div>' :
+    (users.length? '<div class="table-wrap"><table><thead><tr><th>Login</th><th>Rola</th><th>Aktywne</th><th>Ostatnie logowanie</th><th>Widoczne moduły</th><th></th></tr></thead><tbody>'+users.map(function(u){ var at=allowedTabsFor(u.username); return '<tr><td><b>'+esc(u.username)+'</b></td><td><select onchange="updateUser(\''+u.id+'\',{role:this.value})"><option value="full"'+(u.role==='full'?' selected':'')+'>pełna (admin)</option><option value="restricted"'+(u.role!=='full'?' selected':'')+'>ograniczona (bez wynagrodzeń)</option></select></td><td><label><input type="checkbox" style="width:auto" '+(u.active?'checked':'')+' onchange="updateUser(\''+u.id+'\',{active:this.checked})"> '+(u.active?'tak':'nie')+'</label></td><td>'+(u.lastLoginAt?esc(String(u.lastLoginAt).replace('T',' ').slice(0,16)):'—')+'</td><td style="font-size:12px">'+(at===null?'wszystkie':at.length+' z '+(NAV.length-2))+' <span class="link" onclick="VIS_EDIT=(VIS_EDIT===\''+esc(u.username)+'\'?null:\''+esc(u.username)+'\');render()">'+(VIS_EDIT===u.username?'zwiń':'edytuj')+'</span>'+(VIS_EDIT===u.username?visibilityEditor(u.username):'')+'</td><td style="white-space:nowrap"><span class="link" onclick="updateUser(\''+u.id+'\',{resetPassword:true})">reset hasła</span> · <span class="link" onclick="deleteUser(\''+u.id+'\',\''+esc(u.username)+'\')">usuń</span></td></tr>'; }).join('')+'</tbody></table></div>' : '<div class="muted">Brak kont. Załóż pierwsze poniżej.</div>');
+  return '<details class="panel" data-key="accounts" '+settingsOpenAttr('accounts')+' ontoggle="onSettingsToggle(this)"><summary><h3>Konta i widoczność modułów</h3><span class="muted">'+(mode?'tryb logowania: konta':'tryb logowania: Basic Auth (loginy z Railway)')+'</span></summary><div class="panel-body">'+
+    (mode? '' : '<div class="muted" style="font-size:12.5px;margin-bottom:10px">Aplikacja działa dziś w trybie Basic Auth (loginy i hasła ustawione w zmiennych Railway: APP_BASIC_AUTH_USER / EXTRA_USERS / RESTRICTED_USERS). Konta założone tutaj zaczną działać po przełączeniu zmiennej <code>AUTH_MODE=accounts</code> w Railway (strona logowania, zmiana hasła, role z bazy). Widoczność modułów działa w obu trybach — po loginie.</div>')+
+    tempNote+usersHtml+
+    '<div class="section-title">Nowe konto</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><div style="flex:1;min-width:160px"><label>Login</label><input id="nu-username" placeholder="np. maciej"></div><div style="flex:1;min-width:200px"><label>Rola</label><select id="nu-role"><option value="restricted">ograniczona (bez wynagrodzeń)</option><option value="full">pełna (admin)</option></select></div><div><button class="btn btn-sm btn-primary" onclick="createUser()">Utwórz konto</button></div></div>'+
+    '<div class="muted" style="font-size:11.5px;margin-top:4px">Hasło tymczasowe generuje serwer i pokazuje je raz po utworzeniu. Nikt nie wpisuje tu cudzych haseł.</div>'+
+    '<div class="section-title">Widoczność modułów dla loginów Basic Auth / innych</div>'+
+    (extraLogins.length? extraLogins.map(function(l){ return '<div style="padding:6px 0;border-top:1px solid var(--border)"><b>'+esc(l)+'</b> <span class="link" onclick="VIS_EDIT=(VIS_EDIT===\''+esc(l)+'\'?null:\''+esc(l)+'\');render()">'+(VIS_EDIT===l?'zwiń':'edytuj')+'</span>'+(VIS_EDIT===l?visibilityEditor(l):'<span class="muted" style="font-size:12px"> — '+(allowedTabsFor(l)||[]).length+' modułów</span>')+'</div>'; }).join('') : '')+
+    '<div style="display:flex;gap:8px;align-items:flex-end;margin-top:6px"><div style="flex:1;min-width:160px"><label>Login (jak w Railway / konto)</label><input id="vis-new-login" placeholder="np. maciej"></div><div><button class="btn btn-sm" onclick="addVisibilityLogin()">Dodaj i ustaw moduły</button></div></div>'+
+  '</div></details>';
+}
+var VIS_EDIT = null;
+
 /* ============================= DOCUMENTS ============================= */
 function viewDocuments(){
   return '<h2 class="page-title">Dokumenty</h2><div class="page-sub">'+STATE.documents.length+' dokumentów (linki)</div>'+
@@ -3780,6 +3886,7 @@ function viewSettings(){
   '<a class="btn btn-sm" href="/api/export/xlsx" download>Eksport wszystkich modułów do Excela (.xlsx)</a> '+
   '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
   '</div></details>'+
+  accountsPanel()+
   '<details class="panel" data-key="backups" '+settingsOpenAttr('backups')+' ontoggle="onSettingsToggle(this)"><summary><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3><span class="muted">kliknij „Utwórz kopię teraz” przed zmianami</span></summary><div class="panel-body">'+
   '<div class="muted">System sam zapisuje pełny stan danych co kilka godzin. Poniżej lista ostatnich punktów — możesz cofnąć się do dowolnego z nich jednym kliknięciem, albo pobrać go jako plik.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+

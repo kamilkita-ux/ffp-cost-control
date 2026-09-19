@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logChange } from "@/lib/audit";
-import { isRestrictedUser, requireSession } from "@/lib/access";
+import { isRestrictedUser, requireSession, isAdminCaller } from "@/lib/access";
 import { ALL_SETTING_KEYS, RESTRICTED_FORBIDDEN_SETTING_KEYS } from "@/lib/settingKeys";
 
 const ALLOWED_KEYS = new Set<string>(ALL_SETTING_KEYS);
@@ -55,6 +55,11 @@ export async function PUT(req: Request) {
   } else if (key === "deadlines") {
     if (!Array.isArray(v)) return bad("Rejestr terminów musi być listą.");
     if (!v.every((d: any) => d && typeof d.id === "string" && typeof d.title === "string" && (!d.date || /^\d{4}-\d{2}-\d{2}$/.test(String(d.date))))) return bad("Każdy termin musi mieć id, tytuł i datę RRRR-MM-DD.");
+  } else if (key === "moduleVisibility") {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Widoczność modułów musi być obiektem {login: [moduły]}.");
+    for (const k of Object.keys(v)) if (!Array.isArray(v[k]) || !v[k].every((x: unknown) => typeof x === "string")) return bad("Lista modułów dla loginu musi być tablicą nazw.");
+    // Tylko admin (nie każde konto pełne w trybie Basic Auth "extra")
+    if (!(await isAdminCaller(req))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   } else if (key === "scenarios") {
     if (!Array.isArray(v)) return bad("Scenariusze muszą być listą.");
     if (!v.every((sc: any) => sc && typeof sc.id === "string" && typeof sc.name === "string" && ["costIds", "employeeIds", "financingIds", "contractIds"].every((k) => sc[k] === undefined || (Array.isArray(sc[k]) && sc[k].every((x: unknown) => typeof x === "string"))))) return bad("Każdy scenariusz: id, nazwa i listy id.");

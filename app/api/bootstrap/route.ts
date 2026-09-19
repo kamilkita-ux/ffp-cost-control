@@ -234,6 +234,7 @@ export async function GET(req: Request) {
 
   const restricted = await isRestrictedUser(req);
   const isAdmin = !restricted && (await isAdminCaller(req));
+  const loginForTabs = await currentLogin(req);
   const employeesOut = restricted ? employeesFull.map(redactEmployeeSalary) : employeesFull;
   // AUDYT 2026-09-19: dla restricted ukrywamy sumy działów/projektów z < 3 osobami
   // (inaczej pensja jednej osoby = koszt działu − koszty zewnętrzne).
@@ -268,8 +269,13 @@ export async function GET(req: Request) {
     farmActuals: settingsMap.farmActuals ?? {},
     paymentLedger: settingsMap.paymentLedger ?? {},
     scenarios: settingsMap.scenarios ?? [],
+    // Widoczność modułów per login (2026-09-19): admin widzi całą mapę (do edycji),
+    // każdy dostaje swoją listę (null = wszystkie).
+    moduleVisibility: isAdmin ? (settingsMap.moduleVisibility ?? {}) : undefined,
+    allowedTabs: (() => { const mv = settingsMap.moduleVisibility; const l = loginForTabs; return mv && l && Array.isArray(mv[l]) && !isAdmin ? mv[l] : null; })(),
+    authMode: process.env.AUTH_MODE === "accounts" ? "accounts" : "basic",
     serverMetrics: serverMetricsOut,
-    currentUser: await currentLogin(req),
+    currentUser: loginForTabs,
     restricted,
     isAdmin
   });
