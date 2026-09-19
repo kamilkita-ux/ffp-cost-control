@@ -10,8 +10,8 @@ import {
   serializeFinancing,
   serializeDocument
 } from "@/lib/serialize";
-import { currentLogin, isRestrictedUser } from "@/lib/access";
-import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem } from "@/lib/serverMetrics";
+import { currentLogin, isRestrictedUser, isAdminCaller } from "@/lib/access";
+import { computeServerMetrics, redactEmployeeSalary, redactFixedCostLineItem, redactSmallGroupsForRestricted } from "@/lib/serverMetrics";
 import { DEFAULT_GROUP_STRUCTURE } from "@/lib/groupStructureSeed";
 
 export const dynamic = "force-dynamic";
@@ -231,7 +231,11 @@ export async function GET(req: Request) {
   });
 
   const restricted = await isRestrictedUser(req);
+  const isAdmin = !restricted && (await isAdminCaller(req));
   const employeesOut = restricted ? employeesFull.map(redactEmployeeSalary) : employeesFull;
+  // AUDYT 2026-09-19: dla restricted ukrywamy sumy działów/projektów z < 3 osobami
+  // (inaczej pensja jednej osoby = koszt działu − koszty zewnętrzne).
+  const serverMetricsOut = restricted ? redactSmallGroupsForRestricted(serverMetrics, employeesFull, projectsOut) : serverMetrics;
   const fixedCostSchedule = restricted
     ? {
         ...fixedCostScheduleFull,
@@ -255,8 +259,9 @@ export async function GET(req: Request) {
     fixedCostSchedule,
     shareholderStructure: settingsMap.shareholderStructure ?? DEFAULT_SHAREHOLDER_STRUCTURE,
     groupStructure: settingsMap.groupStructure ?? DEFAULT_GROUP_STRUCTURE,
-    serverMetrics,
+    serverMetrics: serverMetricsOut,
     currentUser: await currentLogin(req),
-    restricted
+    restricted,
+    isAdmin
   });
 }

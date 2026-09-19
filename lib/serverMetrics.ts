@@ -36,7 +36,7 @@ function monthlyEquivalentGeneric(amount: any, freq: string): number {
     case "kwartalny": return a / 3;
     case "półroczny": return a / 6;
     case "roczny": return a / 12;
-    default: return a;
+    default: return 0; // jednorazowy / nieregularny — nie jest kosztem miesięcznym (audyt 2026-09-19)
   }
 }
 
@@ -60,7 +60,15 @@ function localISO(d: Date): string {
   const p2 = (n: number) => (n < 10 ? "0" : "") + n;
   return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
 }
-function runRateAsOfISO(): string { const d = new Date(); return localISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
+// AUDYT 2026-09-19: "dziś" liczone w strefie Europe/Warsaw (serwer na Railway
+// działa w UTC — 1-go dnia miesiąca 00:00-02:00 czasu PL liczyłby jeszcze
+// poprzedni miesiąc, inaczej niż przeglądarka).
+function warsawToday(): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Warsaw", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  return new Date(get("year"), get("month") - 1, get("day"));
+}
+function runRateAsOfISO(): string { const d = warsawToday(); return localISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
 function recurringCostActive(c: AnyRec, asOfISO: string): boolean {
   if (c.paymentStatus === "anulowany") return false;
   if (c.costDate && String(c.costDate) > asOfISO) return false;
@@ -99,6 +107,7 @@ export interface ServerMetrics {
   deptCost: Record<string, { employees: number; empCost: number; otherCost: number; total: number }>;
   potentialSavingsMonthly: number;
   potentialSavingsAnnual: number;
+  potentialSavingsContractsMonthly: number;
   byAssetType: Record<string, { revenue: number; cost: number; count: number; mwPower: number }>;
 }
 
@@ -170,11 +179,13 @@ export function computeServerMetrics(data: {
     deptCost[d.id] = { employees: deptEmployees.length, empCost: empC, otherCost: costC, total: empC + costC };
   }
 
+  // AUDYT 2026-09-19: oszczędności liczone TYMI SAMYMI regułami co "Koszt dziś"
+  // (tylko pozycje aktywne dziś; umowy osobno, bo nie wchodzą do totalBurn).
   const potentialSavingsMonthly =
-    realCosts.filter((c) => c.excludeFromSimulation).reduce((s, c) => s + monthlyEquivalent(c), 0) +
-    realEmployeesAll.filter((e) => e.excludeFromSimulation).reduce((s, e) => s + totalMonthlyCostEmployee(e), 0) +
-    contracts.filter((c) => c.excludeFromSimulation).reduce((s, c) => s + monthlyEquivalentGeneric(c.amount, c.frequency), 0) +
-    financings.filter((f) => f.excludeFromSimulation).reduce((s, f) => s + (Number(f.monthlyPayment) || 0), 0);
+    activeCosts.filter((c) => c.excludeFromSimulation).reduce((s, c) => s + monthlyEquivalent(c), 0) +
+    activeEmployees.filter((e) => e.excludeFromSimulation).reduce((s, e) => s + totalMonthlyCostEmployee(e), 0) +
+    financings.filter((f) => f.excludeFromSimulation && financingActive(f, asOf)).reduce((s, f) => s + (Number(f.monthlyPayment) || 0), 0);
+  const potentialSavingsContractsMonthly = contracts.filter((c) => c.excludeFromSimulation).reduce((s, c) => s + monthlyEquivalentGeneric(c.amount, c.frequency), 0);
 
   const monthlyProfit = monthlyRevenue - totalBurn;
 
@@ -182,7 +193,7 @@ export function computeServerMetrics(data: {
     monthlyPayroll, monthlyExternal, monthlyFinancing, monthlyFixed, totalBurn, annualRunRate,
     monthlyProjectCost, totalProjectCost, monthlyProjectRevenue, monthlyRevenue, monthlyRevenueProjected,
     monthlyProfit, annualProfit: monthlyProfit * 12,
-    monthlyAdmin, deptCost, potentialSavingsMonthly, potentialSavingsAnnual: potentialSavingsMonthly * 12,
+    monthlyAdmin, deptCost, potentialSavingsMonthly, potentialSavingsAnnual: potentialSavingsMonthly * 12, potentialSavingsContractsMonthly,
     byAssetType
   };
 }
@@ -234,4 +245,26 @@ export function preserveSalaryFieldsIfRestricted<T extends AnyRec>(
 // nazwa i notatka, które ujawniają, o kogo chodzi.
 export function redactFixedCostLineItem<T extends AnyRec>(item: T, index: number): T {
   return { ...item, name: `Pozycja kosztowa ${index + 1} (ukryta)`, note: "" } as T;
+}
+
+// AUDYT 2026-09-19: dla kont ograniczonych sumy per dział / per projekt z
+// mniej niż 3 osobami zdradzają pensję pojedynczej osoby przez odjęcie
+// (koszt działu - koszty zewnętrzne). Takie pozycje są ukrywane (null),
+// suma spółki zostaje.
+export function redactSmallGroupsForRestricted(sm: ServerMetrics, employees: AnyRec[], projects: AnyRec[]): ServerMetrics {
+  const out: ServerMetrics = JSON.parse(JSON.stringify(sm));
+  const active = employees.filter((e) => !e.isDemo && e.status !== "zakończona współpraca");
+  for (const deptId of Object.keys(out.deptCost)) {
+    const d = out.deptCost[deptId];
+    if (d.employees > 0 && d.employees < 3) { (d as any).empCost = null; (d as any).total = null; (d as any).hidden = true; }
+  }
+  const hiddenProjects: string[] = [];
+  for (const p of projects) {
+    const n = active.filter((e) => (e.allocations || []).some((a: AnyRec) => a.projectId === p.id && Number(a.pct) > 0)).length;
+    if (n > 0 && n < 3) { (out.monthlyProjectCost as any)[p.id] = null; hiddenProjects.push(p.id); }
+  }
+  (out as any).hiddenProjectCosts = hiddenProjects;
+  const excludedEmp = active.filter((e) => e.excludeFromSimulation).length;
+  if (excludedEmp > 0 && excludedEmp < 3) { (out as any).potentialSavingsMonthly = null; (out as any).potentialSavingsAnnual = null; }
+  return out;
 }

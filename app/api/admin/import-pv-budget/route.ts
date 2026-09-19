@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminCaller } from "@/lib/access";
 import { logChange } from "@/lib/audit";
+import { portfolioWasReset, LEGACY_DISABLED_MESSAGE } from "@/lib/legacyImportGuard";
 import { PV_BUDGET_ENTRIES } from "@/lib/pvBudgetSeed";
 
 // POST /api/admin/import-pv-budget — wczytuje model budżetowy z narzędzia
@@ -46,6 +47,9 @@ export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  if (await portfolioWasReset()) {
+    return NextResponse.json({ error: "legacy_disabled", message: LEGACY_DISABLED_MESSAGE }, { status: 409 });
+  }
 
   let projectsCreated = 0;
   let projectsUpdated = 0;
@@ -66,7 +70,7 @@ export async function POST(req: Request) {
 
     if (e.matchExistingProjectName) {
       const existing = await prisma.project.findFirst({
-        where: { name: e.matchExistingProjectName, isDemo: false }
+        where: { name: e.matchExistingProjectName, isDemo: false, deletedAt: null }
       });
       if (!existing) {
         skipped.push(`${e.label}: nie znaleziono istniejącego projektu "${e.matchExistingProjectName}" — pomiń.`);
@@ -77,7 +81,7 @@ export async function POST(req: Request) {
       projectsUpdated++;
     } else {
       const existingByLabel = await prisma.project.findFirst({
-        where: { name: e.label, isDemo: false }
+        where: { name: e.label, isDemo: false, deletedAt: null }
       });
       if (existingByLabel) {
         projectId = existingByLabel.id;

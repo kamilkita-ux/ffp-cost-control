@@ -31,6 +31,14 @@ test("looksLikeRealBackup — akceptuje prawdziwy kształt eksportu, nawet z pus
   );
 });
 
-test("looksLikeRealBackup — akceptuje, gdy PRZYNAJMNIEJ JEDEN oczekiwany klucz jest tablicą", () => {
-  assert.equal(looksLikeRealBackup({ employees: [{ firstName: "Jan" }] }), true);
+test("looksLikeRealBackup — ODRZUCA plik z tylko częścią tablic (czyściłby resztę bazy) — audyt 2026-09-19", () => {
+  assert.equal(looksLikeRealBackup({ employees: [{ firstName: "Jan" }] }), false);
+  assert.equal(looksLikeRealBackup({ documents: [] }), false);
+});
+
+test("looksLikeRealBackup — ODRZUCA eksport z konta ograniczonego (restricted:true)", () => {
+  assert.equal(looksLikeRealBackup({
+    departments: [], projects: [], vendors: [], employees: [],
+    costs: [], contracts: [], financings: [], documents: [], restricted: true
+  }), false);
 });

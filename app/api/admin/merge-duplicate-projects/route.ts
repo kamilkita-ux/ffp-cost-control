@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminCaller } from "@/lib/access";
 import { logChange } from "@/lib/audit";
+import { portfolioWasReset, LEGACY_DISABLED_MESSAGE } from "@/lib/legacyImportGuard";
 import { DUPLICATE_PROJECT_MERGES } from "@/lib/duplicateProjectMerges";
 
 // POST /api/admin/merge-duplicate-projects — jednorazowe (ale bezpieczne do
@@ -59,6 +60,9 @@ export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  if (await portfolioWasReset()) {
+    return NextResponse.json({ error: "legacy_disabled", message: LEGACY_DISABLED_MESSAGE }, { status: 409 });
+  }
 
   let merged = 0;
   let reassignedCosts = 0;
@@ -68,7 +72,7 @@ export async function POST(req: Request) {
   const carried: string[] = [];
   const skipped: string[] = [];
 
-  const allProjects: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false } });
+  const allProjects: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false, deletedAt: null } });
   const deletedIds = new Set<string>();
 
   for (const pair of DUPLICATE_PROJECT_MERGES) {

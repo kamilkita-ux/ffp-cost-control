@@ -537,6 +537,16 @@ function runRateAsOfISO(){ var d=new Date(); return localISO(new Date(d.getFullY
 // karta projektu), żeby każdy moduł liczył tak samo jak Dashboard.
 function activeMonthlyEquivalent(c){ return recurringCostActive(c, runRateAsOfISO()) ? monthlyEquivalent(c) : 0; }
 function activeMonthlyPayment(f){ return financingActive(f, runRateAsOfISO()) ? (Number(f.monthlyPayment)||0) : 0; }
+// Jedna definicja "projekt liczy się do przychodu docelowego / przyszłości"
+// (audyt 2026-09-19: wcześniej 4 różne zakresy statusów w 4 miejscach).
+function projectCountsAsFuture(p){ return !p.isDemo && ['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0; }
+// Ile pełnych miesięcy koszt cykliczny "pracował" od costDate do dziś (do liczenia "wydano od początku").
+function monthsElapsedSince(iso){ if(!iso) return 1; var d=new Date(iso+'T00:00:00'), t=new Date(); var m=(t.getFullYear()-d.getFullYear())*12+(t.getMonth()-d.getMonth())+1; return Math.max(0,m); }
+// Wydatek "od początku" dla jednego kosztu: jednorazowe = kwota; cykliczne = ekwiwalent mies. × miesiące od startu; anulowane = 0.
+function spentToDate(c){ if(c.paymentStatus==='anulowany') return 0; var me=monthlyEquivalent(c); if(me>0) return me*monthsElapsedSince(c.costDate); return Number(c.grossAmount)||Number(c.netAmount)||0; }
+// Najbliższy termin kosztu cyklicznego: dzień miesiąca z dueDate (lub costDate), przesunięty do bieżącego/następnego miesiąca.
+function nextRecurringDue(c){ var base=c.dueDate||c.costDate; if(!base) return null; var b=new Date(base+'T00:00:00'); var t=new Date(); t.setHours(0,0,0,0); if(b>=t) return localISO(b); var d=new Date(t.getFullYear(), t.getMonth(), Math.min(b.getDate(), new Date(t.getFullYear(), t.getMonth()+1, 0).getDate())); if(d<t) d=new Date(t.getFullYear(), t.getMonth()+1, Math.min(b.getDate(), new Date(t.getFullYear(), t.getMonth()+2, 0).getDate())); return localISO(d); }
+function effectiveDue(c){ return monthlyEquivalent(c)>0 ? nextRecurringDue(c) : c.dueDate; }
 function projectActiveInMonth(p, monthEndISO){
   if(p.isDemo) return false;
   if(['sprzedany','zamknięty','zawieszony'].indexOf(p.status)>=0) return false;
@@ -588,13 +598,13 @@ function metrics(){
   // monthlyRevenue/monthlyProfit/projekcji okresowych, żeby nie zawyżać
   // bieżącego run-rate.
   var operationalProjects = realProjects.filter(function(p){return p.status==='operacyjny';});
-  var nonOperationalProjects = realProjects.filter(function(p){return p.status!=='operacyjny';});
+  var nonOperationalProjects = realProjects.filter(function(p){return p.status!=='operacyjny' && projectCountsAsFuture(p);});
   var monthlyRevenue = operationalProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
   var monthlyRevenueProjected = nonOperationalProjects.reduce(function(s,p){return s+(monthlyProjectRevenue[p.id]||0);},0);
 
   // Portfel wg rodzaju aktywa (PV / BESS / Hybryda / Inne) — przychód i koszt miesięczny.
   var byAssetType = {};
-  realProjects.forEach(function(p){
+  realProjects.filter(projectCountsAsFuture).forEach(function(p){
     var t = p.assetType || 'PV';
     if(!byAssetType[t]) byAssetType[t] = {revenue:0, cost:0, count:0, mwPower:0};
     byAssetType[t].revenue += monthlyProjectRevenue[p.id]||0;
@@ -615,22 +625,29 @@ function metrics(){
     deptCost[d.id] = {employees:activeEmployees.filter(function(e){return e.departmentId===d.id;}).length, empCost:empC, otherCost:costC, total:empC+costC};
   });
 
+  // Płatności (audyt 2026-09-19): koszty cykliczne dostają termin wyliczany co
+  // miesiąc (dzień z terminu/daty startu) i nigdy nie są "zaległe na zawsze";
+  // zaległe = tylko jednorazowe z minionym terminem.
   function upcomingIn(days){
     return realCosts.filter(function(c){
       if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
-      var d = daysUntil(c.dueDate); return d!==null && d>=0 && d<=days;
+      if(monthlyEquivalent(c)>0 && !recurringCostActive(c, asOf)) return false;
+      var d = daysUntil(effectiveDue(c)); return d!==null && d>=0 && d<=days;
     });
   }
   var overdue = realCosts.filter(function(c){
     if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return false;
+    if(monthlyEquivalent(c)>0) return false;
     var d = daysUntil(c.dueDate); return d!==null && d<0;
   });
 
+  // Oszczędności liczone TYMI SAMYMI regułami co "Koszt dziś" (audyt 2026-09-19):
+  // tylko pozycje aktywne dziś; umowy osobno (nie wchodzą do kosztu spółki).
   var potentialSavingsMonthly =
-    realCosts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0) +
-    realEmployeesAll.filter(function(e){return e.excludeFromSimulation;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0) +
-    STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0) +
-    STATE.financings.filter(function(f){return f.excludeFromSimulation;}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
+    activeCosts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalent(c);},0) +
+    activeEmployees.filter(function(e){return e.excludeFromSimulation;}).reduce(function(s,e){return s+totalMonthlyCostEmployee(e);},0) +
+    STATE.financings.filter(function(f){return f.excludeFromSimulation && financingActive(f,asOf);}).reduce(function(s,f){return s+activeMonthlyPayment(f);},0);
+  var potentialSavingsContractsMonthly = STATE.contracts.filter(function(c){return c.excludeFromSimulation;}).reduce(function(s,c){return s+monthlyEquivalentGeneric(c.amount,c.frequency);},0);
 
   var monthlyProfit = monthlyRevenue - totalBurn;
 
@@ -654,7 +671,7 @@ function metrics(){
   var projectBudgetStatus = {};
   STATE.projects.forEach(function(p){
     var budget = Number(p.budgetTotal)||0;
-    var spent = realCosts.filter(function(c){return c.projectId===p.id;}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
+    var spent = realCosts.filter(function(c){return c.projectId===p.id;}).reduce(function(s,c){return s+spentToDate(c);},0);
     projectBudgetStatus[p.id] = {budget:budget, spent:spent, over: budget>0 && spent>budget, pct: budget>0? Math.round(spent/budget*100):null};
   });
   var overBudgetProjects = realProjects.filter(function(p){return projectBudgetStatus[p.id].over;});
@@ -682,6 +699,7 @@ function metrics(){
     monthlyAdmin = sm.monthlyAdmin;
     deptCost = sm.deptCost;
     potentialSavingsMonthly = sm.potentialSavingsMonthly;
+    potentialSavingsContractsMonthly = sm.potentialSavingsContractsMonthly||0;
     byAssetType = sm.byAssetType;
   }
 
@@ -695,7 +713,7 @@ function metrics(){
     monthlyProfit:monthlyProfit, annualProfit:monthlyProfit*12,
     monthlyAdmin:monthlyAdmin, unassignedCosts:unassignedCosts, deptCost:deptCost,
     upcoming7:upcomingIn(7), upcoming30:upcomingIn(30), overdue:overdue,
-    potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:potentialSavingsMonthly*12,
+    potentialSavingsMonthly:potentialSavingsMonthly, potentialSavingsAnnual:(potentialSavingsMonthly===null?null:potentialSavingsMonthly*12), potentialSavingsContractsMonthly:potentialSavingsContractsMonthly,
     activeEmployees:activeEmployees,
     futureCapitalNeed:futureCapitalNeed, totalFutureCapitalNeed:totalFutureCapitalNeed,
     projectBudgetStatus:projectBudgetStatus, overBudgetProjects:overBudgetProjects,
@@ -805,7 +823,7 @@ function monthlyEquivalentGeneric(amount,freq){
     case 'kwartalny': return amount/3;
     case 'półroczny': return amount/6;
     case 'roczny': return amount/12;
-    default: return amount; // contracts default treat as monthly unless specified
+    default: return 0; // jednorazowy / nieregularny — nie jest kosztem miesięcznym (audyt 2026-09-19)
   }
 }
 
@@ -908,7 +926,7 @@ var NAV = [
   {key:'documents',label:'Dokumenty',icon:'📎'},
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-22 (Struktura grupy - interaktywne drzewo spolek)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-23 (audyt: 25 poprawek spojnosci, uprawnien i kopii)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1101,12 +1119,12 @@ setInterval(function(){
 /* ============================= DASHBOARD ============================= */
 function viewDashboard(){
   var m = metrics();
-  var topCosts = STATE.costs.slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,10);
+  var topCosts = STATE.costs.filter(function(c){return !c.isDemo && c.paymentStatus!=='anulowany';}).slice().sort(function(a,b){return (Number(b.grossAmount)||0)-(Number(a.grossAmount)||0);}).slice(0,10);
   var byCategory = {};
   STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){ byCategory[c.category||'Inne'] = (byCategory[c.category||'Inne']||0)+activeMonthlyEquivalent(c); });
   var byDept = m.deptCost;
   var terminable = STATE.contracts.filter(function(c){ var d=daysUntil(c.earliestTerminationDate); return d!==null && d>=0 && d<=90; });
-  var unassignedEmp = STATE.employees.filter(function(e){ return !e.allocations || e.allocations.length===0; });
+  var unassignedEmp = STATE.employees.filter(function(e){ return !e.isDemo && e.status!=='zakończona współpraca' && (!e.allocations || e.allocations.length===0); });
 
   function barRows(obj,total,labelFn){
     var keys = Object.keys(obj);
@@ -1183,17 +1201,17 @@ function viewDashboard(){
   '<div class="kpi-grid">'+
     kpi('Miesięczny koszt spółki', fmtMoney0(m.totalBurn), true)+
     kpi('Roczny koszt spółki', fmtMoney0(m.annualRunRate), true)+
-    kpi('Koszty stałe / mies.', fmtMoney0(m.monthlyFixed))+
+    kpi('Koszty stałe / mies. (pracownicy + stałe + raty)', fmtMoney0(m.monthlyFixed))+
     (STATE.restricted?'':kpi('Koszty pracowników / mies.', fmtMoney0(m.monthlyPayroll)))+
     kpi('Koszty projektów / mies.', fmtMoney0(m.totalProjectCost))+
     kpi('Koszty administracyjne / mies.', fmtMoney0(m.monthlyAdmin))+
     kpi('Płatności w 7 dni', fmtMoney0(m.upcoming7.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming7.length+' szt.', false, m.upcoming7.length>0)+
     kpi('Płatności w 30 dni', fmtMoney0(m.upcoming30.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+' • '+m.upcoming30.length+' szt.')+
     kpi('Liczba pracowników', String(m.activeEmployees.length))+
-    kpi('Aktywne projekty', String(STATE.projects.filter(function(p){return ['budowa','operacyjny','pozwolenia','RTB','development'].indexOf(p.status)>=0;}).length))+
+    kpi('Aktywne projekty', String(STATE.projects.filter(function(p){return !p.isDemo && ['budowa','operacyjny','pozwolenia','RTB','development'].indexOf(p.status)>=0;}).length))+
     kpi('Potencjalne oszczędności / mies.', fmtMoney0(m.potentialSavingsMonthly), false, m.potentialSavingsMonthly>0)+
     kpi('Potencjalne oszczędności / rok', fmtMoney0(m.potentialSavingsAnnual))+
-    kpi('Przyszłe zapotrzebowanie na kapitał (wszystkie projekty)', fmtMoney0(m.totalFutureCapitalNeed), true)+
+    kpi('Zadłużenie do spłaty + niezapłacone koszty projektów', fmtMoney0(m.totalFutureCapitalNeed), true)+
     kpi('Docelowy przychód po uruchomieniu (założenie, '+m.nonOperationalProjectsCount+' proj. w rozwoju)', fmtMoney0(m.monthlyRevenueProjected))+
   '</div>'+
   '<div class="muted" style="margin:-6px 0 12px">Przychód powyżej ("Przychód w okresie") liczony jest WYŁĄCZNIE z projektów o statusie „operacyjny" ('+m.operationalProjectsCount+' szt.). Projekty w rozwoju/pozwoleniach/RTB/budowie mogą mieć wpisany planowany przychód docelowy — to założenie na przyszłość (patrz kafelek obok), nie bieżący wynik.</div>'+
@@ -1556,13 +1574,13 @@ function deleteGroupEntity(id){
 //  Kapitał własny = CAPEX − finansowanie dłużne (initialAmount)
 //  Luka kasowa = najniższy punkt skumulowanego wyniku miesięcznego (5 lat)
 function farmRows(){
-  var real = STATE.projects.filter(function(p){return !p.isDemo && ['sprzedany','zamknięty'].indexOf(p.status)<0;});
+  var real = STATE.projects.filter(projectCountsAsFuture);
   var today = todayISO();
   return real.map(function(p){
     var fins = STATE.financings.filter(function(f){return f.projectId===p.id;});
     var costs = STATE.costs.filter(function(c){return !c.isDemo && c.projectId===p.id;});
     var mw = Number(p.mwPower)||0, rev = Number(p.revenueMonthly)||0, capex = Number(p.capex)||0;
-    var opex = costs.reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+    var opex = costs.filter(function(c){return c.paymentStatus!=='anulowany';}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
     var debt = fins.reduce(function(s,f){return s+(Number(f.initialAmount)||0);},0);
     var installment = fins.reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
     var loanStart = fins.map(function(f){return f.nextPaymentDate;}).filter(Boolean).sort()[0]||null;
@@ -1605,14 +1623,15 @@ function viewPortfolio(){
 
   // Krzywa gotówki 5 lat (te same wiersze co Dashboard, okres 5y)
   var pm5 = periodMetrics('5y');
-  var cum=0, minCum=0, minAt=null, firstPositive=null, breakEven=null;
+  var cum=0, minCum=0, minAt=null, firstPositive=null, breakEven=null, cumByPeriod=[];
   (pm5.rows||[]).forEach(function(rw){
-    var net = (rw.revenue-rw.cost)*rw.frac; cum+=net;
+    var net = (rw.revenue-rw.cost)*rw.frac; cum+=net; cumByPeriod.push({period:rw.period, cum:cum});
     if(cum<minCum){ minCum=cum; minAt=rw.period; }
     if(firstPositive===null && rw.revenue-rw.cost>0) firstPositive=rw.period;
-    if(breakEven===null && cum>=0 && rw.period>(minAt||'')) breakEven=rw.period;
   });
   if(minCum===0) minAt = null;
+  // "Odrobienie luki" szukane dopiero PO miesiącu najniższego punktu (audyt 2026-09-19)
+  if(minAt){ for(var bi=0;bi<cumByPeriod.length;bi++){ if(cumByPeriod[bi].period>minAt && cumByPeriod[bi].cum>=0){ breakEven=cumByPeriod[bi].period; break; } } }
 
   // Kapitał własny do wyłożenia wg kwartału (wg daty startu prac; gdy brak — daty uruchomienia)
   var eqByQ = {};
@@ -1747,7 +1766,7 @@ function empStatusPill(s){
 var empFilters = {dept:'',status:''};
 function empFilterDept(v){ empFilters.dept=v; render(); }
 function empFilterStatus(v){ empFilters.status=v; render(); }
-function applySearchFilter(){ return true; }
+function applySearchFilter(e){ if(empFilters.dept && e.departmentId!==empFilters.dept) return false; if(empFilters.status && e.status!==empFilters.status) return false; return true; }
 function exportEmployeesCsv(){
   var restricted = !!STATE.restricted;
   var headers = [{key:'name',label:'Imię i nazwisko'},{key:'position',label:'Stanowisko'},{key:'dept',label:'Dział'},{key:'status',label:'Status'},{key:'contractType',label:'Forma'}];
@@ -1849,10 +1868,10 @@ function viewProjects(){
   '<div class="toolbar"><div><button class="btn btn-sm" onclick="exportProjectsCsv()">Eksport CSV</button></div><button class="btn btn-primary" onclick="openForm(\'projects\')">+ Dodaj projekt</button></div>'+
   '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Kod</th><th>Rodzaj</th><th>Status</th><th>Moc MW</th><th>Lokalizacja</th><th>Koszt / mies.</th><th>Przychód / mies.</th><th>Zysk / mies.</th><th>Budżet</th><th></th></tr></thead><tbody>'+
   (STATE.projects.length?STATE.projects.map(function(p){
-    var cost = m.monthlyProjectCost[p.id]||0, rev = Number(p.revenueMonthly)||0, profit = rev-cost;
+    var hiddenCost = m.monthlyProjectCost[p.id]===null; var cost = m.monthlyProjectCost[p.id]||0, rev = Number(p.revenueMonthly)||0, profit = rev-cost;
     var bs = m.projectBudgetStatus[p.id];
-    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td><span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+fmtMoney(cost)+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(rev):'—')+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(profit):'—')+'</td><td>'+(bs.budget>0?'<span class="pill '+(bs.over?'pill-danger':'pill-ok')+'">'+bs.pct+'%</span>':'—')+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
-  }).join(''):'<tr><td colspan="10" class="empty">Brak projektów</td></tr>')+
+    return '<tr><td><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span>'+(p.isDemo?'<span class="demo-tag">DEMO</span>':'')+'</td><td>'+esc(p.code||'—')+'</td><td><span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></td><td>'+projectStatusPill(p.status)+'</td><td>'+esc(p.mwPower||'—')+'</td><td>'+esc(p.location||'—')+'</td><td class="right">'+(hiddenCost?'<span class="muted">ukryte</span>':fmtMoney(cost))+'</td><td class="right">'+(p.revenueMonthly!==''?fmtMoney(rev):'—')+'</td><td class="right">'+(hiddenCost?'—':(p.revenueMonthly!==''?fmtMoney(profit):'—'))+'</td><td>'+(bs.budget>0?'<span class="pill '+(bs.over?'pill-danger':'pill-ok')+'">'+bs.pct+'%</span>':'—')+'</td><td><span class="link" onclick="openForm(\'projects\',\''+p.id+'\')">edytuj</span></td></tr>';
+  }).join(''):'<tr><td colspan="11" class="empty">Brak projektów</td></tr>')+
   '</tbody></table></div>';
 }
 function exportProjectsCsv(){
@@ -1920,8 +1939,10 @@ function projectDetail(p){
   var empCost = emps.reduce(function(s,e){return s+totalMonthlyCostEmployee(e)*(empAllocPct(e,p.id)/100);},0);
   var fixedCost = costs.filter(function(c){return c.isFixed;}).reduce(function(s,c){return s+activeMonthlyEquivalent(c);},0);
   var oneTimeCost = costs.filter(function(c){return c.recurrence==='jednorazowy'||c.recurrence==='nieregularny';}).reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0);
-  var sinceStart = costs.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0)+oneTimeCost*0; // sum of all recorded gross amounts as "since start"
-  var annualProfit = p.revenueMonthly!==''? (Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0))*12 : null;
+  var sinceStart = costs.filter(function(c){return !c.isDemo;}).reduce(function(s,c){return s+spentToDate(c);},0); // jednorazowe + cykliczne × miesiące od startu, bez anulowanych
+  var extCostTargetNoCancel = costs.filter(function(c){return c.paymentStatus!=='anulowany';}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
+  // ROI/zwrot liczone z kosztów DOCELOWYCH (po uruchomieniu) — tak samo jak w Portfelu farm (audyt 2026-09-19)
+  var annualProfit = p.revenueMonthly!==''? (Number(p.revenueMonthly)-extCostTargetNoCancel-empCost)*12 : null;
   var capex = Number(p.capex)||0;
   var paybackYears = (capex>0 && annualProfit>0)? (capex/annualProfit) : null;
   var roiPct = (capex>0 && annualProfit!==null)? (annualProfit/capex*100) : null;
@@ -1934,8 +1955,8 @@ function projectDetail(p){
   '<div class="kpi-grid">'+
     (function(){ var ent=(STATE.groupStructure&&STATE.groupStructure.entities||[]).find(function(e){return (e.projectIds||[]).indexOf(p.id)>=0;}); return kpi('Spółka celowa (Struktura grupy)', ent? '<span class="link" onclick="goTab(\'group\')">'+esc(ent.name)+'</span>' : '<span class="muted">nieprzypisana</span>'); })()+
     kpi('Przychód miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)):'—',true)+
-    kpi('Zysk miesięczny (orientacyjny)',p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0)):'—',true)+
-    kpi('Koszt miesięczny',fmtMoney0(m.monthlyProjectCost[p.id]||0),true)+
+    kpi('Zysk miesięczny (orientacyjny)',(m.monthlyProjectCost[p.id]===null?'<span class="muted">ukryte</span>':(p.revenueMonthly!==''?fmtMoney0(Number(p.revenueMonthly)-(m.monthlyProjectCost[p.id]||0)):'—')),true)+
+    kpi('Koszt miesięczny',(m.monthlyProjectCost[p.id]===null?'<span class="muted">ukryte (ochrona wynagrodzeń)</span>':fmtMoney0(m.monthlyProjectCost[p.id]||0)),true)+
     kpi('Koszt od początku projektu',fmtMoney0(sinceStart))+
     (STATE.restricted?'':kpi('Koszt pracowników',fmtMoney0(empCost)))+
     kpi('Koszt zewnętrzny (aktywny dziś)',fmtMoney0(extCost))+
@@ -2218,9 +2239,15 @@ function saveVendor(ev,id){
 /* ============================= PAYMENTS ============================= */
 function viewPayments(){
   var groups = {zalegle:[],dzisiaj:[],d7:[],d14:[],d30:[],pozniej:[]};
+  var asOfP = runRateAsOfISO();
   STATE.costs.filter(function(c){return !c.isDemo;}).forEach(function(c){
-    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany'||!c.dueDate) return;
-    var d = daysUntil(c.dueDate);
+    if(c.paymentStatus==='zapłacony'||c.paymentStatus==='anulowany') return;
+    var rec = monthlyEquivalent(c)>0;
+    if(rec && !recurringCostActive(c, asOfP)) return; // jeszcze nie ruszył
+    var due = rec ? nextRecurringDue(c) : c.dueDate;
+    if(!due) return;
+    var d = daysUntil(due);
+    if(rec && d<0) return; // cykliczne nie są "zaległe na zawsze" — termin przesuwa się co miesiąc
     if(d<0) groups.zalegle.push(c);
     else if(d===0) groups.dzisiaj.push(c);
     else if(d<=7) groups.d7.push(c);
@@ -2231,7 +2258,7 @@ function viewPayments(){
   function section(title,list,color){
     return '<div class="panel"'+(color?' style="border-color:'+color+'"':'')+'><h3'+(color?' style="color:'+color+'"':'')+'>'+title+' ('+list.length+') — '+fmtMoney0(list.reduce(function(s,c){return s+(Number(c.grossAmount)||0);},0))+'</h3>'+costsTable(list)+'</div>';
   }
-  return '<h2 class="page-title">Płatności</h2><div class="page-sub">Terminarz zobowiązań spółki</div>'+
+  return '<h2 class="page-title">Płatności</h2><div class="page-sub">Terminarz zobowiązań: koszty jednorazowe wg terminu płatności; koszty cykliczne — najbliższa rata wyliczana co miesiąc z dnia terminu/daty startu (aktywne dziś). Pozycje bez żadnej daty nie są tu pokazywane.</div>'+
   section('⚠ Zaległe',groups.zalegle,'var(--danger)')+
   section('Dzisiaj',groups.dzisiaj,'var(--warn)')+
   section('W 7 dni',groups.d7)+
@@ -2248,6 +2275,7 @@ function viewDepartments(){
   '<div class="table-wrap"><table><thead><tr><th>Dział</th><th>Pracownicy</th><th>Koszt pracowników / mies.</th><th>Inne koszty / mies.</th><th>Koszt łączny / mies.</th><th>Koszt roczny</th><th></th></tr></thead><tbody>'+
   STATE.departments.map(function(d){
     var dc = m.deptCost[d.id]||{employees:0,empCost:0,otherCost:0,total:0};
+    if(dc.hidden){ return '<tr><td>'+esc(d.name)+'</td><td>'+dc.employees+'</td><td class="right muted">ukryte</td><td class="right">'+fmtMoney(dc.otherCost)+'</td><td class="right muted">ukryte</td><td class="right muted">ukryte</td'; }
     return '<tr><td>'+esc(d.name)+'</td><td>'+dc.employees+'</td><td class="right">'+fmtMoney(dc.empCost)+'</td><td class="right">'+fmtMoney(dc.otherCost)+'</td><td class="right"><b>'+fmtMoney(dc.total)+'</b></td><td class="right">'+fmtMoney(dc.total*12)+'</td><td><span class="link" onclick="openDeptForm(\''+d.id+'\')">edytuj</span> <span class="link btn-danger" onclick="deleteDept(\''+d.id+'\')">usuń</span></td></tr>';
   }).join('')+
   '</tbody></table></div>';
@@ -2291,7 +2319,7 @@ function viewAnalysis(){
   var byEmp = realEmployeesA.map(function(e){return {label:empName(e),value:totalMonthlyCostEmployee(e)};}).sort(function(a,b){return b.value-a.value;});
   var byVendor = groupSum(function(c){return c.vendorId||'brak';}, function(k){return k==='brak'?'Brak dostawcy':vendorName(k);});
   return '<h2 class="page-title">Analiza kosztów</h2><div class="page-sub">Cash burn: '+fmtMoney0(m.totalBurn)+'/mies. • Run-rate roczny: '+fmtMoney0(m.annualRunRate)+'</div>'+
-  '<div class="kpi-grid">'+kpi('Miesięczny cash burn',fmtMoney0(m.totalBurn),true)+kpi('Roczny run-rate',fmtMoney0(m.annualRunRate),true)+kpi('Koszty stałe',fmtMoney0(m.monthlyFixed))+kpi('Koszty zmienne/zewnętrzne',fmtMoney0(m.monthlyExternal))+'</div>'+
+  '<div class="kpi-grid">'+kpi('Miesięczny cash burn',fmtMoney0(m.totalBurn),true)+kpi('Roczny run-rate',fmtMoney0(m.annualRunRate),true)+kpi('Koszty stałe (pracownicy + stałe + raty)',fmtMoney0(m.monthlyFixed))+kpi('Koszty zewnętrzne razem (w tym stałe)',fmtMoney0(m.monthlyExternal))+'</div>'+
   '<div class="grid2">'+
   '<div class="panel"><h3>TOP 20 największych kosztów</h3>'+costsTable(top20)+'</div>'+
   '<div class="panel"><h3>TOP 20 największych kosztów stałych</h3>'+costsTable(top20fixed)+'</div>'+
@@ -2299,9 +2327,9 @@ function viewAnalysis(){
   '<div class="panel"><h3>Koszt wg kategorii</h3>'+table(groupSum(function(c){return c.category||'Inne';},function(k){return k;}))+'</div>'+
   '<div class="panel"><h3>Koszt wg projektu</h3>'+table(STATE.projects.filter(function(p){return !p.isDemo;}).map(function(p){return {label:projectName(p.id),value:m.monthlyProjectCost[p.id]||0};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
   '</div>'+(STATE.restricted?
-  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'
+  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).filter(function(k){return !m.deptCost[k].hidden;}).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+(Object.keys(m.deptCost).some(function(k){return m.deptCost[k].hidden;})?'<div class="muted" style="font-size:12px">Działy z mniej niż 3 osobami ukryte (ochrona wynagrodzeń).</div>':'')+'</div>'
   :'<div class="grid2">'+
-  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
+  '<div class="panel"><h3>Koszt wg działu</h3>'+table(Object.keys(m.deptCost).filter(function(k){return !m.deptCost[k].hidden;}).map(function(k){return {label:deptName(k),value:m.deptCost[k].total};}).sort(function(a,b){return b.value-a.value;}))+'</div>'+
   '<div class="panel"><h3>Koszt wg pracownika</h3>'+table(byEmp)+'</div>'+
   '</div>')+
   '<div class="panel"><h3>Koszt wg dostawcy</h3>'+table(byVendor)+'</div>';
@@ -2328,10 +2356,10 @@ function viewCharts(){
 
   return '<h2 class="page-title">Wykresy</h2>'+
   '<div class="page-sub">Najważniejsze liczby z dashboardu i Założeń w formie wykresów — stan na '+fmtDate(todayISO())+'.</div>'+
-  '<div class="panel"><h3>Przychód miesięczny wg projektu (rzeczywiste dane)</h3>'+
+  '<div class="panel"><h3>Przychód miesięczny wg projektu (z kart projektów, w tym planowany)</h3>'+
     (revByProject.length? svgBarChart(revByProject,{color:'var(--chart-seq)'}) : '<div class="empty">Brak projektów z wpisanym przychodem miesięcznym</div>')+
   '</div>'+
-  '<div class="panel"><h3>Koszty miesięczne wg kategorii (rzeczywiste dane)</h3>'+
+  '<div class="panel"><h3>Koszty miesięczne wg kategorii (aktywne dziś)</h3>'+
     (costByCategory.length? svgBarChart(costByCategory,{color:'var(--chart-seq-2)'}) : '<div class="empty">Brak danych</div>')+
   '</div>'+
   '<div class="panel"><h3>Koszty stałe — harmonogram miesięczny 2026–2028 (dane kontrolera)</h3>'+
@@ -2500,8 +2528,10 @@ function saveShareholderList(){
 /* ============================= SIMULATOR ============================= */
 function viewSimulator(){
   var m = metrics();
-  var newTotal = m.totalBurn - m.potentialSavingsMonthly;
-  var pct = m.totalBurn>0? Math.round(m.potentialSavingsMonthly/m.totalBurn*100):0;
+  var savingsHidden = m.potentialSavingsMonthly===null;
+  var sav = savingsHidden? 0 : m.potentialSavingsMonthly;
+  var newTotal = m.totalBurn - sav;
+  var pct = m.totalBurn>0? Math.round(sav/m.totalBurn*100):0;
   var selCosts = STATE.costs.filter(function(c){return c.excludeFromSimulation;});
   var selEmp = STATE.employees.filter(function(e){return e.excludeFromSimulation;});
   var selContracts = STATE.contracts.filter(function(c){return c.excludeFromSimulation;});
@@ -2509,8 +2539,9 @@ function viewSimulator(){
   return '<h2 class="page-title">Symulator oszczędności</h2><div class="page-sub">Zaznacz koszty, pracowników, umowy lub leasingi do redukcji, aby zobaczyć wpływ na budżet spółki.</div>'+
   '<div class="grid3">'+
     kpi('Obecny koszt miesięczny',fmtMoney0(m.totalBurn),true)+
-    kpi('Planowane redukcje / mies.',fmtMoney0(m.potentialSavingsMonthly))+
-    kpi('Nowy koszt miesięczny',fmtMoney0(newTotal),true)+
+    kpi('Planowane redukcje / mies. (koszty aktywne dziś)',savingsHidden?'ukryte (za mało osób, ochrona wynagrodzeń)':fmtMoney0(sav))+
+    kpi('Nowy koszt miesięczny',savingsHidden?'—':fmtMoney0(newTotal),true)+
+    ((m.potentialSavingsContractsMonthly||0)>0? kpi('Dodatkowo umowy/abonamenty do wypowiedzenia (poza kosztem spółki)',fmtMoney0(m.potentialSavingsContractsMonthly)) : '')+
   '</div>'+
   '<div class="grid3">'+
     kpi('Oszczędność roczna',fmtMoney0(m.potentialSavingsAnnual))+
@@ -2544,7 +2575,7 @@ function viewDocuments(){
   '<div class="toolbar"><div></div><button class="btn btn-primary" onclick="openForm(\'documents\')">+ Dodaj dokument</button></div>'+
   '<div class="table-wrap"><table><thead><tr><th>Nazwa</th><th>Rodzaj</th><th>Data</th><th>Link</th><th>Opis</th><th></th></tr></thead><tbody>'+
   (STATE.documents.length?STATE.documents.map(function(d){
-    return '<tr><td>'+esc(d.name)+'</td><td>'+esc(d.docType||'—')+'</td><td>'+fmtDate(d.date)+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank" rel="noopener">otwórz</a>':'—')+'</td><td>'+esc(d.description||'')+'</td><td><span class="link" onclick="openForm(\'documents\',\''+d.id+'\')">edytuj</span></td></tr>';
+    return '<tr><td>'+esc(d.name)+'</td><td>'+esc(d.docType||'—')+'</td><td>'+fmtDate(d.date)+'</td><td>'+(d.link&&/^https?:\/\//i.test(d.link)?'<a href="'+esc(d.link)+'" target="_blank" rel="noopener">otwórz</a>':'—')+'</td><td>'+esc(d.description||'')+'</td><td><span class="link" onclick="openForm(\'documents\',\''+d.id+'\')">edytuj</span></td></tr>';
   }).join(''):'<tr><td colspan="6" class="empty">Brak dokumentów. Docelowo dokumenty będą przechowywane w SharePoint / Microsoft 365.</td></tr>')+
   '</tbody></table></div>';
 }
@@ -2572,6 +2603,9 @@ function saveDocument(ev,id){
 // Stan zwinięcia paneli w Ustawieniach — zapamiętywany w przeglądarce, żeby
 // po każdym odświeżeniu widoku (np. po kliknięciu przycisku) otwarte panele
 // nie zwijały się z powrotem. Domyślnie wszystko zwinięte.
+// Czy portfel farm został zbudowany resetem (marker w opisie projektu) — wtedy
+// starsze importy są ukryte (i zablokowane na serwerze: 409).
+function portfolioWasResetClient(){ return STATE.projects.some(function(p){ return !p.isDemo && (p.description||'').indexOf('[Źródło: model Grzegorza, Budżet Farm PV') >= 0; }); }
 function settingsOpenAttr(key){ try{ return localStorage.getItem('ffp_settings_open_'+key)==='1' ? 'open' : ''; }catch(e){ return ''; } }
 function onSettingsToggle(el){ try{ localStorage.setItem('ffp_settings_open_'+el.getAttribute('data-key'), el.open?'1':'0'); }catch(e){} }
 function viewSettings(){
@@ -2588,7 +2622,7 @@ function viewSettings(){
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
   '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
   '</div></details>'+
-  '<details class="panel" style="border-color:var(--danger)" data-key="reset" '+settingsOpenAttr('reset')+' ontoggle="onSettingsToggle(this)"><summary><h3>Reset i odbudowa portfela farm (dane Grzegorza jako źródło prawdy)</h3><span class="muted">kasuje portfel — ostrożnie</span></summary><div class="panel-body">'+
+  (STATE.isAdmin? '<details class="panel" style="border-color:var(--danger)" data-key="reset" '+settingsOpenAttr('reset')+' ontoggle="onSettingsToggle(this)"><summary><h3>Reset i odbudowa portfela farm (dane Grzegorza jako źródło prawdy)</h3><span class="muted">kasuje portfel — ostrożnie</span></summary><div class="panel-body">'+
   '<div class="muted">Decyzja z 18.09: KASUJE wszystkie Projekty i ich Finansowania (oraz wcześniej wygenerowany OPEX farm), po czym buduje od zera: 7 farm z modelu Grzegorza (moc, CAPEX, data uruchomienia, przychód mies. = moc × uzysk × cena, finansowanie z ratą od pierwszej raty, 4 linie OPEX od daty uruchomienia; magazyny energii jako osobne projekty BESS) + 6 farm z CF Farmy.xlsx oznaczonych „do uzupełnienia”. NIE rusza: Pracowników, Kosztów spółki (koszty przypięte do farm są przepinane po nazwie, nie kasowane), Umów, Dostawców, Akcjonariatu, kopii, użytkowników, danych DEMO. Jedna transakcja — albo wszystko, albo nic. Bezpieczne do ponownego kliknięcia (ten sam stan końcowy). <b>Najpierw „Utwórz kopię teraz”.</b></div>'+
   '<div style="margin:10px 0"><button class="btn btn-danger btn-sm" onclick="resetFarmPortfolioNow()">Wyzeruj i odbuduj portfel farm</button></div>'+
   '</div></details>'+
@@ -2596,7 +2630,7 @@ function viewSettings(){
   '<div class="muted">Umówiony sposób uzupełniania: podajesz informację, ja dopisuję ją do listy poprawek w kodzie, Ty klikasz raz. Aktualnie na liście: Opole 5x1 MW — start prac XI 2026, przychód i OPEX od VIII 2027 (Kamil, 18.09). Bezpieczne do wielokrotnego kliknięcia (ustawia te same wartości).</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="applyDataAdjustmentsNow()">Zastosuj poprawki danych</button></div>'+
   '</div></details>'+
-  '<details class="panel" data-key="legacy" '+settingsOpenAttr('legacy')+' ontoggle="onSettingsToggle(this)"><summary><h3>Starsze narzędzia importu (przed resetem 18.09)</h3><span class="muted">zwykle niepotrzebne</span></summary><div class="panel-body">'+
+  (portfolioWasResetClient()? '' : ('<details class="panel" data-key="legacy" '+settingsOpenAttr('legacy')+' ontoggle="onSettingsToggle(this)"><summary><h3>Starsze narzędzia importu (przed resetem 18.09)</h3><span class="muted">zwykle niepotrzebne</span></summary><div class="panel-body">'+
   '<div class="panel"><h3>Portfel farm PV — arkusz kontrolera (CF Farmy.xlsx)</h3>'+
   '<div class="muted">Wczytuje/odświeża 11 farm (Miejsce Piastowe, Dębowiec, Łubno, Skrzypaczowice, F8 Wysoka Strzyżowska, F9 Chludowo, Ziempniów, Wylewa, Poręba oraz Kamyk i Pieczyska w akwizycji) jako Projekty z poprawną mocą, statusem, datami z Harmonogramu i finansowaniem z zakładki „Koszty Finansowe”. Bezpieczne do wielokrotnego kliknięcia — dopasowuje po nazwie, nie duplikuje.</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importCfPortfolioNow()">Wczytaj / odśwież portfel farm</button></div>'+
@@ -2614,7 +2648,8 @@ function viewSettings(){
   '<div class="muted">Wczytuje dane z 7 pozycji (Dębowiec, Lubelskie 4x1 MW [nowy], Łubno, Miejsce Piastowe z BESS 2MW, Opole 5x1 MW [nowy], Poręba, Wylewa) jako BIEŻĄCY, aktualny stan tych projektów (decyzja Kamila 2026-09-17) — nadpisuje moc/CAPEX/lokalizację/datę uruchomienia/opis i zastępuje stare finansowanie tej samej pozycji z arkusza CF Farmy.xlsx. Nie rusza pozostałych 4 farm ani innych modułów (Pracownicy, Koszty stałe spółki itd.). Zalecane: najpierw kliknij „Scal duplikaty farm” powyżej. Bezpieczne do wielokrotnego kliknięcia — ale ZALECANA KOPIA ZAPASOWA przed pierwszym uruchomieniem (nadpisuje dane).</div>'+
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="importPvBudgetNow()">Wczytaj model budżetowy Grzegorza (dane bieżące)</button></div>'+
   '</div>'+
-  '</div></details>'+
+  '</div></details>'))+
+  '' : '')+
   '<details class="panel" data-key="dicts" '+settingsOpenAttr('dicts')+' ontoggle="onSettingsToggle(this)"><summary><h3>Słowniki: kategorie i centra kosztów</h3></summary><div class="panel-body"><div class="grid2">'+
   '<div><div class="section-title">Kategorie kosztów</div>'+dictList('costCategories')+'</div>'+
   '<div><div class="section-title">Centra kosztów</div>'+dictList('costCenters')+'</div>'+

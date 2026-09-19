@@ -13,7 +13,12 @@ export const EXPECTED_BACKUP_ARRAY_KEYS = [
   "departments", "projects", "vendors", "employees", "costs", "contracts", "financings", "documents"
 ] as const;
 
+// AUDYT 2026-09-19: wymagamy WSZYSTKICH tablic (plik z jedną tablicą, np.
+// {documents:[]}, czyściłby resztę bazy) i odrzucamy eksport z konta
+// ograniczonego (ma wyzerowane wynagrodzenia i zredagowane pozycje kosztów
+// stałych — wgranie go przez admina nadpisałoby prawdziwe dane).
 export function looksLikeRealBackup(data: unknown): boolean {
-  if (!data || typeof data !== "object") return false;
-  return EXPECTED_BACKUP_ARRAY_KEYS.some((k) => Array.isArray((data as any)[k]));
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  if ((data as any).restricted === true) return false;
+  return EXPECTED_BACKUP_ARRAY_KEYS.every((k) => Array.isArray((data as any)[k]));
 }

@@ -122,7 +122,7 @@ export async function POST(req: Request) {
 
   const result = await prisma.$transaction(async (tx: any) => {
     // ---- 1. Stan wyjściowy ----
-    const oldProjects: Array<{ id: string; name: string }> = await tx.project.findMany({ where: { isDemo: false }, select: { id: true, name: true } });
+    const oldProjects: Array<{ id: string; name: string }> = await tx.project.findMany({ where: { isDemo: false, deletedAt: null }, select: { id: true, name: true } });
     const oldIds = oldProjects.map((p) => p.id);
     const oldNameById: Record<string, string> = {};
     oldProjects.forEach((p) => { oldNameById[p.id] = exactName(p.name); });
@@ -132,6 +132,10 @@ export async function POST(req: Request) {
       ? await tx.cost.findMany({ where: { projectId: { in: oldIds } }, select: { id: true, projectId: true, notes: true } }) : [];
     const linkedContracts: Array<{ id: string; projectId: string }> = oldIds.length
       ? await tx.contract.findMany({ where: { projectId: { in: oldIds } }, select: { id: true, projectId: true } }) : [];
+    // AUDYT 2026-09-19: przypisania pracowników do farm też przepinamy po
+    // nazwie (wcześniej były kasowane bezpowrotnie -> koszt osób spadał do Centrali).
+    const linkedAllocations: Array<{ employeeId: string; projectId: string; pct: any }> = oldIds.length
+      ? await tx.employeeProjectAllocation.findMany({ where: { projectId: { in: oldIds } }, select: { employeeId: true, projectId: true, pct: true } }) : [];
 
     // ---- 2. Kasowanie ----
     const opexToDelete = linkedCosts.filter((c) => (c.notes || "").includes(OPEX_MARKER)).map((c) => c.id);
@@ -263,7 +267,27 @@ export async function POST(req: Request) {
       if (nid) { await tx.contract.update({ where: { id: c.id }, data: { projectId: nid } }); relinkedContracts++; }
     }
 
-    return { projectsDeleted: oldIds.length, projectsCreated, financingsCreated, costsCreated, opexDeleted: opexToDelete.length, relinkedCosts, relinkedContracts, detachedCosts: linkedCosts.length - opexToDelete.length - relinkedCosts, detachedContracts: linkedContracts.length - relinkedContracts };
+    let relinkedAllocations = 0;
+    for (const a of linkedAllocations) {
+      const nid = newIdByName[oldNameById[a.projectId]];
+      if (nid) { await tx.employeeProjectAllocation.create({ data: { employeeId: a.employeeId, projectId: nid, pct: a.pct } }); relinkedAllocations++; }
+    }
+    // Struktura grupy: przypięte farmy (projectIds) przemapuj stare id -> nowe po nazwie.
+    const gsRow = await tx.appSetting.findUnique({ where: { key: "groupStructure" } });
+    let remappedGroupLinks = 0;
+    if (gsRow && gsRow.value && Array.isArray((gsRow.value as any).entities)) {
+      const gsv = gsRow.value as any;
+      gsv.entities.forEach((ent: any) => {
+        ent.projectIds = (ent.projectIds || []).map((pid: string) => {
+          const nid = newIdByName[oldNameById[pid] || ""];
+          if (nid) { remappedGroupLinks++; return nid; }
+          return pid;
+        }).filter((pid: string) => !oldIds.includes(pid));
+      });
+      await tx.appSetting.update({ where: { key: "groupStructure" }, data: { value: gsv } });
+    }
+
+    return { projectsDeleted: oldIds.length, projectsCreated, financingsCreated, costsCreated, opexDeleted: opexToDelete.length, relinkedCosts, relinkedContracts, relinkedAllocations, remappedGroupLinks, detachedCosts: linkedCosts.length - opexToDelete.length - relinkedCosts, detachedContracts: linkedContracts.length - relinkedContracts };
   }, { timeout: 60000 });
 
   await logChange(

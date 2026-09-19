@@ -41,7 +41,9 @@ export async function getVerifiedSession(req: Request): Promise<SessionPayload |
   try {
     const user = await prisma.appUser.findUnique({ where: { username: session.username } });
     if (!user || !user.active) return null;
-    return session;
+    // AUDYT 2026-09-19: rola brana z BAZY, nie z tokenu — zmiana roli
+    // (full -> restricted) działa od razu, nie dopiero po wygaśnięciu tokenu.
+    return { ...session, role: user.role === "full" ? "full" : "restricted" };
   } catch {
     // Baza chwilowo niedostępna — bezpieczniej potraktować sesję jako
     // nieważną (odmówić dostępu) niż zaufać samemu podpisowi tokenu.
@@ -79,8 +81,12 @@ export async function currentLogin(req: Request): Promise<string> {
 export async function isRestrictedUser(req: Request): Promise<boolean> {
   const session = await getVerifiedSession(req);
   if (session) return session.role === "restricted";
+  // AUDYT 2026-09-19: w trybie kont brak ZWERYFIKOWANEJ sesji (np. konto
+  // dezaktywowane, token jeszcze ważny) = traktuj jak konto ograniczone,
+  // nigdy jak pełne. To samo, gdy nie da się ustalić loginu.
+  if (process.env.AUTH_MODE === "accounts") return true;
   const login = await currentLogin(req);
-  if (!login) return false;
+  if (!login) return true;
   const restrictedLogins = parseUserList(process.env.APP_BASIC_AUTH_RESTRICTED_USERS);
   return restrictedLogins.includes(login);
 }

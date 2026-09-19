@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminCaller } from "@/lib/access";
 import { logChange } from "@/lib/audit";
+import { portfolioWasReset, LEGACY_DISABLED_MESSAGE } from "@/lib/legacyImportGuard";
 import { LOST_REVENUE_REPAIRS } from "@/lib/lostRevenueRepair";
 
 // POST /api/admin/repair-lost-revenue — przywraca "Przychód / mies." (i
@@ -16,8 +17,11 @@ export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  if (await portfolioWasReset()) {
+    return NextResponse.json({ error: "legacy_disabled", message: LEGACY_DISABLED_MESSAGE }, { status: 409 });
+  }
 
-  const all: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false } });
+  const all: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false, deletedAt: null } });
   const filled: string[] = [];
   const skipped: string[] = [];
 

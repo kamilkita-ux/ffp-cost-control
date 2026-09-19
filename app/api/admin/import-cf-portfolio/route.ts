@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminCaller } from "@/lib/access";
 import { logChange } from "@/lib/audit";
+import { portfolioWasReset, LEGACY_DISABLED_MESSAGE } from "@/lib/legacyImportGuard";
 import { CF_PORTFOLIO_PROJECTS, CF_PORTFOLIO_FINANCINGS } from "@/lib/cfPortfolioSeed";
 
 // POST /api/admin/import-cf-portfolio — wczytuje/odświeża portfel 11 farm PV
@@ -22,6 +23,9 @@ export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  if (await portfolioWasReset()) {
+    return NextResponse.json({ error: "legacy_disabled", message: LEGACY_DISABLED_MESSAGE }, { status: 409 });
+  }
 
   const projectIdByName: Record<string, string> = {};
   let projectsCreated = 0;
@@ -29,7 +33,7 @@ export async function POST(req: Request) {
 
   for (const p of CF_PORTFOLIO_PROJECTS) {
     const existing = await prisma.project.findFirst({
-      where: { name: p.name, isDemo: false }
+      where: { name: p.name, isDemo: false, deletedAt: null }
     });
     const data = {
       name: p.name,

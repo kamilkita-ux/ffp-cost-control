@@ -31,6 +31,23 @@ export async function PUT(req: Request) {
   if (RESTRICTED_FORBIDDEN_KEYS.has(key) && (await isRestrictedUser(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  // AUDYT 2026-09-19: minimalna walidacja kształtu — zły typ (np. string zamiast
+  // tablicy kategorii) wywalał interfejs WSZYSTKIM użytkownikom.
+  const v = body.value;
+  const bad = (msg: string) => NextResponse.json({ error: "invalid_value", message: msg }, { status: 400 });
+  if (key === "costCategories" || key === "costCenters") {
+    if (!Array.isArray(v) || !v.every((x: unknown) => typeof x === "string")) return bad("Oczekiwano listy nazw (tablica tekstów).");
+  } else if (key === "currency") {
+    if (!["PLN", "EUR", "USD"].includes(String(v))) return bad("Waluta musi być PLN, EUR lub USD.");
+  } else if (key === "groupStructure") {
+    if (!v || typeof v !== "object" || !Array.isArray(v.entities) || !Array.isArray(v.shares)) return bad("Struktura grupy musi mieć listy entities i shares.");
+    if (!v.entities.every((e: any) => e && typeof e.id === "string" && typeof e.name === "string")) return bad("Każda spółka musi mieć id i nazwę.");
+    if (!v.shares.every((s: any) => s && typeof s.owner === "string" && typeof s.owned === "string" && Number.isFinite(Number(s.pct)))) return bad("Każdy udział musi mieć właściciela, spółkę i procent.");
+  } else if (key === "shareholderStructure") {
+    if (!v || typeof v !== "object" || !Array.isArray(v.shareholders)) return bad("Akcjonariat musi mieć listę shareholders.");
+  } else if (key === "assumptions" || key === "fixedCostSchedule") {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Oczekiwano obiektu ustawień.");
+  }
   const saved = await prisma.appSetting.upsert({
     where: { key },
     create: { key, value: body.value },

@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!(await isAdminCaller(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  const all: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false } });
+  const all: Array<Record<string, any>> = await prisma.project.findMany({ where: { isDemo: false, deletedAt: null } });
   const applied: string[] = [];
   const skipped: string[] = [];
 
