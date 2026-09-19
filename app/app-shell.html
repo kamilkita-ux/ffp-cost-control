@@ -261,7 +261,7 @@ details.panel>.panel-body{margin-top:10px;}
     <div id="offline-banner" class="no-print">Brak połączenia z internetem — dane mogą być nieaktualne, zmiany się nie zapiszą.</div>
     <div id="topbar" class="no-print">
       <button class="btn btn-icon" id="mobile-menu-btn" onclick="openMobileNav()">☰</button>
-      <input type="search" id="global-search" placeholder="Szukaj: pracownik, projekt, dostawca, koszt..." oninput="onGlobalSearch(this.value)">
+      <input type="search" id="global-search" placeholder="Szukaj (/): pracownik, projekt, koszt, kredyt, termin, spółka..." oninput="onGlobalSearch(this.value)">
       <div class="spacer"></div>
       <div id="account-status" class="hide-mobile" style="display:none"></div>
       <div id="save-status" class="hide-mobile"></div>
@@ -958,7 +958,7 @@ var NAV = [
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
   {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-28 (konta i widocznosc modulow, wykresy projekcji, rat i platnosci)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-19-29 (konta i widocznosc modulow, nowe wykresy, skroty klawiszowe, druk karty farmy)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.filter(function(n){return tabAllowed(n.key);}).map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -2011,7 +2011,7 @@ function saveEmployee(ev,id){
 // Grzegorza" — patrz app/api/admin/import-pv-budget).
 function viewGrzegorz(){
   return '<h2 class="page-title">Budżet Farm PV (Grzegorz)</h2>'+
-  '<div class="page-sub">Pełny kalkulator opłacalności (CAPEX, OPEX, IRR, WACC) — narzędzie Grzegorza, osadzone tu dla wygody. Dane liczone tu NIE trafiają automatycznie do Projektów — do tego służy przycisk „Wczytaj model budżetowy Grzegorza” w Ustawieniach.</div>'+
+  '<div class="page-sub">Pełny kalkulator opłacalności (CAPEX, OPEX, IRR, WACC) — narzędzie Grzegorza, osadzone tu dla wygody. Dane liczone tu NIE trafiają automatycznie do Projektów — portfel farm w aplikacji został zbudowany z modelu Grzegorza (Budżet Farm PV, 2026-09-17) resetem portfela; kolejne zmiany w modelu wprowadza się w kartach projektów (Projekty / Portfel) albo nowym resetem po uzgodnieniu z Kamilem.</div>'+
   '<div class="toolbar"><div></div><a href="/budzet-farm-pv.html" target="_blank" rel="noopener" class="btn btn-sm">Otwórz w osobnej karcie ↗</a></div>'+
   '<div class="panel" style="padding:0;overflow:hidden">'+
   '<iframe src="/budzet-farm-pv.html" title="Budżet Farm PV (Grzegorz)" style="width:100%;height:calc(100vh - 220px);min-height:520px;border:0;display:block;background:#fff"></iframe>'+
@@ -2103,7 +2103,7 @@ function projectDetail(p){
   var roiPct = (capex>0 && annualProfit!==null)? (annualProfit/capex*100) : null;
   var bs = m.projectBudgetStatus[p.id];
   var futureCapital = m.futureCapitalNeed[p.id]||0;
-  return '<span class="link no-print" onclick="goTab(\'projects\')">← Projekty</span>'+
+  return '<div class="toolbar no-print" style="margin-bottom:6px"><span class="link" onclick="goTab(\'projects\')">← Projekty</span><button class="btn btn-sm" onclick="window.print()">🖶 Drukuj kartę farmy</button></div>'+
   '<h2 class="page-title">'+esc(p.name)+' <span class="pill pill-muted">'+esc(p.code||'')+'</span> <span class="pill pill-muted">'+esc(p.assetType||'PV')+'</span></h2>'+
   '<div class="page-sub">SPV: '+esc(p.spv||'—')+' • '+esc(p.location||'—')+' • '+esc(p.mwPower||'—')+' MW • '+projectStatusPill(p.status)+'</div>'+
   '<div class="page-sub">Operator sieci: '+esc(p.gridOperator||'—')+' • Odbiorca energii / pośrednik zakupu: '+esc(p.energyBuyer||'—')+'</div>'+
@@ -4173,6 +4173,19 @@ function updateOfflineBanner(){
   try{ online = navigator.onLine; }catch(e){}
   b.classList.toggle('show', !online);
 }
+// Skróty klawiszowe (2026-09-19): "/" = szukaj (poza polami), Esc = zamknij okno / wyniki / menu mobilne.
+document.addEventListener('keydown', function(ev){
+  var tag = (ev.target && ev.target.tagName || '').toLowerCase();
+  var inField = tag==='input' || tag==='textarea' || tag==='select' || (ev.target && ev.target.isContentEditable);
+  if(ev.key==='Escape'){
+    var ov = document.getElementById('modal-overlay');
+    if(ov && ov.classList.contains('open')){ closeModal(); return; }
+    var gs = document.getElementById('global-search'); if(gs && gs.value){ gs.value=''; onGlobalSearch(''); gs.blur(); return; }
+    closeMobileNav();
+    return;
+  }
+  if(ev.key==='/' && !inField){ var el=document.getElementById('global-search'); if(el){ ev.preventDefault(); el.focus(); el.select(); } }
+});
 window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);
 
