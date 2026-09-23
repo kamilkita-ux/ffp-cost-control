@@ -170,6 +170,35 @@ details.panel>.panel-body{margin-top:10px;}
 .textarea-lg{min-height:70px;}
 .section-title{font-weight:700;font-size:12.5px;text-transform:uppercase;color:var(--muted);margin:16px 0 8px;letter-spacing:.03em;}
 .panel > .section-title:first-child{margin-top:0;}
+/* Kalendarz terminów */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-head{font-size:11px;text-transform:uppercase;color:var(--muted);text-align:center;padding:4px 0;}
+.cal-cell{min-height:92px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;background:var(--panel);min-width:0;overflow:hidden;}
+.cal-cell.past{background:var(--bg);}
+.cal-cell.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);}
+.cal-cell.cal-empty{border:none;background:transparent;}
+.cal-day{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:3px;}
+.cal-cell.today .cal-day{color:var(--accent);}
+.cal-chip{font-size:11px;line-height:1.25;padding:2px 4px;margin-bottom:2px;border-left:3px solid var(--chart-other);background:var(--accent-bg);border-radius:0 4px 4px 0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cal-chip.done{opacity:.5;text-decoration:line-through;}
+.cal-agenda{margin-top:12px;}
+.cal-agenda-row{padding:5px 0;border-top:1px solid var(--border);font-size:13px;cursor:pointer;}
+.cal-agenda-row.done{opacity:.55;}
+.cal-agenda-date{display:inline-block;min-width:86px;font-weight:600;}
+@media(max-width:700px){.cal-grid{display:none;} .cal-agenda{margin-top:0;}}
+/* Oś czasu projektów */
+.tl-wrap{overflow-x:auto;}
+.tl-row{display:flex;align-items:stretch;border-top:1px solid var(--border);min-height:38px;}
+.tl-headrow{border-top:none;min-height:24px;}
+.tl-name{flex:0 0 190px;padding:6px 8px 6px 0;font-size:13px;min-width:0;}
+.tl-track{flex:1;position:relative;min-width:520px;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(100%/24 - 1px),var(--border) calc(100%/24 - 1px),var(--border) calc(100%/24));}
+.tl-col{position:absolute;top:2px;font-size:10px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;}
+.tl-bar{position:absolute;top:12px;height:12px;border-radius:6px;opacity:.85;}
+.tl-bar.op{opacity:.35;}
+.tl-mark{position:absolute;top:8px;transform:translateX(-50%);font-size:14px;line-height:1;cursor:pointer;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));}
+.tl-mark.done{opacity:.4;}
+.tl-now{position:absolute;top:0;bottom:-2000px;width:2px;background:var(--danger);opacity:.6;pointer-events:none;}
+@media(max-width:700px){.tl-name{flex-basis:120px;font-size:12px;}}
 /* Kafelki przestrzeni zespołu (Dashboard): klik = przejście do działu */
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px;margin-bottom:20px;}
 .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s,border-color .12s;position:relative;overflow:hidden;}
@@ -305,7 +334,8 @@ details.panel>.panel-body{margin-top:10px;}
 var STATE = { departments:[], projects:[], employees:[], vendors:[], costs:[], contracts:[], financings:[], documents:[], costCategories:[], costCenters:[], currency:'PLN' };
 var BOOTED = false;
 
-var currentTab = (function(){ try{ return localStorage.getItem('ffp_tab')||'dashboard'; }catch(e){ return 'dashboard'; } })();
+var currentTab = (function(){ try{ var h = location.hash? decodeURIComponent(location.hash.slice(1)) : ''; if(h) return h; return localStorage.getItem('ffp_tab')||'dashboard'; }catch(e){ return 'dashboard'; } })();
+try{ if(window.history && history.replaceState) history.replaceState({tab:currentTab}, '', '#'+encodeURIComponent(currentTab)); }catch(e){}
 var searchQuery = '';
 var pendingModalSave = null;
 var DASH_PERIOD = (function(){ try{ return localStorage.getItem('ffp_dash_period')||'month'; }catch(e){ return 'month'; } })();
@@ -958,7 +988,7 @@ var NAV = [
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
   {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-19-29 (konta i widocznosc modulow, nowe wykresy, skroty klawiszowe, druk karty farmy)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-23-30 (kalendarz i os czasu projektow w terminach, nawigacja strzalkami przegladarki)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.filter(function(n){return tabAllowed(n.key);}).map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -997,14 +1027,28 @@ function renderMobileTabbar(){
   html += '<div class="mt-item'+(!isKnownTab?' active':'')+'" onclick="openMobileNav()"><span class="mt-icon">☰</span>Więcej</div>';
   bar.innerHTML = html;
 }
-function goTab(key){
+// Nawigacja przeglądarki (2026-09-23, prośba Kamila): każda zakładka i karta
+// trafia do historii (#zakładka), więc strzałki wstecz/dalej w przeglądarce
+// i gest na telefonie przechodzą między widokami zamiast wychodzić z aplikacji.
+function pushTabHistory(key){
+  try{ if(window.history && history.pushState && (history.state||{}).tab!==key) history.pushState({tab:key}, '', '#'+encodeURIComponent(key)); }catch(e){}
+}
+function goTab(key, fromHistory){
   if(!tabAllowed(key)) key = 'dashboard';
   currentTab = key;
   try{ localStorage.setItem('ffp_tab',key); }catch(e){}
+  if(!fromHistory) pushTabHistory(key);
   closeMobileNav();
   clearGlobalSearch();
   render();
 }
+window.addEventListener('popstate', function(ev){
+  var key = (ev.state && ev.state.tab) || (location.hash? decodeURIComponent(location.hash.slice(1)) : null);
+  if(!key) return;
+  if(document.getElementById('modal-overlay') && document.getElementById('modal-overlay').classList.contains('open')) closeModal();
+  if(key.indexOf('detail:')===0){ currentTab = key; render(); }
+  else goTab(key, true);
+});
 function clearGlobalSearch(){
   var input = document.getElementById('global-search');
   if(input) input.value='';
@@ -1143,7 +1187,7 @@ function render(){
       } else c.innerHTML = viewDashboard();
   }
 }
-function openDetail(type,id){ currentTab='detail:'+type+':'+id; render(); }
+function openDetail(type,id){ currentTab='detail:'+type+':'+id; pushTabHistory(currentTab); render(); }
 
 // Zgłoszone przez Kamila (2026-09-08): dashboard, jeśli zostawić kartę
 // otwartą bez żadnej akcji (np. przez noc), pokazywał "Stan na [wczorajsza
@@ -3179,7 +3223,9 @@ function viewDeadlines(){
   var auto = autoDeadlines(180);
   return '<h2 class="page-title">📆 Rejestr terminów</h2>'+
   '<div class="page-sub">Terminy, których przegapienie kosztuje: ważność warunków przyłączenia, umów przyłączeniowych, pozwoleń, decyzji, PPA, kowenantów. Wpisy ręczne + terminy automatyczne z kart projektów, umów i finansowań. Stan na '+fmtDate(todayISO())+'.</div>'+
-  '<div class="toolbar"><div><button class="btn btn-sm'+(DL_FILTER==='open'?' btn-primary':'')+'" onclick="DL_FILTER=\'open\';render()">Otwarte ('+open.length+')</button> <button class="btn btn-sm'+(DL_FILTER==='done'?' btn-primary':'')+'" onclick="DL_FILTER=\'done\';render()">Zrobione ('+(all.length-open.length)+')</button> <button class="btn btn-sm'+(DL_FILTER==='all'?' btn-primary':'')+'" onclick="DL_FILTER=\'all\';render()">Wszystkie</button></div><button class="btn btn-primary" onclick="openDeadlineForm()">+ Dodaj termin</button></div>'+
+  '<div class="toolbar"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="tab-bar" style="margin:0;border:none"><button class="tab-btn'+(DL_VIEW==='list'?' active':'')+'" onclick="DL_VIEW=\'list\';render()">Lista</button><button class="tab-btn'+(DL_VIEW==='calendar'?' active':'')+'" onclick="DL_VIEW=\'calendar\';render()">Kalendarz</button><button class="tab-btn'+(DL_VIEW==='timeline'?' active':'')+'" onclick="DL_VIEW=\'timeline\';render()">Oś czasu projektów</button></span>'+(DL_VIEW==='list'?'<button class="btn btn-sm'+(DL_FILTER==='open'?' btn-primary':'')+'" onclick="DL_FILTER=\'open\';render()">Otwarte ('+open.length+')</button> <button class="btn btn-sm'+(DL_FILTER==='done'?' btn-primary':'')+'" onclick="DL_FILTER=\'done\';render()">Zrobione ('+(all.length-open.length)+')</button> <button class="btn btn-sm'+(DL_FILTER==='all'?' btn-primary':'')+'" onclick="DL_FILTER=\'all\';render()">Wszystkie</button>':'')+'</div><button class="btn btn-primary" onclick="openDeadlineForm()">+ Dodaj termin</button></div>'+
+  (DL_VIEW==='calendar'? calendarView() : DL_VIEW==='timeline'? timelineView() : '')+
+  (DL_VIEW!=='list'? '' :
   '<div class="kpi-grid">'+
     kpi('Po terminie', overdue, true, overdue>0)+
     kpi('W 7 dni', in7, false, in7>0)+
@@ -3193,7 +3239,7 @@ function viewDeadlines(){
   '</div>'+
   '<div class="panel"><div class="section-title">Terminy automatyczne z kart — najbliższe 180 dni</div>'+
   (auto.length? '<div class="table-wrap"><table><thead><tr><th>Termin</th><th>Status</th><th>Co</th><th>Źródło</th></tr></thead><tbody>'+auto.map(function(a){ return '<tr><td style="white-space:nowrap">'+fmtDate(a.date)+'</td><td>'+dlPill(a.days,false)+'</td><td>'+esc(a.title)+'</td><td><span class="pill pill-muted">'+esc(a.src)+'</span></td></tr>'; }).join('')+'</tbody></table></div>' : '<div class="empty">Brak terminów z kart w tym oknie.</div>')+
-  '<div class="muted" style="font-size:11px;margin-top:6px">Zmieniasz je w kartach projektów / umów / finansowań — tu tylko podgląd.</div></div>';
+  '<div class="muted" style="font-size:11px;margin-top:6px">Zmieniasz je w kartach projektów / umów / finansowań — tu tylko podgląd.</div></div>');
 }
 function openDeadlineForm(id){
   var d = id? deadlinesList().find(function(x){return x.id===id;}) : null;
@@ -3836,6 +3882,101 @@ function accountsPanel(){
   '</div></details>';
 }
 var VIS_EDIT = null;
+
+/* ============================= KALENDARZ I OŚ CZASU PROJEKTÓW ============================= */
+// Kamil (2026-09-23): „czy tu nie może być widok kalendarza i w nim narzucony
+// każdy projekt". Rejestr terminów dostaje trzy widoki: Lista (dotychczasowa),
+// Kalendarz (miesiąc, każdy projekt w swoim kolorze, zdarzenia: terminy
+// ręczne, start prac, uruchomienie, pierwsze raty, wypowiedzenia umów, raty
+// i płatności) oraz Oś czasu (rzędy = projekty, kolumny = miesiące, pasek
+// start→uruchomienie + znaczniki). Wszystko liczone z tych samych kart.
+var DL_VIEW = 'list';
+var DL_MONTH = null; // 'RRRR-MM' — bieżący miesiąc kalendarza
+var CAL_SHOW = {deadlines:true, projects:true, financing:true, contracts:true, payments:false};
+var PROJECT_COLORS = ['#2a78d6','#eb6834','#1baf7a','#eda100','#8e44ad','#16a085','#c0392b','#2c3e50','#d35400','#27ae60','#7f8c8d','#e84393','#0984e3','#6c5ce7','#00b894','#fdcb6e'];
+function projectColor(pid){
+  if(!pid) return 'var(--chart-other)';
+  var real = STATE.projects.filter(function(p){return !p.isDemo;});
+  var idx = real.findIndex(function(p){return p.id===pid;});
+  if(idx<0) return 'var(--chart-other)';
+  return PROJECT_COLORS[idx % PROJECT_COLORS.length];
+}
+function calMonth(){ if(!DL_MONTH){ var t=new Date(); DL_MONTH = t.getFullYear()+'-'+(t.getMonth()+1<10?'0':'')+(t.getMonth()+1); } return DL_MONTH; }
+function calShift(n){ DL_MONTH = ymAdd(calMonth(), n); render(); }
+function calToday(){ DL_MONTH = null; render(); }
+// Wszystkie zdarzenia w oknie [fromISO, toISO] — jedno źródło dla kalendarza i osi czasu.
+function calendarEvents(fromISO, toISO){
+  var ev=[];
+  function inRange(d){ return d && d>=fromISO && d<=toISO; }
+  if(CAL_SHOW.deadlines) deadlinesList().forEach(function(d){ if(inRange(d.date)) ev.push({date:d.date, kind:'termin', title:d.title, projectId:d.projectId||null, done:!!d.done, action:"openDeadlineForm('"+d.id+"')", icon:'📌'}); });
+  if(CAL_SHOW.projects) STATE.projects.filter(projectCountsAsFuture).forEach(function(p){
+    if(inRange(p.startDate)) ev.push({date:p.startDate, kind:'start prac', title:'Start prac — '+p.name, projectId:p.id, action:"openDetail('projects','"+p.id+"')", icon:'🚧'});
+    if(inRange(p.endDate)) ev.push({date:p.endDate, kind:(p.status==='operacyjny'?'uruchomiono':'uruchomienie'), title:'Uruchomienie — '+p.name, projectId:p.id, action:"openDetail('projects','"+p.id+"')", icon:'⚡'});
+  });
+  if(CAL_SHOW.financing) STATE.financings.forEach(function(f){
+    if(inRange(f.nextPaymentDate) && finPaidCount(f)===0) ev.push({date:f.nextPaymentDate, kind:'pierwsza rata', title:'Pierwsza rata — '+f.lender, projectId:f.projectId||null, action:"openForm('financing','"+f.id+"')", icon:'🏦'});
+    if(inRange(f.endDate)) ev.push({date:f.endDate, kind:'koniec spłaty', title:'Koniec spłaty — '+f.lender, projectId:f.projectId||null, action:"openForm('financing','"+f.id+"')", icon:'🏁'});
+  });
+  if(CAL_SHOW.contracts) STATE.contracts.forEach(function(c){
+    if(inRange(c.earliestTerminationDate)) ev.push({date:c.earliestTerminationDate, kind:'wypowiedzenie', title:'Najwcześniejsze wypowiedzenie — '+c.name, projectId:c.projectId||null, action:"openForm('contracts','"+c.id+"')", icon:'📄'});
+    if(inRange(c.endDate)) ev.push({date:c.endDate, kind:'koniec umowy', title:'Koniec umowy — '+c.name, projectId:c.projectId||null, action:"openForm('contracts','"+c.id+"')", icon:'📄'});
+  });
+  if(CAL_SHOW.payments) paymentItems(fromISO, toISO).forEach(function(it){ ev.push({date:it.due, kind:(it.kind==='fin'?'rata':'płatność'), title:(it.kind==='fin'? 'Rata '+fmtMoney0(it.amount)+' — '+it.obj.lender : 'Płatność '+fmtMoney0(it.amount)+' — '+it.label), projectId:it.projectId||null, done:it.paid, action:"goTab('payments')", icon:'💸'}); });
+  ev.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:0;});
+  return ev;
+}
+function calFiltersHtml(){
+  var defs=[['deadlines','📌 terminy ręczne'],['projects','🚧⚡ start prac / uruchomienia'],['financing','🏦 pierwsze raty / koniec spłat'],['contracts','📄 umowy'],['payments','💸 raty i płatności']];
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px;margin:6px 0 10px">'+defs.map(function(d){ return '<label style="font-weight:400;white-space:nowrap"><input type="checkbox" style="width:auto" '+(CAL_SHOW[d[0]]?'checked':'')+' onchange="CAL_SHOW[\''+d[0]+'\']=this.checked;render()"> '+d[1]+'</label>'; }).join('')+'</div>';
+}
+function calendarView(){
+  var ym = calMonth(); var y=Number(ym.slice(0,4)), m=Number(ym.slice(5,7));
+  var first = new Date(y, m-1, 1), last = new Date(y, m, 0);
+  var fromISO = localISO(first), toISO = localISO(last);
+  var events = calendarEvents(fromISO, toISO);
+  var byDay = {}; events.forEach(function(e){ (byDay[e.date]=byDay[e.date]||[]).push(e); });
+  var today = todayISO();
+  var months = ['styczeń','luty','marzec','kwiecień','maj','czerwiec','lipiec','sierpień','wrzesień','październik','listopad','grudzień'];
+  var lead = (first.getDay()+6)%7; // poniedziałek = 0
+  var cells = [];
+  for(var i=0;i<lead;i++) cells.push(null);
+  for(var d=1; d<=last.getDate(); d++) cells.push(dueInMonth(ym, d));
+  while(cells.length%7) cells.push(null);
+  var head = '<div class="toolbar" style="margin-bottom:8px"><div style="display:flex;gap:6px;align-items:center"><button class="btn btn-sm" onclick="calShift(-1)">‹</button><b style="font-size:15px;min-width:170px;text-align:center">'+months[m-1]+' '+y+'</b><button class="btn btn-sm" onclick="calShift(1)">›</button><button class="btn btn-sm" onclick="calToday()">dziś</button></div><div class="muted" style="font-size:12px">'+events.length+' zdarzeń w miesiącu</div></div>';
+  var legend = (function(){ var used = {}; events.forEach(function(e){ if(e.projectId) used[e.projectId]=1; }); var ids=Object.keys(used); if(!ids.length) return ''; return '<div style="display:flex;gap:8px 14px;flex-wrap:wrap;font-size:12px;margin-bottom:8px">'+ids.map(function(pid){ return '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+projectColor(pid)+';vertical-align:middle;margin-right:4px"></span>'+esc(projectName(pid))+'</span>'; }).join('')+'</div>'; })();
+  var grid = '<div class="cal-grid">'+['Pn','Wt','Śr','Cz','Pt','So','Nd'].map(function(w){return '<div class="cal-head">'+w+'</div>';}).join('')+
+    cells.map(function(iso){
+      if(!iso) return '<div class="cal-cell cal-empty"></div>';
+      var list = byDay[iso]||[]; var isToday = iso===today; var past = iso<today;
+      var chips = list.slice(0,4).map(function(e){ return '<div class="cal-chip'+(e.done?' done':'')+'" style="border-left-color:'+projectColor(e.projectId)+'" title="'+esc(e.kind+': '+e.title)+'" onclick="'+esc(e.action)+'">'+e.icon+' '+esc(e.title.replace(/^(Start prac|Uruchomienie|Pierwsza rata|Koniec spłaty|Najwcześniejsze wypowiedzenie|Koniec umowy|Rata|Płatność)[^—]*— /,''))+'</div>'; }).join('');
+      var more = list.length>4? '<div class="muted" style="font-size:11px">+'+(list.length-4)+' więcej</div>' : '';
+      return '<div class="cal-cell'+(isToday?' today':'')+(past?' past':'')+'"><div class="cal-day">'+Number(iso.slice(8,10))+'</div>'+chips+more+'</div>';
+    }).join('')+'</div>';
+  var agenda = events.length? '<div class="cal-agenda"><div class="section-title">Zdarzenia w miesiącu</div>'+events.map(function(e){ var n=daysUntil(e.date); return '<div class="cal-agenda-row'+(e.done?' done':'')+'" onclick="'+esc(e.action)+'"><span class="cal-agenda-date">'+fmtDate(e.date)+'</span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+projectColor(e.projectId)+';margin:0 6px"></span>'+e.icon+' '+esc(e.title)+' <span class="muted" style="font-size:11px">'+esc(e.kind)+(n!==null?(n<0?' • '+(-n)+' dni temu':n===0?' • dziś':' • za '+n+' dni'):'')+'</span></div>'; }).join('')+'</div>' : '<div class="empty">Brak zdarzeń w tym miesiącu (sprawdź filtry wyżej).</div>';
+  return '<div class="panel">'+head+calFiltersHtml()+legend+grid+agenda+'</div>';
+}
+function timelineView(){
+  var monthsN = 24; var t0 = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  var cols=[]; for(var i=0;i<monthsN;i++){ var d=new Date(t0.getFullYear(), t0.getMonth()+i, 1); cols.push({ym: d.getFullYear()+'-'+(d.getMonth()+1<10?'0':'')+(d.getMonth()+1), label:(d.getMonth()+1<10?'0':'')+(d.getMonth()+1)+(d.getMonth()===0||i===0?'.'+String(d.getFullYear()).slice(2):'')}); }
+  var fromISO = localISO(t0), toISO = localISO(new Date(t0.getFullYear(), t0.getMonth()+monthsN, 0));
+  var events = calendarEvents(fromISO, toISO);
+  function mIdx(iso){ var d=new Date(iso+'T00:00:00'); return (d.getFullYear()-t0.getFullYear())*12+(d.getMonth()-t0.getMonth()) + (d.getDate()-1)/31; }
+  var projects = STATE.projects.filter(projectCountsAsFuture).slice().sort(function(a,b){ var ka=a.status==='operacyjny'?'0':(a.endDate||'9999'); var kb=b.status==='operacyjny'?'0':(b.endDate||'9999'); return ka<kb?-1:ka>kb?1:0; });
+  var rows = projects.map(function(p){
+    var col = projectColor(p.id);
+    var a = p.startDate? mIdx(p.startDate) : (p.endDate? mIdx(p.endDate)-6 : null), b = p.endDate? mIdx(p.endDate) : null;
+    var bar='';
+    if(p.status==='operacyjny'){ bar = '<div class="tl-bar op" style="left:0;width:100%;background:'+col+'" title="operacyjna"></div>'; }
+    else if(a!==null || b!==null){ if(a===null) a=b; if(b===null) b=a+1; var l=Math.max(0,Math.min(monthsN,a)), r=Math.max(0,Math.min(monthsN,b)); if(r>l) bar = '<div class="tl-bar" style="left:'+(l/monthsN*100)+'%;width:'+Math.max(0.8,(r-l)/monthsN*100)+'%;background:'+col+'" title="'+esc((p.startDate||'?')+' → '+(p.endDate||'?'))+'"></div>'; }
+    var marks = events.filter(function(e){return e.projectId===p.id;}).map(function(e){ var x=mIdx(e.date); if(x<0||x>monthsN) return ''; return '<div class="tl-mark'+(e.done?' done':'')+'" style="left:'+(x/monthsN*100)+'%" title="'+esc(fmtDate(e.date)+' — '+e.kind+': '+e.title)+'" onclick="'+esc(e.action)+'">'+e.icon+'</div>'; }).join('');
+    var unassignedEv = '';
+    return '<div class="tl-row"><div class="tl-name"><span class="link" onclick="openDetail(\'projects\',\''+p.id+'\')">'+esc(p.name)+'</span><div class="muted" style="font-size:11px">'+esc(p.status)+(p.mwPower?' • '+esc(p.mwPower)+' MW':'')+'</div></div><div class="tl-track">'+bar+marks+'</div></div>';
+  }).join('');
+  var general = events.filter(function(e){return !e.projectId;});
+  var generalRow = general.length? '<div class="tl-row"><div class="tl-name"><b>Spółka / bez projektu</b></div><div class="tl-track">'+general.map(function(e){ var x=mIdx(e.date); if(x<0||x>monthsN) return ''; return '<div class="tl-mark'+(e.done?' done':'')+'" style="left:'+(x/monthsN*100)+'%" title="'+esc(fmtDate(e.date)+' — '+e.kind+': '+e.title)+'" onclick="'+esc(e.action)+'">'+e.icon+'</div>'; }).join('')+'</div></div>' : '';
+  var headRow = '<div class="tl-row tl-headrow"><div class="tl-name muted" style="font-size:11px">projekt</div><div class="tl-track" style="background:none">'+cols.map(function(c,i){ return '<div class="tl-col" style="left:'+(i/monthsN*100)+'%;width:'+(100/monthsN)+'%">'+c.label+'</div>'; }).join('')+'<div class="tl-now" style="left:'+(mIdx(todayISO())/monthsN*100)+'%" title="dziś"></div></div></div>';
+  return '<div class="panel"><div class="toolbar" style="margin-bottom:6px"><h3 style="margin:0">Oś czasu — '+monthsN+' miesięcy od dziś</h3><div class="muted" style="font-size:12px">pasek = start prac → uruchomienie • ikony = zdarzenia (najedź, kliknij)</div></div>'+calFiltersHtml()+'<div class="tl-wrap">'+headRow+rows+generalRow+'</div>'+(projects.length?'':'<div class="empty">Brak projektów</div>')+'</div>';
+}
 
 /* ============================= DOCUMENTS ============================= */
 function viewDocuments(){

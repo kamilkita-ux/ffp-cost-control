@@ -37,7 +37,7 @@ function loadFront(state: any): any {
   vm.createContext(ctx);
   try { vm.runInContext(js, ctx); } catch { /* atrapa DOM przerywa inicjalizację — funkcje są zdefiniowane */ }
   // Zmienne globalne inicjalizowane po miejscu przerwania — ustawiamy ręcznie.
-  Object.assign(ctx, { STATE: state, METRICS_CACHE: null, DASH_PERIOD: "2y", PF_SENS: { price: 0, yield: 0, capex: 0 }, FIN_SCHEDULE_MONTHS: 36, FIN_TASK_FILTER: "open", DL_FILTER: "open", PAY_SHOW_PAID: false, COMPL_OPEN: {}, GROUP_COLLAPSED: {}, GROUP_ZOOM: 1, QUICK_QUEUE: [], REC_STEP: { "miesięczny": 1, "kwartalny": 3, "półroczny": 6, "roczny": 12 } });
+  Object.assign(ctx, { STATE: state, METRICS_CACHE: null, DASH_PERIOD: "2y", DL_VIEW: "list", DL_MONTH: null, PROJECT_COLORS: ["#2a78d6","#eb6834","#1baf7a","#eda100","#8e44ad"], PF_SENS: { price: 0, yield: 0, capex: 0 }, FIN_SCHEDULE_MONTHS: 36, FIN_TASK_FILTER: "open", DL_FILTER: "open", PAY_SHOW_PAID: false, COMPL_OPEN: {}, GROUP_COLLAPSED: {}, GROUP_ZOOM: 1, QUICK_QUEUE: [], REC_STEP: { "miesięczny": 1, "kwartalny": 3, "półroczny": 6, "roczny": 12 } });
   return ctx;
 }
 
@@ -211,4 +211,18 @@ test("scenariusze Symulatora: oszczędność liczona z pozycji aktywnych dziś (
   assert.equal(Math.round(m.empCost), 10000);
   assert.equal(Math.round(m.fins), 2500, "f1 rusza za miesiąc — nie liczy się, f2 tak");
   assert.equal(Math.round(m.total), 15500);
+});
+
+test("kalendarz terminów: zdarzenia z rejestru, projektów, finansowań i umów w oknie; kolor per projekt stały", () => {
+  const ctx = loadFront(baseState());
+  vm.runInContext("CAL_SHOW={deadlines:true,projects:true,financing:true,contracts:true,payments:false}", ctx);
+  const ev = vm.runInContext(`calendarEvents('${addDays(-10)}','${addMonths(5, 28)}')`, ctx);
+  const kinds = ev.map((e: any) => e.kind);
+  assert.ok(kinds.includes("termin") && kinds.includes("uruchomienie") && kinds.includes("pierwsza rata"));
+  assert.ok(ev.every((e: any, i: number) => i === 0 || ev[i - 1].date <= e.date), "posortowane po dacie");
+  assert.equal(vm.runInContext("projectColor('p1')", ctx), vm.runInContext("projectColor('p1')", ctx));
+  assert.notEqual(vm.runInContext("projectColor('p1')", ctx), vm.runInContext("projectColor('p2')", ctx));
+  vm.runInContext("CAL_SHOW.projects=false", ctx);
+  const ev2 = vm.runInContext(`calendarEvents('${addDays(-10)}','${addMonths(5, 28)}')`, ctx);
+  assert.ok(!ev2.some((e: any) => e.kind === "uruchomienie"), "filtr wyłącza zdarzenia projektów");
 });
