@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getVerifiedSession } from "@/lib/access";
 
-// GET /api/auth/me — kim jestem zalogowany (tryb AUTH_MODE=accounts).
+// GET /api/auth/me — kim jestem zalogowany (zapamiętane logowanie Basic
+// albo tryb AUTH_MODE=accounts).
 // Zwraca 200 z null, jeśli nie ma ważnej sesji (nie 401 — to nie jest
 // endpoint chroniony, tylko informacyjny, wołany np. do pokazania
 // "zalogowano jako..." w interfejsie). Używa getVerifiedSession (patrz

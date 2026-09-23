@@ -953,6 +953,12 @@ async function apiCall(method, url, body){
 }
 async function refreshState(){
   var res = await fetch('/api/bootstrap', {cache:'no-store'});
+  if(res.status === 401){
+    // Sesja wygasła albo wylogowano na tym urządzeniu — do formularza
+    // logowania, po zalogowaniu wracamy dokładnie tu (zakładka w #).
+    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.hash);
+    throw new Error('Wymagane ponowne zalogowanie.');
+  }
   if(!res.ok) throw new Error('Nie udało się pobrać danych z serwera.');
   STATE = await res.json();
   METRICS_CACHE = null;
@@ -989,7 +995,7 @@ var NAV = [
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
   {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-23-31 (import modelu Grzegorza z pliku, profil produkcji w projekcji, etapy, transze)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-23-32 (zapamiętane logowanie na urządzeniu — formularz zamiast okienka przeglądarki)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.filter(function(n){return tabAllowed(n.key);}).map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -3887,7 +3893,7 @@ function accountsPanel(){
   var tempNote = TEMP_PASSWORD_NOTE? '<div class="panel" style="border-color:var(--warn);background:var(--warn-bg)"><b>Hasło tymczasowe dla „'+esc(TEMP_PASSWORD_NOTE.username)+'”:</b> <code style="font-size:15px;user-select:all">'+esc(TEMP_PASSWORD_NOTE.password)+'</code><div class="muted" style="font-size:12px;margin-top:4px">Pokazane tylko raz — przekaż osobie bezpiecznym kanałem; przy pierwszym logowaniu zmieni je na własne. <span class="link" onclick="TEMP_PASSWORD_NOTE=null;render()">ukryj</span></div></div>' : '';
   var usersHtml = USERS_LIST==='loading'? '<div class="muted">Wczytywanie kont…</div>' :
     (users.length? '<div class="table-wrap"><table><thead><tr><th>Login</th><th>Rola</th><th>Aktywne</th><th>Ostatnie logowanie</th><th>Widoczne moduły</th><th></th></tr></thead><tbody>'+users.map(function(u){ var at=allowedTabsFor(u.username); return '<tr><td><b>'+esc(u.username)+'</b></td><td><select onchange="updateUser(\''+u.id+'\',{role:this.value})"><option value="full"'+(u.role==='full'?' selected':'')+'>pełna (admin)</option><option value="restricted"'+(u.role!=='full'?' selected':'')+'>ograniczona (bez wynagrodzeń)</option></select></td><td><label><input type="checkbox" style="width:auto" '+(u.active?'checked':'')+' onchange="updateUser(\''+u.id+'\',{active:this.checked})"> '+(u.active?'tak':'nie')+'</label></td><td>'+(u.lastLoginAt?esc(String(u.lastLoginAt).replace('T',' ').slice(0,16)):'—')+'</td><td style="font-size:12px">'+(at===null?'wszystkie':at.length+' z '+(NAV.length-2))+' <span class="link" onclick="VIS_EDIT=(VIS_EDIT===\''+esc(u.username)+'\'?null:\''+esc(u.username)+'\');render()">'+(VIS_EDIT===u.username?'zwiń':'edytuj')+'</span>'+(VIS_EDIT===u.username?visibilityEditor(u.username):'')+'</td><td style="white-space:nowrap"><span class="link" onclick="updateUser(\''+u.id+'\',{resetPassword:true})">reset hasła</span> · <span class="link" onclick="deleteUser(\''+u.id+'\',\''+esc(u.username)+'\')">usuń</span></td></tr>'; }).join('')+'</tbody></table></div>' : '<div class="muted">Brak kont. Załóż pierwsze poniżej.</div>');
-  return '<details class="panel" data-key="accounts" '+settingsOpenAttr('accounts')+' ontoggle="onSettingsToggle(this)"><summary><h3>Konta i widoczność modułów</h3><span class="muted">'+(mode?'tryb logowania: konta':'tryb logowania: Basic Auth (loginy z Railway)')+'</span></summary><div class="panel-body">'+
+  return '<details class="panel" data-key="accounts" '+settingsOpenAttr('accounts')+' ontoggle="onSettingsToggle(this)"><summary><h3>Konta i widoczność modułów</h3><span class="muted">'+(mode?'tryb logowania: konta':'tryb logowania: loginy ze zmiennych Railway, zapamiętywane na urządzeniu')+'</span></summary><div class="panel-body">'+
     (mode? '' : '<div class="muted" style="font-size:12.5px;margin-bottom:10px">Aplikacja działa dziś w trybie Basic Auth (loginy i hasła ustawione w zmiennych Railway: APP_BASIC_AUTH_USER / EXTRA_USERS / RESTRICTED_USERS). Konta założone tutaj zaczną działać po przełączeniu zmiennej <code>AUTH_MODE=accounts</code> w Railway (strona logowania, zmiana hasła, role z bazy). Widoczność modułów działa w obu trybach — po loginie.</div>')+
     tempNote+usersHtml+
     '<div class="section-title">Nowe konto</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><div style="flex:1;min-width:160px"><label>Login</label><input id="nu-username" placeholder="np. maciej"></div><div style="flex:1;min-width:200px"><label>Rola</label><select id="nu-role"><option value="restricted">ograniczona (bez wynagrodzeń)</option><option value="full">pełna (admin)</option></select></div><div><button class="btn btn-sm btn-primary" onclick="createUser()">Utwórz konto</button></div></div>'+
@@ -4185,6 +4191,7 @@ function viewSettings(){
   '<a class="btn btn-sm" href="/api/export/xlsx" download>Eksport wszystkich modułów do Excela (.xlsx)</a> '+
   '<label class="btn btn-sm" style="display:inline-flex;margin:0">Wgraj kopię zapasową<input type="file" accept="application/json" style="display:none" onchange="importBackupJsonFile(this)"></label>'+
   '</div></details>'+
+  deviceAccountPanel()+
   accountsPanel()+
   '<details class="panel" data-key="backups" '+settingsOpenAttr('backups')+' ontoggle="onSettingsToggle(this)"><summary><h3>Automatyczne kopie zapasowe (punkty przywracania)</h3><span class="muted">kliknij „Utwórz kopię teraz” przed zmianami</span></summary><div class="panel-body">'+
   '<div class="muted">System sam zapisuje pełny stan danych co kilka godzin. Poniżej lista ostatnich punktów — możesz cofnąć się do dowolnego z nich jednym kliknięciem, albo pobrać go jako plik.</div>'+
@@ -4445,23 +4452,31 @@ function openForm(entity,id,defaults){
   }
 }
 
-/* ===================== Tryb kont: wylogowanie ===================== */
-// Dopełnienie systemu logowania sesyjnego (AUTH_MODE=accounts, patrz
-// app/api/auth/*, middleware.ts) — bez tego strona logowania nie miałaby
-// żadnego sposobu wylogowania poza ręcznym czyszczeniem ciasteczka.
-// Celowo niewidoczne, gdy tryb kont jest wyłączony (dzisiejszy Basic
-// Auth) — /api/auth/me wtedy zawsze zwraca authenticated:false, więc ten
-// element w ogóle się nie pokazuje, zero zmiany dla obecnych użytkowników.
+/* ===================== Zalogowany użytkownik i wylogowanie ===================== */
+// Zapamiętane logowanie (2026-09-23): po jednym zalogowaniu urządzenie ma
+// ciasteczko sesji (rok) — /api/auth/me mówi, kto jest zalogowany; „Wyloguj"
+// czyści ciasteczko na TYM urządzeniu (inne zostają zalogowane).
+var ACCOUNT_ME = null;
+function deviceAccountPanel(){
+  var who = ACCOUNT_ME && ACCOUNT_ME.authenticated ? esc(ACCOUNT_ME.username) : '';
+  return '<details class="panel" data-key="device-login" '+settingsOpenAttr('device-login')+' ontoggle="onSettingsToggle(this)"><summary><h3>Logowanie na tym urządzeniu</h3><span class="muted">'+(who? 'zalogowano jako '+who : 'zapamiętane logowanie')+'</span></summary><div class="panel-body">'+
+    '<div class="muted">Po jednym podaniu hasła telefon, iPad lub komputer pamięta logowanie przez rok i nie pyta ponownie — także po dodaniu aplikacji do ekranu początkowego. Każde urządzenie loguje się osobno; „Wyloguj” dotyczy tylko tego urządzenia.</div>'+
+    (who? '<div style="margin-top:8px"><b>'+who+'</b> <button class="btn btn-sm" onclick="accountLogout()">Wyloguj na tym urządzeniu</button></div>' : '<div class="muted" style="margin-top:8px">To urządzenie korzysta z logowania bez zapamiętania (nagłówek przeglądarki). Wejdź na <a href="/login">/login</a>, aby zapamiętać logowanie.</div>')+
+    '</div></details>';
+}
 function accountStatusInit(){
   fetch('/api/auth/me').then(function(r){ return r.json(); }).then(function(data){
+    ACCOUNT_ME = data||null;
+    if(currentTab==='settings') render();
     var el = document.getElementById('account-status');
     if(!el || !data || !data.authenticated) return;
     el.style.display = '';
-    el.innerHTML = '<span style="color:var(--muted);font-size:12px">'+esc(data.username)+'</span> '
-      + '<button class="btn btn-icon" title="Wyloguj" onclick="accountLogout()" style="padding:4px 8px;font-size:12px">Wyloguj</button>';
-  }).catch(function(){ /* Basic Auth albo brak połączenia — nic nie pokazujemy */ });
+    el.innerHTML = '<span style="color:var(--muted);font-size:12px" title="Zalogowano na tym urządzeniu (zapamiętane)">'+esc(data.username)+'</span> '
+      + '<button class="btn btn-icon" title="Wyloguj na tym urządzeniu" onclick="accountLogout()" style="padding:4px 8px;font-size:12px">Wyloguj</button>';
+  }).catch(function(){ /* brak połączenia — nic nie pokazujemy */ });
 }
 function accountLogout(){
+  if(!confirm('Wylogować na tym urządzeniu? Przy następnym wejściu aplikacja poprosi o hasło.')) return;
   fetch('/api/auth/logout', {method:'POST'}).finally(function(){ window.location.href = '/login'; });
 }
 

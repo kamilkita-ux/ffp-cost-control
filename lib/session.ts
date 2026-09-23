@@ -8,10 +8,17 @@
 // Next.js domyślnie działa w środowisku Edge (ograniczony zestaw API, bez
 // modułu "crypto" z Node). Web Crypto działa identycznie w Edge i w
 // zwykłych route handlerach Node — jeden kod, wszędzie działa tak samo.
+import { deriveBasicSecret } from "./basicAuth";
+
 export interface SessionPayload {
   username: string;
   role: string; // "full" | "restricted"
   exp: number; // unix seconds
+  // "basic" — zapamiętane logowanie konta ze zmiennych środowiskowych
+  // (dzisiejsza produkcja, patrz lib/basicAuth.ts); brak pola = konto z
+  // bazy (AUTH_MODE=accounts). Rozróżnienie jest ważne, bo każdy tryb
+  // sprawdza sesję inaczej (lista w zmiennych vs tabela AppUser).
+  mode?: "basic";
 }
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -50,7 +57,12 @@ async function sign(data: string, secret: string): Promise<string> {
 // domyślnym/pustym, który każdy mógłby odgadnąć.
 function getSecret(): string | null {
   const s = process.env.SESSION_SECRET;
-  return s && s.length >= 16 ? s : null;
+  if (s && s.length >= 16) return s;
+  // Tryb Basic (produkcja dziś) bez osobnego SESSION_SECRET: sekret
+  // wyprowadzony z loginów i haseł ze zmiennych — patrz lib/basicAuth.ts.
+  // W trybie kont (AUTH_MODE=accounts) dalej wymagamy jawnego sekretu.
+  if (!isAccountsMode()) return deriveBasicSecret();
+  return null;
 }
 
 export async function createSessionToken(payload: SessionPayload): Promise<string | null> {
@@ -87,7 +99,12 @@ export async function verifySessionToken(token: string | undefined | null): Prom
 }
 
 export const SESSION_COOKIE_NAME = "ffp_session";
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 dni
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 dni (bez „zapamiętaj")
+// „Zapamiętaj mnie na tym urządzeniu" (domyślnie włączone w formularzu
+// logowania): rok bez pytania o hasło. Ciasteczko jest i tak sprawdzane
+// przy każdym żądaniu z aktualną listą kont, więc długi termin nie
+// przedłuża dostępu nikomu, kto go stracił.
+export const REMEMBER_TTL_SECONDS = 60 * 60 * 24 * 365;
 
 export function isAccountsMode(): boolean {
   return process.env.AUTH_MODE === "accounts";

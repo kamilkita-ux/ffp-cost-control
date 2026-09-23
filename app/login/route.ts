@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
-// Strona logowania dla trybu AUTH_MODE=accounts (patrz lib/session.ts,
-// middleware.ts). Gdy ten tryb nie jest włączony, ta strona i tak nie
-// jest nigdzie używana (middleware w trybie Basic Auth w ogóle jej nie
-// wymaga) — istnienie tego pliku nic nie zmienia w dotychczasowym
-// działaniu, dopóki Kamil świadomie nie ustawi AUTH_MODE=accounts.
+// Strona logowania — wspólna dla obu trybów (konta ze zmiennych
+// środowiskowych, czyli dzisiejsza produkcja, i AUTH_MODE=accounts; patrz
+// middleware.ts, app/api/auth/login). „Zapamiętaj mnie na tym urządzeniu"
+// jest domyślnie włączone: po jednym logowaniu telefon / iPad / komputer
+// dostaje ciasteczko na rok i nie pyta więcej o hasło (lib/session.ts).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -47,6 +47,10 @@ export async function GET() {
     display: none; background: #fdeceb; color: #a5342a; border-radius: 8px; padding: 10px 12px;
     font-size: 13px; margin-bottom: 16px;
   }
+  .remember { display: flex; align-items: flex-start; gap: 10px; margin: -4px 0 18px; font-size: 13px; color: #33453e; }
+  .remember input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: #0f6e4f; }
+  .remember small { display: block; color: #6b7a75; font-weight: 400; margin-top: 2px; }
+  .note { margin: 16px 0 0; font-size: 12px; color: #8a978f; text-align: center; }
 </style>
 </head>
 <body>
@@ -58,7 +62,14 @@ export async function GET() {
     <input id="username" name="username" autocomplete="username" required>
     <label for="password">Hasło</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <label class="remember" for="remember">
+      <input id="remember" name="remember" type="checkbox" checked>
+      <span>Zapamiętaj mnie na tym urządzeniu
+        <small>Nie pytaj o hasło ponownie przez rok (do wylogowania).</small>
+      </span>
+    </label>
     <button type="submit" id="submitBtn">Zaloguj</button>
+    <p class="note">Dodaj aplikację do ekranu początkowego — zapamiętane logowanie działa też tam.</p>
   </form>
 <script>
 (function(){
@@ -81,13 +92,17 @@ export async function GET() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         username: document.getElementById('username').value,
-        password: document.getElementById('password').value
+        password: document.getElementById('password').value,
+        remember: document.getElementById('remember').checked
       })
     }).then(function(r){ return r.json().then(function(data){ return { ok: r.ok, data: data }; }); })
       .then(function(res){
         if (!res.ok) {
-          err.textContent = res.data && res.data.error === 'invalid_credentials'
-            ? 'Nieprawidłowy login lub hasło.'
+          var code = res.data && res.data.error;
+          err.textContent = code === 'invalid_credentials' ? 'Nieprawidłowy login lub hasło.'
+            : code === 'too_many_attempts' ? 'Za dużo nieudanych prób. Odczekaj ' + Math.ceil((res.data.retryAfterSeconds || 300) / 60) + ' min i spróbuj ponownie.'
+            : code === 'missing_credentials' ? 'Podaj login i hasło.'
+            : code === 'auth_mode_disabled' ? 'Logowanie nie jest skonfigurowane na serwerze.'
             : 'Nie udało się zalogować. Spróbuj ponownie.';
           err.style.display = 'block';
           btn.disabled = false;

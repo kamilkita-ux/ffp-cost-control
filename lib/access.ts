@@ -20,6 +20,7 @@
 // nigdy nie "wyłączyło się przypadkiem" tylko dlatego, że Kamil zmienił
 // sposób logowania — patrz lib/session.ts / lib/authSession.ts.
 import { getSessionFromRequest } from "./authSession";
+import { basicUserByName } from "./basicAuth";
 import { prisma } from "./prisma";
 import type { SessionPayload } from "./session";
 
@@ -38,6 +39,16 @@ import type { SessionPayload } from "./session";
 export async function getVerifiedSession(req: Request): Promise<SessionPayload | null> {
   const session = await getSessionFromRequest(req);
   if (!session) return null;
+  // Zapamiętane logowanie konta ze zmiennych (tryb Basic, 2026-09-23):
+  // login musi być na AKTUALNEJ liście, rola zawsze z bieżących zmiennych.
+  // Po przełączeniu na AUTH_MODE=accounts takie ciasteczko przestaje być
+  // honorowane — każdy loguje się od nowa kontem z bazy.
+  if (session.mode === "basic") {
+    if (process.env.AUTH_MODE === "accounts") return null;
+    const user = basicUserByName(session.username);
+    if (!user) return null;
+    return { ...session, role: user.role };
+  }
   try {
     const user = await prisma.appUser.findUnique({ where: { username: session.username } });
     if (!user || !user.active) return null;
@@ -99,7 +110,13 @@ export async function isRestrictedUser(req: Request): Promise<boolean> {
 // dotychczasowym loginem, zanim jeszcze sam przejdzie na nowy system.
 export async function isAdminCaller(req: Request): Promise<boolean> {
   const session = await getVerifiedSession(req);
-  if (session) return session.role === "full";
+  if (session) {
+    // Sesja "basic": adminem jest tylko główne konto (jak dotąd przy
+    // nagłówku Basic) — konta z EXTRA_USERS mają pełny wgląd, ale nie
+    // zarządzają kontami/importami.
+    if (session.mode === "basic") return !!basicUserByName(session.username)?.admin;
+    return session.role === "full";
+  }
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Basic ")) {
     try {

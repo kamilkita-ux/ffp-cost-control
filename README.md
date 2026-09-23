@@ -25,11 +25,19 @@ w modelu danych (patrz sekcja E).
 Aplikacja jest aktualnie wdrożona i działa na Railway:
 
 - **Adres:** https://app-production-8f46.up.railway.app
-- **Ochrona dostępu:** HTTP Basic Auth (login/hasło ustawione zmiennymi
-  środowiskowymi `APP_BASIC_AUTH_USER` / `APP_BASIC_AUTH_PASSWORD` na
-  serwisie `app`; patrz `middleware.ts`). Jeśli te zmienne nie są ustawione,
-  middleware nic nie blokuje — to celowe zabezpieczenie przed
-  przypadkowym zablokowaniem dostępu.
+- **Ochrona dostępu:** login/hasło ustawione zmiennymi środowiskowymi
+  `APP_BASIC_AUTH_USER` / `APP_BASIC_AUTH_PASSWORD` (plus `APP_BASIC_AUTH_EXTRA_USERS`
+  i `APP_BASIC_AUTH_RESTRICTED_USERS`) na serwisie `app`; patrz `middleware.ts`
+  i `lib/basicAuth.ts`. Logowanie odbywa się na stronie `/login` z domyślnie
+  włączonym „Zapamiętaj mnie na tym urządzeniu" — po jednym podaniu hasła
+  telefon / iPad / komputer dostaje podpisane ciasteczko na 365 dni i nie
+  pyta ponownie (także jako aplikacja z ekranu początkowego). Ciasteczko
+  jest przy każdym żądaniu sprawdzane z bieżącą listą kont; zmiana
+  dowolnego hasła w zmiennych wylogowuje wszystkie urządzenia (sekret
+  podpisu jest z haseł wyprowadzany, chyba że ustawiono `SESSION_SECRET`).
+  Nagłówek HTTP Basic jest nadal honorowany (curl, stare zakładki). Jeśli
+  zmienne głównego konta nie są ustawione, middleware nic nie blokuje —
+  to celowe zabezpieczenie przed przypadkowym zablokowaniem dostępu.
 - **Automatyczny backup:** osobny serwis Railway `backup-cron` (ten sam
   repo, harmonogram cron `0 */4 * * *`, start command
   `npx tsx scripts/backup-cron.ts`) zapisuje co 4 godziny pełny snapshot
