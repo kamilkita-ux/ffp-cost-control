@@ -269,6 +269,7 @@ export async function GET(req: Request) {
     farmActuals: settingsMap.farmActuals ?? {},
     paymentLedger: settingsMap.paymentLedger ?? {},
     scenarios: settingsMap.scenarios ?? [],
+    farmModels: settingsMap.farmModels ?? null,
     // Widoczność modułów per login (2026-09-19): admin widzi całą mapę (do edycji),
     // każdy dostaje swoją listę (null = wszystkie).
     moduleVisibility: isAdmin ? (settingsMap.moduleVisibility ?? {}) : undefined,

@@ -55,6 +55,8 @@ export async function PUT(req: Request) {
   } else if (key === "deadlines") {
     if (!Array.isArray(v)) return bad("Rejestr terminów musi być listą.");
     if (!v.every((d: any) => d && typeof d.id === "string" && typeof d.title === "string" && (!d.date || /^\d{4}-\d{2}-\d{2}$/.test(String(d.date))))) return bad("Każdy termin musi mieć id, tytuł i datę RRRR-MM-DD.");
+  } else if (key === "farmModels") {
+    return bad("farmModels zapisuje wyłącznie import modelu Grzegorza (Ustawienia → Model Grzegorza).");
   } else if (key === "moduleVisibility") {
     if (!v || typeof v !== "object" || Array.isArray(v)) return bad("Widoczność modułów musi być obiektem {login: [moduły]}.");
     for (const k of Object.keys(v)) if (!Array.isArray(v[k]) || !v[k].every((x: unknown) => typeof x === "string")) return bad("Lista modułów dla loginu musi być tablicą nazw.");

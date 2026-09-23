@@ -291,6 +291,15 @@
 
   .assumption-note { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; }
 
+  .section-comment { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border); }
+  .section-comment label { display: block; font-size: 11px; color: var(--text-faint); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .section-comment textarea {
+    width: 100%; min-height: 44px; resize: vertical; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-s);
+    padding: 8px 10px; font-size: 12.5px; color: var(--text); font-family: inherit; line-height: 1.4;
+  }
+  .section-comment textarea::placeholder { color: var(--text-faint); }
+  .section-comment textarea:focus-visible, .section-comment textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: var(--focus); }
+
   .capex-items-list { display: flex; flex-direction: column; }
   .capex-item-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px 14px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .capex-item-row:last-child { border-bottom: none; padding-bottom: 0; }
@@ -301,6 +310,21 @@
   .one-time-readout-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0 4px; margin-top: 4px; border-top: 1px solid var(--border); }
   .one-time-readout-label { font-size: 13px; color: var(--text-muted); }
   .one-time-readout-value { font-size: 14px; font-weight: 600; }
+
+  .dev-gantt { display: flex; gap: 3px; border-radius: var(--radius-s); overflow: hidden; margin: 4px 0 12px; }
+  .dev-gantt-seg { background: var(--accent-soft); color: var(--text); padding: 9px 7px; font-size: 10.5px; text-align: center; display: flex; flex-direction: column; gap: 3px; min-width: 46px; }
+  .dev-gantt-seg-done { background: var(--surface-3); color: var(--text-faint); }
+  .dev-gantt-seg-label { font-weight: 600; line-height: 1.25; }
+  .dev-gantt-seg-months { font-family: "IBM Plex Mono", monospace; color: var(--text-muted); }
+  .dev-gantt-seg-done .dev-gantt-seg-months { color: var(--text-faint); }
+
+  .dev-stage-row { display: grid; grid-template-columns: 2fr 1fr auto auto; gap: 10px 14px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .dev-stage-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .dev-stage-row:first-child { padding-top: 0; }
+  .dev-stage-row .field { margin: 0; }
+  .dev-stage-label { font-size: 13px; color: var(--text); align-self: center; padding-bottom: 9px; }
+  .dev-stage-end { font-size: 11.5px; color: var(--text-muted); font-family: "IBM Plex Mono", monospace; align-self: center; padding-bottom: 9px; white-space: nowrap; }
+  .dev-stage-done-tag { font-size: 11.5px; color: var(--text-faint); align-self: center; padding-bottom: 9px; white-space: nowrap; }
 
   @media (max-width: 860px) {
     #app { flex-direction: column; }
@@ -317,6 +341,9 @@
     .kpi-grid { grid-template-columns: 1fr 1fr; }
     .capex-item-row { grid-template-columns: 1fr; }
     .dep-note { grid-column: 1; }
+    .dev-gantt { flex-wrap: wrap; }
+    .dev-gantt-seg { flex-grow: 1 !important; min-width: 100px; }
+    .dev-stage-row { grid-template-columns: 1fr; }
   }
 
   [hidden] { display: none !important; }
@@ -556,6 +583,31 @@
     PV_ONE_TIME_KEYS.forEach(function (k) { sum += num(d.capex[k]); });
     return sum;
   }
+  /** Per-item month/year at which each "koszty jednorazowe" line (przyłącze
+   *  do sieci OSD, projekt/dokumentacja, inne/pozostałe) is actually incurred
+   *  — independently configurable per item (d.capex_onetime_timing.<key> =
+   *  {year, month}), defaulting to the technology's own commissioning date
+   *  when that item has no override yet (old saved projects, or a freshly
+   *  added item) — see oneTimeCostsCardHtml for the input fields and
+   *  computeMetrics for where this actually moves the cash-flow outflow.
+   *  Only ever called for PV (storage's d.capex has none of PV_ONE_TIME_KEYS,
+   *  so this naturally returns [] for it without needing its own guard).
+   *  Items with a zero/blank amount are skipped — nothing to place on the
+   *  timeline. */
+  function pvOneTimeItemDates(d) {
+    var out = [];
+    if (!d || !d.capex) return out;
+    var timing = d.capex_onetime_timing || {};
+    PV_ONE_TIME_KEYS.forEach(function (k) {
+      var amt = num(d.capex[k]);
+      if (!amt) return;
+      var ov = timing[k] || {};
+      var year = ov.year !== undefined && ov.year !== null && ov.year !== "" ? Math.round(num(ov.year, d.commissioning_year)) : Math.round(num(d.commissioning_year, 2026));
+      var month = ov.month !== undefined && ov.month !== null && ov.month !== "" ? clamp(Math.round(num(ov.month, d.commissioning_month)), 1, 12) : clamp(Math.round(num(d.commissioning_month, 1)), 1, 12);
+      out.push({ key: k, amount: amt, year: year, month: month });
+    });
+    return out;
+  }
   /** Straight-line tax-depreciation schedule for one technology block's CAPEX,
    *  as PLN-per-month indexed by "months since commissioning" (index 0 = the
    *  commissioning month itself). In itemized ("Szczegółowo") CAPEX mode each
@@ -589,6 +641,24 @@
     return yrsK * 12;
   }
   function techDepreciationSchedule(t, p) {
+    // "own_operating": CAPEX/capex_depreciation_years are irrelevant here —
+    // t.capex was already set (by techCapexFinancingSummary, see
+    // computeMetrics) to the user-entered "remaining book value to
+    // depreciate", not techCapexTotal. Spread that single amount straight-
+    // line over the user-entered "remaining depreciation period"
+    // (development.remaining_depreciation_years) instead of the normal
+    // itemized/aggregate CAPEX breakdown — this is the tax-depreciation
+    // shield for an already-running farm continuing to depreciate the
+    // asset it already owns, not a fresh CAPEX outlay.
+    if (getDevelopment(t.data).mode === "own_operating") {
+      var remMonths = Math.max(1, Math.round(num(t.data.development.remaining_depreciation_years, 10))) * 12;
+      var ownSchedule = new Array(remMonths).fill(0);
+      if (t.capex > 0) {
+        var perMonthOwn = t.capex / remMonths;
+        for (var moOwn = 0; moOwn < remMonths; moOwn++) ownSchedule[moOwn] = perMonthOwn;
+      }
+      return ownSchedule;
+    }
     var items = [];
     if (t.data.capex_mode === "total") {
       var depYearsTotal = Math.max(1, Math.round(num(p.tax.depreciation_years, 10)));
@@ -655,6 +725,41 @@
     var debtAmt = scalableCapex * (debtSharePct / 100);
     return { debtAmt: debtAmt, equityAmt: capexTotal - debtAmt };
   }
+  /** Single authoritative source for a technology's CAPEX/debt/equity
+   *  figures — used by BOTH the input form (techFieldsHtml/
+   *  refreshInlineSums) and the engine itself (computeMetrics), so the two
+   *  can never drift apart. Branches on the development-pipeline mode (see
+   *  getDevelopment):
+   *  - greenfield / in_progress / operating: unchanged behavior — capexTotal
+   *    from techCapexTotal (scalable CAPEX + PV's one-time costs),
+   *    debt/equity from techFinancingAmounts (debt_share_pct% of the
+   *    scalable part).
+   *  - "own_operating": the farm is already built and running before this
+   *    analysis even starts, so CAPEX and one-time development costs are
+   *    irrelevant/ignored here even if old values are still sitting in
+   *    d.capex/d.capex_total_per_mw_pln from a previous mode (switching
+   *    modes never clears that data, so it must be explicitly ignored, not
+   *    just hidden from the form). Instead: "capexTotal" becomes the
+   *    user-entered "pozostała wartość księgowa" (remaining book value to
+   *    depreciate, development.remaining_book_value_pln) and "debt" becomes
+   *    the user-entered "dług pozostały do spłaty" (financing.
+   *    outstanding_debt_pln) directly — NOT a percentage of anything.
+   *    Equity is the implied difference (book value minus remaining debt —
+   *    the net worth this technology already represents going into the
+   *    analysis), which can legitimately be negative if the remaining debt
+   *    exceeds the asset's book value. oneTimeTotal is always 0 in this
+   *    mode. */
+  function techCapexFinancingSummary(d, powerMW) {
+    var dev = getDevelopment(d);
+    if (dev.mode === "own_operating") {
+      var bookValue = Math.max(0, num(dev.remaining_book_value_pln));
+      var outstandingDebt = Math.max(0, num(d.financing.outstanding_debt_pln));
+      return { capexTotal: bookValue, debtAmt: outstandingDebt, equityAmt: bookValue - outstandingDebt, oneTimeTotal: 0 };
+    }
+    var capexTotal = techCapexTotal(d, powerMW);
+    var fin = techFinancingAmounts(d, capexTotal);
+    return { capexTotal: capexTotal, debtAmt: fin.debtAmt, equityAmt: fin.equityAmt, oneTimeTotal: pvOneTimeCostsTotal(d) };
+  }
   function getCSSVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -686,6 +791,26 @@
   // lower in summer. Derived the same way, from a real PV+BESS project simulation.
   var DEFAULT_MONTHLY_PROFILE_STORAGE = [10.67, 9.67, 9.00, 7.67, 7.00, 6.00, 6.00, 6.67, 7.00, 7.67, 9.33, 13.32];
 
+  // Default development-pipeline stages for a technology built from scratch
+  // ("Budowa od podstaw"), with typical durations — from the company's own
+  // stated planning assumptions. Used to seed a fresh project's
+  // pv.development/storage.development.stages (see defaultProject) and as
+  // the fallback whenever a project's own stages array is missing/empty
+  // (see computeAutoCommissioning/getDevelopment). Each project's own copy
+  // is fully editable per-stage (durations can differ from these defaults),
+  // and a "Resetuj harmonogram do domyślnych" button restores this list.
+  var DEFAULT_DEV_STAGES = [
+    { label: "Warunki przyłączenia", months: 6 },
+    { label: "Dokumentacja, mapy, uzgodnienia", months: 2 },
+    { label: "Pozwolenie na budowę", months: 4 },
+    { label: "Projekt techniczny i budowlany + uzgodnienia", months: 2 },
+    { label: "Budowa", months: 5 },
+    { label: "Odbiór przez zakład energetyczny / Uruchomienie", months: 2 }
+  ];
+  function cloneDevStages(stages) {
+    return (stages || DEFAULT_DEV_STAGES).map(function (s) { return { label: s.label, months: s.months }; });
+  }
+
   // Company-wide fixed costs — head-office salaries, admin, legal, accounting,
   // office rent — not tied to any single farm's own operations, so they never
   // appear on a project, only in the portfolio-level BEP calculation. From the
@@ -698,10 +823,48 @@
   var DEFAULT_FIXED_COSTS = {
     enabled: true,
     start_year: 2026, start_month: 9,
+    // Kept only as a last-resort fallback (see fixedCostsCurrentFuture below)
+    // for the rare case "items" is somehow empty — the itemized breakdown in
+    // "items" is the real, primary source of truth, not these two numbers.
     monthly_current_pln: 138638,
     monthly_future_pln: 214638,
-    escalation_pct: 3
+    escalation_pct: 3,
+    // "mode" is a VIEW toggle only (which card the compare view shows —
+    // read-only zbiorczo summary vs. the editable itemized rows) and has no
+    // effect on the actual figure used anywhere — see fixedCostsCurrentFuture.
+    // "items" is the real, primary source of the current/future run-rate: a
+    // single placeholder line reproducing the previously-aggregate-only
+    // total (138 638 / 214 638 PLN — from the "Koszty Stałe" sheet, CF
+    // Farmy.xlsx) until it's split into real cost categories.
+    mode: "aggregate",
+    items: [
+      { label: "Łącznie (koszty ogólnego zarządu)", monthly_current_pln: 138638, monthly_future_pln: 214638 }
+    ]
   };
+
+  /** Current/future monthly run-rate (PLN) implied by a fixed-costs object —
+   *  the sum of the itemized breakdown ("items") whenever it has at least one
+   *  row, regardless of "mode" (mode only controls which card is SHOWN, not
+   *  which figure is used — see the comment on DEFAULT_FIXED_COSTS). Each
+   *  item carries its own current/future PLN/month, the same two-step
+   *  schedule the aggregate fields used to carry directly. Falls back to the
+   *  two flat monthly_current_pln/monthly_future_pln fields only when items
+   *  is empty (defensive — renderCompare auto-seeds a placeholder item from
+   *  those fields on load, so this path should be unreachable in practice).
+   *  Single source of truth for fixedCostForMonth below and for the "Razem"
+   *  readout in the input form — nothing else should read
+   *  fc.monthly_current_pln/monthly_future_pln directly. */
+  function fixedCostsCurrentFuture(fc) {
+    if (fc && Array.isArray(fc.items) && fc.items.length) {
+      var cur = 0, fut = 0;
+      fc.items.forEach(function (it) {
+        cur += Math.max(0, num(it.monthly_current_pln));
+        fut += Math.max(0, num(it.monthly_future_pln));
+      });
+      return { current: cur, future: fut };
+    }
+    return { current: Math.max(0, num(fc && fc.monthly_current_pln)), future: Math.max(0, num(fc && fc.monthly_future_pln)) };
+  }
 
   /** Company fixed cost (PLN) charged in a given calendar month — 0 before the
    *  start date, the current run-rate for the first 12 months, then the future
@@ -713,12 +876,11 @@
     var startM = clamp(Math.round(num(fc.start_month, 1)), 1, 12);
     var idx = monthDiff(startY, startM, year, month);
     if (idx < 0) return 0;
-    var current = Math.max(0, num(fc.monthly_current_pln));
-    var future = Math.max(0, num(fc.monthly_future_pln));
+    var cf = fixedCostsCurrentFuture(fc);
     var esc = num(fc.escalation_pct) / 100;
-    if (idx < 12) return current;
+    if (idx < 12) return cf.current;
     var yearsSinceStep = Math.floor((idx - 12) / 12);
-    return future * Math.pow(1 + esc, yearsSinceStep);
+    return cf.future * Math.pow(1 + esc, yearsSinceStep);
   }
 
   function addMonths(year, month, delta) {
@@ -728,6 +890,44 @@
     return { year: y, month: m };
   }
   function monthDiff(y1, m1, y2, m2) { return (y2 * 12 + (m2 - 1)) - (y1 * 12 + (m1 - 1)); }
+
+  /** Fraction (0..1) of a technology's debt facility actually drawn as of a
+   *  given month within financing (0-based "since" = months since
+   *  financing.start — see t.finStartM in computeMetrics), when disbursement
+   *  is modeled as discrete tranches rather than the whole facility landing
+   *  on day one. Interest during the grace period (see the debt-schedule
+   *  loop in computeMetrics) is charged only on the drawn fraction, not the
+   *  full facility — a construction loan typically funds CAPEX progressively
+   *  as it's incurred, so the borrower doesn't pay interest on money not yet
+   *  received. Tranching is opt-in (financing.tranching_enabled, default
+   *  false/undefined) and resolves to a full immediate draw (fraction 1 for
+   *  every month) when disabled or when no tranche rows are defined — so
+   *  existing projects, and the amortization phase itself, behave exactly as
+   *  before. Each tranche row is a step ({month, pct}): "pct" is the
+   *  CUMULATIVE % of the facility drawn by that relative month (1 = first
+   *  month of financing), so the fraction is a staircase, not a ramp —
+   *  matching how a bank actually releases a tranche (a lump sum on a given
+   *  date, not a gradual trickle). Whatever fraction tranches leave undrawn
+   *  by the end of the grace period is drawn automatically once amortization
+   *  starts: the debt-schedule loop's "balance" variable is never touched by
+   *  this function — it stays at the full facility amount throughout grace
+   *  regardless of the fraction used here for interest — so repayment always
+   *  starts from the full principal, matching a facility fully utilized by
+   *  COD (the input form warns if a schedule leaves it short — see
+   *  techFieldsHtml's tranching block). */
+  function debtDrawnFraction(fin, since) {
+    if (!fin || !fin.tranching_enabled) return 1;
+    var list = Array.isArray(fin.tranches) ? fin.tranches : [];
+    if (!list.length) return 1;
+    var relMonth = since + 1;
+    var sorted = list.slice().sort(function (a, b) { return num(a.month) - num(b.month); });
+    var frac = 0;
+    for (var i = 0; i < sorted.length; i++) {
+      if (num(sorted[i].month) <= relMonth) frac = clamp(num(sorted[i].pct), 0, 100) / 100;
+      else break;
+    }
+    return frac;
+  }
 
   /* ============================================================
      FINANCIAL ENGINE
@@ -767,6 +967,78 @@
       if (flo * fm < 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
     }
     return (lo + hi) / 2;
+  }
+
+  /** Suggests "Horyzont analizy" (in years) from the PV land-lease term
+   *  (opex.dzierzawa_okres_lat), since the farm's operating lifetime is
+   *  bounded by how long the land lease runs. Mirrors — at a UI-convenience
+   *  level, not touching computeMetrics itself — the same "earliest anchor
+   *  date" logic computeMetrics uses for its "base" (commissioning /
+   *  financing-start / lease-start, across PV and, if enabled, storage), so
+   *  the suggested horizon lines up with the timeline the engine actually
+   *  runs, then counts forward from that anchor to (lease start + lease
+   *  term). Always manually overridable afterwards — see
+   *  horizonLeaseNoteHtml for the mismatch warning and the
+   *  data-path listener branch in renderInputsTab for the live auto-sync. */
+  function computeAutoHorizonYears(p) {
+    var pv = p.pv;
+    var pvCommissioning = { year: Math.round(num(pv.commissioning_year, 2026)), month: clamp(Math.round(num(pv.commissioning_month, 1)), 1, 12) };
+    var pvFinStart = { year: Math.round(num(pv.financing.start_year, pvCommissioning.year)), month: clamp(Math.round(num(pv.financing.start_month, pvCommissioning.month)), 1, 12) };
+    var pvLeaseStart = { year: Math.round(num(pv.opex.dzierzawa_start_year, pvCommissioning.year)), month: clamp(Math.round(num(pv.opex.dzierzawa_payment_month, pvCommissioning.month)), 1, 12) };
+    var anchors = [pvCommissioning, pvFinStart, pvLeaseStart];
+    if (p.storage && p.storage.enabled) {
+      var st = p.storage;
+      var stCommissioning = { year: Math.round(num(st.commissioning_year, pvCommissioning.year)), month: clamp(Math.round(num(st.commissioning_month, 1)), 1, 12) };
+      var stFinStart = { year: Math.round(num(st.financing.start_year, stCommissioning.year)), month: clamp(Math.round(num(st.financing.start_month, stCommissioning.month)), 1, 12) };
+      anchors.push(stCommissioning, stFinStart);
+    }
+    var base = anchors[0];
+    anchors.forEach(function (a) { if (monthDiff(base.year, base.month, a.year, a.month) < 0) base = a; });
+    var okresLat = Math.max(1, Math.round(num(pv.opex.dzierzawa_okres_lat, 25)));
+    var leaseEnd = { year: pvLeaseStart.year + okresLat, month: pvLeaseStart.month };
+    var totalMonths = monthDiff(base.year, base.month, leaseEnd.year, leaseEnd.month);
+    return Math.max(1, Math.round(totalMonths / 12));
+  }
+
+  /** Defensive accessor for a technology's development-pipeline block —
+   *  falls back to a sensible "greenfield, starting today, default stages"
+   *  object on the rare chance it's missing (should not normally happen:
+   *  defaultProject() always sets it, and migrateDevelopmentTimeline seeds
+   *  it for old saves) rather than throwing. Never mutates state.draft
+   *  itself — purely a read helper for rendering/computation. */
+  function getDevelopment(techData) {
+    if (techData && techData.development) return techData.development;
+    var today = new Date();
+    return { mode: "greenfield", start_year: today.getFullYear(), start_month: today.getMonth() + 1, first_pending_stage: 0, stages: cloneDevStages() };
+  }
+
+  /** Suggests a technology's "Miesiąc/Rok uruchomienia" from its
+   *  development-pipeline timeline — mirrors computeAutoHorizonYears' role
+   *  for horizon_years: always manually overridable afterwards (see
+   *  developmentNoteHtml for the mismatch warning, and the [data-path]
+   *  listener branch in renderInputsTab for the live auto-sync into
+   *  commissioning_year/commissioning_month). Four modes (dev.mode):
+   *  - "greenfield": full pipeline from the start date, every stage counts.
+   *  - "in_progress": bought partway through development — stages before
+   *    dev.first_pending_stage are already done and don't count; only the
+   *    remaining ones (from that index onward) do.
+   *  - "operating": an already-producing farm being acquired — commissioning
+   *    IS the start/acquisition date itself, no construction time at all.
+   *  - "own_operating": the user's own farm, already in operation (never
+   *    "acquired" — it was either already running or already built by the
+   *    user before being entered here) — same math as "operating"
+   *    (commissioning IS the start date, no stages), kept as its own mode
+   *    only so the UI's labels/wording don't talk about "buying" a farm
+   *    the user already owns. */
+  function computeAutoCommissioning(dev) {
+    var startY = Math.round(num(dev.start_year, new Date().getFullYear()));
+    var startM = clamp(Math.round(num(dev.start_month, 1)), 1, 12);
+    if (dev.mode === "operating" || dev.mode === "own_operating") return { year: startY, month: startM };
+    var stages = Array.isArray(dev.stages) && dev.stages.length ? dev.stages : DEFAULT_DEV_STAGES;
+    var fromIdx = dev.mode === "in_progress" ? clamp(Math.round(num(dev.first_pending_stage, 0)), 0, stages.length) : 0;
+    var totalMonths = 0;
+    for (var i = fromIdx; i < stages.length; i++) totalMonths += Math.max(0, num(stages[i].months));
+    return addMonths(startY, startM, totalMonths);
   }
 
   /** Core monthly budgeting engine. Runs PV (and, if enabled, storage) as two
@@ -813,7 +1085,7 @@
       year: Math.round(num(pv.opex.dzierzawa_start_year, pvCommissioning.year)),
       month: clamp(Math.round(num(pv.opex.dzierzawa_payment_month, pvCommissioning.month)), 1, 12)
     };
-    techs.push({ key: "pv", isStorage: false, data: pv, commissioning: pvCommissioning, financingStart: pvFinStart, leaseStart: pvLeaseStart, grace: pvGrace });
+    techs.push({ key: "pv", isStorage: false, data: pv, commissioning: pvCommissioning, financingStart: pvFinStart, leaseStart: pvLeaseStart, grace: pvGrace, oneTimeDates: pvOneTimeItemDates(pv) });
 
     var storageEnabled = !!(p.storage && p.storage.enabled);
     if (storageEnabled) {
@@ -828,7 +1100,7 @@
         year: Math.round(num(st.opex.dzierzawa_start_year, stCommissioning.year)),
         month: clamp(Math.round(num(st.opex.dzierzawa_payment_month, stCommissioning.month)), 1, 12)
       };
-      techs.push({ key: "storage", isStorage: true, data: st, commissioning: stCommissioning, financingStart: stFinStart, leaseStart: stLeaseStart, grace: stGrace });
+      techs.push({ key: "storage", isStorage: true, data: st, commissioning: stCommissioning, financingStart: stFinStart, leaseStart: stLeaseStart, grace: stGrace, oneTimeDates: pvOneTimeItemDates(st) });
     }
 
     var base = techs[0].financingStart;
@@ -844,6 +1116,13 @@
     // above) — otherwise that payment's calendar month would fall outside
     // the modeled timeline entirely and silently never appear.
     techs.forEach(function (t) { if (monthDiff(base.year, base.month, t.leaseStart.year, t.leaseStart.month) < 0) base = t.leaseStart; });
+    // Also anchor to the earliest configured "koszty jednorazowe" item date
+    // (przyłącze/projekt-dokumentacja/inne — see pvOneTimeItemDates), in case
+    // the user pushed one earlier than financing start/commissioning/lease —
+    // otherwise that outflow's calendar month would fall outside the
+    // modeled timeline and silently never appear (same reasoning as the
+    // lease-anchor above).
+    techs.forEach(function (t) { t.oneTimeDates.forEach(function (od) { if (monthDiff(base.year, base.month, od.year, od.month) < 0) base = { year: od.year, month: od.month }; }); });
     var globalBaseYear = techs[0].commissioning.year;
     techs.forEach(function (t) { if (t.commissioning.year < globalBaseYear) globalBaseYear = t.commissioning.year; });
 
@@ -859,15 +1138,37 @@
 
       var powerMW = t.isStorage ? num(t.data.power_mw) : num(t.data.power_kwp) / 1000;
       t.powerMW = powerMW;
-      t.capex = techCapexTotal(t.data, powerMW);
-      var debtSharePct = clamp(num(t.data.financing.debt_share_pct), 0, 100);
-      // Modeling assumption (mirrors techFinancingAmounts): debt financing
-      // applies only to the power-scalable CAPEX, never to PV's "koszty
-      // jednorazowe" (przyłącze, projekt/dokumentacja) — those are always
-      // funded 100% from equity/cash regardless of the debt-share percentage.
-      var scalableCapex = t.capex - pvOneTimeCostsTotal(t.data);
-      t.debtAmount = scalableCapex * (debtSharePct / 100);
-      t.equityAmount = t.capex - t.debtAmount;
+      // techCapexFinancingSummary (shared with the input form — see its own
+      // doc comment) branches on development.mode: normally t.capex/
+      // t.debtAmount/t.equityAmount come from techCapexTotal +
+      // techFinancingAmounts (debt_share_pct% of scalable CAPEX) as before;
+      // for "own_operating" they instead come directly from the user-
+      // entered "pozostała wartość księgowa" (remaining book value) and
+      // "dług pozostały do spłaty" (outstanding debt) — CAPEX/one-time
+      // costs are ignored entirely in that mode, even if stale values are
+      // still sitting in t.data.capex from a previous mode.
+      var capexSummary = techCapexFinancingSummary(t.data, powerMW);
+      t.capex = capexSummary.capexTotal;
+      t.debtAmount = capexSummary.debtAmt;
+      t.equityAmount = capexSummary.equityAmt;
+      t.devMode = getDevelopment(t.data).mode;
+      // Each "koszty jednorazowe" item (przyłącze, projekt/dokumentacja,
+      // inne/pozostałe) is now placed on the cash-flow timeline in its OWN
+      // configured month (t.oneTimeDates, from pvOneTimeItemDates — defaults
+      // to commissioning when unset), instead of lumped into the single
+      // t.finStartM outflow below with the rest of the CAPEX/equity
+      // contribution. t.oneTimeTotal (0 for storage, and 0 for PV in
+      // "own_operating" mode — see techCapexFinancingSummary) is what the
+      // finStartM lump must exclude so the two never double-count; their
+      // sum still always equals t.equityAmount / t.capex exactly, just
+      // spread across different months. Depreciation timing is intentionally
+      // left untouched (techDepreciationSchedule still anchors every CAPEX
+      // item, one-time ones included, to the commissioning date, same as
+      // before this feature) — only the cash-outflow timing moves.
+      t.oneTimeTotal = capexSummary.oneTimeTotal;
+      t.oneTimeItemsForCF = (t.devMode !== "own_operating") ? t.oneTimeDates.map(function (od) {
+        return { amount: od.amount, m: monthDiff(base.year, base.month, od.year, od.month) + 1 };
+      }) : [];
       var wibor = Math.max(0, num(t.data.financing.wibor_pct)) / 100;
       var marza = Math.max(0, num(t.data.financing.marza_pct)) / 100;
       t.annualRate = wibor + marza;
@@ -918,7 +1219,15 @@
         if (t.debtAmount <= 0 || m < t.finStartM) { t.debtRows.push({ interest: 0, principal: 0, payment: 0 }); continue; }
         var since = m - t.finStartM;
         if (since < t.grace) {
-          var interestG = balance * t.monthlyRate;
+          // Tranched drawdown (debtDrawnFraction) models a construction
+          // loan being disbursed gradually as CAPEX is incurred — doesn't
+          // apply to "own_operating", where the debt already exists in
+          // full at the start of the analysis (there's no new CAPEX being
+          // drawn against), so it's always treated as fully drawn (1)
+          // regardless of any tranches array left over from a previous
+          // mode.
+          var drawnFrac = t.devMode === "own_operating" ? 1 : debtDrawnFraction(t.data.financing, since);
+          var interestG = balance * drawnFrac * t.monthlyRate;
           t.debtRows.push({ interest: interestG, principal: 0, payment: interestG });
         } else if (since < t.grace + t.termMonths && t.termMonths > 0) {
           var interest = balance * t.monthlyRate;
@@ -1119,7 +1428,14 @@
         var t = techs[ti];
         var dRow = t.debtRows[m - 1];
         interest += dRow.interest; principal += dRow.principal; debtPayment += dRow.payment;
-        if (m === t.finStartM) { equityOut += t.equityAmount; capexOut += t.capex; debtDrawn += t.debtAmount; }
+        if (m === t.finStartM) { equityOut += (t.equityAmount - t.oneTimeTotal); capexOut += (t.capex - t.oneTimeTotal); debtDrawn += t.debtAmount; }
+        // "Koszty jednorazowe" — each item's own configured month (see
+        // t.oneTimeItemsForCF above), rather than bundled into the finStartM
+        // lump above (which already excludes t.oneTimeTotal to avoid
+        // double-counting).
+        for (var oti = 0; oti < t.oneTimeItemsForCF.length; oti++) {
+          if (m === t.oneTimeItemsForCF[oti].m) { equityOut += t.oneTimeItemsForCF[oti].amount; capexOut += t.oneTimeItemsForCF[oti].amount; }
+        }
         // Dzierżawa (land lease) is evaluated for EVERY month, independent of
         // the "m >= commissioningM" gate below — unlike technical
         // service/insurance/property tax, it commonly starts BEFORE
@@ -1290,14 +1606,24 @@
       discCosts += (r.opex) / Math.pow(1 + waccMonthly, mm);
       discProd += r.production / Math.pow(1 + waccMonthly, mm);
     });
-    techs.forEach(function (t) { discCosts += t.capex / Math.pow(1 + waccMonthly, t.finStartM); });
+    techs.forEach(function (t) {
+      discCosts += (t.capex - t.oneTimeTotal) / Math.pow(1 + waccMonthly, t.finStartM);
+      t.oneTimeItemsForCF.forEach(function (it) { discCosts += it.amount / Math.pow(1 + waccMonthly, it.m); });
+    });
     var lcoe = discProd > 0 ? discCosts / discProd : null;
+
+    // Undiscounted total production over the whole horizon (MWh, PV +
+    // storage combined — matches the blended LCOE above) — used for the
+    // simple "Cena − LCOE" margin/profit KPI (see renderResults) rather
+    // than recomputed there from monthRows again.
+    var totalProduction = 0;
+    monthRows.forEach(function (r) { totalProduction += r.production; });
 
     return {
       capex: totalCapex, capexPerKwp: totalCapex / pvPowerKwp, debtAmount: totalDebt, equityAmount: totalEquity,
       horizon: horizonYears, yearRows: yearRows, monthRows: monthRows,
       npvProject: npvProject, irrProject: irrProject, npvEquity: npvEquity, irrEquity: irrEquity,
-      paybackEquity: paybackEquity, dscrMin: dscrMin, dscrAvg: dscrAvg, lcoe: lcoe,
+      paybackEquity: paybackEquity, dscrMin: dscrMin, dscrAvg: dscrAvg, lcoe: lcoe, totalProduction: totalProduction,
       hasStorage: storageEnabled, pvCapex: techs[0].capex, storageCapex: storageEnabled ? techs[1].capex : 0
     };
   }
@@ -1346,6 +1672,26 @@
   };
   var MONTH_OPTIONS = MONTH_NAMES_PL.map(function (name, i) { return { value: i + 1, label: name }; });
 
+  // Sposób sprzedaży energii — purely informational (no pricing-model
+  // changes; see fieldSelectStr/the data-strval change-listener branch for
+  // why this needs a STRING-valued select, unlike every other <select> in
+  // the app, which is coerced to a number). Also drives the portfolio
+  // "udział sposobów sprzedaży" donut chart in the compare view — each
+  // option's color below was run through the dataviz skill's
+  // validate_palette.js (Okabe-Ito-derived, CVD-safe in both light and dark
+  // mode; the amber step was tuned to pass the lightness band in both).
+  var ENERGY_SALE_METHOD_OPTIONS = [
+    { value: "rynek_dnia_nastepnego", label: "Rynek dnia następnego (giełda, spot)" },
+    { value: "aukcja_oze", label: "Aukcja OZE (URE)" },
+    { value: "ppa", label: "PPA (umowa bezpośrednia)" },
+    { value: "inne", label: "Inne / mieszany" }
+  ];
+  var ENERGY_SALE_METHOD_LABELS = {};
+  ENERGY_SALE_METHOD_OPTIONS.forEach(function (o) { ENERGY_SALE_METHOD_LABELS[o.value] = o.label; });
+  var ENERGY_SALE_METHOD_COLORS = {
+    rynek_dnia_nastepnego: "#0072B2", aukcja_oze: "#B8860B", ppa: "#009E73", inne: "#D55E00"
+  };
+
   function defaultOpex(scale) {
     return {
       dzierzawa_pln_mw: scale === "storage" ? 2000 : 15000,
@@ -1355,7 +1701,15 @@
       podatek_budowli_podstawa_pln_mw: scale === "storage" ? 300000 : 600000,
       ubezpieczenie_majatkowe_pln_mw: 3750,
       ubezpieczenie_oc_pln: 2500,
-      inne_pozostale_pln_rok: 0
+      inne_pozostale_pln_rok: 0,
+      // Okres dzierżawy gruntu (lat), licząc od pierwszej płatności
+      // (dzierzawa_start_year/dzierzawa_payment_month) — PV-only in the UI
+      // (see techFieldsHtml's !isStorage guard) since it drives the
+      // horizon↔lease-term auto-link (computeAutoHorizonYears/
+      // horizonLeaseNoteHtml): the farm's operating lifetime is bounded by
+      // how long the land lease runs. Carried on both pv/storage opex here
+      // only because defaultOpex is shared; unused for storage.
+      dzierzawa_okres_lat: 25
     };
   }
 
@@ -1369,10 +1723,19 @@
       // ceny") — domyślnie bieżący rok kalendarzowy. Patrz priceBaseYear w
       // computeMetrics.
       price_base_year: new Date().getFullYear(),
+      // Sposób sprzedaży energii — informacyjne, patrz
+      // ENERGY_SALE_METHOD_OPTIONS. Nie wpływa na model cenowy/przepływy.
+      energy_sale_method: "rynek_dnia_nastepnego",
       pv: {
         power_kwp: 1000,
         commissioning_year: nextYear, commissioning_month: 6,
-        capex_mode: "detailed",
+        // Defaults to the aggregate "total" (PLN/MW) mode rather than the
+        // 15-line itemized breakdown — a brand-new project starts with the
+        // smaller, less overwhelming CAPEX card; anyone who wants the
+        // itemized detail can switch to "Szczegółowo" at any time via the
+        // toggle (see techFieldsHtml). Existing saved projects keep
+        // whichever mode they were already in — this only affects new ones.
+        capex_mode: "total",
         // Excludes the "koszty jednorazowe" one-time items below (przylacze,
         // projekt_dokumentacja = 420 000 PLN combined; inne_jednorazowe
         // defaults to 0) — this per-MW seed covers only the power-scalable
@@ -1400,14 +1763,18 @@
         // a flat annual amount for small, production-unrelated site income
         // (e.g. leasing a corner of the plot for an advertising banner).
         revenue: { price_pln_mwh: 380, price_escalation_pct: 1.5, price_go_pln_mwh: 2.5, price_go_escalation_pct: 0, inne_przychody_pln_rok: 0 },
-        financing: { debt_share_pct: 75, wibor_pct: 3.81, marza_pct: 1.5, loan_term_years: 12, grace_months: 6, type: "malejaca" },
+        // outstanding_debt_pln only applies when development.mode ===
+        // "own_operating" (see techCapexFinancingSummary) — irrelevant, and
+        // left at 0, for every other mode.
+        financing: { debt_share_pct: 75, wibor_pct: 3.81, marza_pct: 1.5, loan_term_years: 12, grace_months: 6, type: "malejaca", tranching_enabled: false, tranches: [], outstanding_debt_pln: 0 },
         monthly_profile_pct: DEFAULT_MONTHLY_PROFILE_PV.slice()
       },
       storage: {
         enabled: false,
         power_mw: 1, throughput_mwh_mw: 1400,
         commissioning_year: nextYear, commissioning_month: 9,
-        capex_mode: "detailed",
+        // Same rationale as pv.capex_mode above — see its comment.
+        capex_mode: "total",
         capex_total_per_mw_pln: 2500000,
         capex: { baterie: 1500000, pcs_inwerter: 500000, instalacja_integracja: 375000, inne: 125000 },
         capex_depreciation_years: Object.assign({}, DEFAULT_STORAGE_DEP_YEARS),
@@ -1415,11 +1782,20 @@
         opex_escalation_pct: 3,
         degradation_pct: 2,
         revenue: { price_pln_mwh: 450, price_escalation_pct: 1.5 },
-        financing: { debt_share_pct: 70, wibor_pct: 3.81, marza_pct: 2.5, loan_term_years: 8, grace_months: 6, type: "malejaca" },
+        // outstanding_debt_pln only applies when development.mode ===
+        // "own_operating" (see techCapexFinancingSummary) — irrelevant, and
+        // left at 0, for every other mode.
+        financing: { debt_share_pct: 70, wibor_pct: 3.81, marza_pct: 2.5, loan_term_years: 8, grace_months: 6, type: "malejaca", tranching_enabled: false, tranches: [], outstanding_debt_pln: 0 },
         monthly_profile_pct: DEFAULT_MONTHLY_PROFILE_STORAGE.slice()
       },
       tax: { apply_cit: true, cit_rate_pct: 19, depreciation_years: 10 },
-      discount: { wacc_pct: 6.5, equity_discount_pct: 10 }
+      discount: { wacc_pct: 6.5, equity_discount_pct: 10 },
+      // Free-text notes per input-form section (data-section key -> string),
+      // see injectSectionComments. Purely descriptive — never read by
+      // computeMetrics or any export — so an empty/missing object here is
+      // always safe; getDeep/setDeep create it on demand for older saved
+      // projects that predate this field, no migration step needed.
+      comments: {}
     };
     // Dzierżawa gruntu is paid once a year, not spread monthly — default the
     // first payment to the technology's own commissioning year/month so a
@@ -1429,6 +1805,13 @@
     base.pv.opex.dzierzawa_payment_month = base.pv.commissioning_month;
     base.storage.opex.dzierzawa_start_year = base.storage.commissioning_year;
     base.storage.opex.dzierzawa_payment_month = base.storage.commissioning_month;
+    // Each "koszty jednorazowe" item (przyłącze, projekt/dokumentacja, inne)
+    // defaults to being incurred in the PV commissioning month — freely
+    // overridable per item (see oneTimeCostsCardHtml/pvOneTimeItemDates).
+    base.pv.capex_onetime_timing = {};
+    PV_ONE_TIME_KEYS.forEach(function (k) {
+      base.pv.capex_onetime_timing[k] = { year: base.pv.commissioning_year, month: base.pv.commissioning_month };
+    });
     // Financing start (CAPEX outlay / equity contribution / debt drawdown
     // date) is its own explicit choice — default it to grace_months BEFORE
     // commissioning, matching what used to be silently computed (financing
@@ -1441,6 +1824,22 @@
     var stFinDefault = addMonths(base.storage.commissioning_year, base.storage.commissioning_month, -Math.max(0, Math.round(num(base.storage.financing.grace_months))));
     base.storage.financing.start_year = stFinDefault.year;
     base.storage.financing.start_month = stFinDefault.month;
+    // Etap projektu i harmonogram realizacji — back-anchor the default
+    // greenfield development timeline so it starts exactly early enough
+    // that the full default stage pipeline (21 months) ends on the
+    // existing default commissioning_year/month above. This keeps a fresh
+    // project's commissioning date unchanged from before this feature
+    // existed; only editing the timeline moves it.
+    var devTotalMonths = DEFAULT_DEV_STAGES.reduce(function (s, x) { return s + x.months; }, 0);
+    var pvDevStart = addMonths(base.pv.commissioning_year, base.pv.commissioning_month, -devTotalMonths);
+    // remaining_book_value_pln / remaining_depreciation_years only apply
+    // when mode === "own_operating" (see techCapexFinancingSummary /
+    // techDepreciationSchedule) — irrelevant for every other mode, but
+    // seeded with sane defaults (0 PLN, 10 years) so the fields have
+    // something sensible to show the moment a user switches into that mode.
+    base.pv.development = { mode: "greenfield", start_year: pvDevStart.year, start_month: pvDevStart.month, first_pending_stage: 0, stages: cloneDevStages(), remaining_book_value_pln: 0, remaining_depreciation_years: 10 };
+    var stDevStart = addMonths(base.storage.commissioning_year, base.storage.commissioning_month, -devTotalMonths);
+    base.storage.development = { mode: "greenfield", start_year: stDevStart.year, start_month: stDevStart.month, first_pending_stage: 0, stages: cloneDevStages(), remaining_book_value_pln: 0, remaining_depreciation_years: 10 };
     if (overrides) deepMerge(base, deepClone(overrides));
     return base;
   }
@@ -1449,11 +1848,33 @@
    *  (flat CAPEX/OPEX/production/revenue/financing at the top level, annual
    *  horizon only) into the current pv/storage schema, so old saved farms
    *  keep working without the user having to re-enter anything. */
+  /** Older saves (before each "koszty jednorazowe" item — przyłącze,
+   *  projekt/dokumentacja, inne/pozostałe — could be individually timed)
+   *  have no capex_onetime_timing. Seed every item's year/month to the PV
+   *  commissioning date, the requested default, so opening an old project
+   *  shows a real, editable date immediately instead of a blank field. Unlike
+   *  migrateFinancingStart above, this intentionally DOES change where those
+   *  specific outflows land on the cash-flow timeline versus the previous
+   *  behavior (previously bundled into the single financing-start lump,
+   *  together with the rest of the CAPEX/equity contribution) — an explicit,
+   *  requested change, not a compatibility shim; see pvOneTimeItemDates/
+   *  computeMetrics. */
+  function migrateOneTimeCostTiming(p) {
+    if (!p.pv.capex_onetime_timing) p.pv.capex_onetime_timing = {};
+    PV_ONE_TIME_KEYS.forEach(function (k) {
+      var ov = p.pv.capex_onetime_timing[k];
+      if (!ov || ov.year === undefined || ov.month === undefined) {
+        p.pv.capex_onetime_timing[k] = { year: p.pv.commissioning_year, month: p.pv.commissioning_month };
+      }
+    });
+    return p;
+  }
+
   function migrateProject(raw) {
     // Realtime db snapshots are frozen (Object.freeze) — never mutate `raw`
     // in place under "use strict", or every load throws and the app hangs
     // on "Ładowanie portfela…" forever. Always migrate a deep clone.
-    if (raw && raw.pv) return migrateMiscRevenueAndCosts(migratePriceBaseYear(migrateFinancingStart(migrateLeaseTiming(migrateCapexDepreciation(migrateMonthlyProfiles(deepClone(raw)))))));
+    if (raw && raw.pv) return migrateOneTimeCostTiming(migrateOwnOperatingFields(migrateDevelopmentTimeline(migrateMiscRevenueAndCosts(migratePriceBaseYear(migrateFinancingStart(migrateLeaseTiming(migrateCapexDepreciation(migrateMonthlyProfiles(deepClone(raw))))))))));
     var fresh = defaultProject();
     if (!raw) return fresh;
     fresh.name = raw.name || fresh.name;
@@ -1591,6 +2012,52 @@
     if (!p.pv.capex_depreciation_years) p.pv.capex_depreciation_years = {};
     if (p.pv.capex_depreciation_years.inne_jednorazowe === undefined) p.pv.capex_depreciation_years.inne_jednorazowe = 10;
     if (p.pv.capex_amortize_inne_jednorazowe === undefined) p.pv.capex_amortize_inne_jednorazowe = true;
+    if (p.energy_sale_method === undefined) p.energy_sale_method = "rynek_dnia_nastepnego";
+    if (p.pv.opex.dzierzawa_okres_lat === undefined) p.pv.opex.dzierzawa_okres_lat = 25;
+    return p;
+  }
+
+  /** Older saves (before the project-development-stage timeline existed)
+   *  have no development object. Seed one in "greenfield" mode, back-
+   *  anchored with the default stage durations so the computed
+   *  commissioning date lands exactly on that farm's existing
+   *  commissioning_year/month — matching defaultProject's own back-anchor
+   *  — so opening an old farm never silently shifts its already-computed
+   *  results; the timeline then becomes freely editable going forward. */
+  function migrateDevelopmentTimeline(p) {
+    var devTotalMonths = DEFAULT_DEV_STAGES.reduce(function (s, x) { return s + x.months; }, 0);
+    if (!p.pv.development) {
+      var pvDevStart = addMonths(p.pv.commissioning_year, p.pv.commissioning_month, -devTotalMonths);
+      p.pv.development = { mode: "greenfield", start_year: pvDevStart.year, start_month: pvDevStart.month, first_pending_stage: 0, stages: cloneDevStages() };
+    }
+    if (p.storage && !p.storage.development) {
+      var stDevStart = addMonths(p.storage.commissioning_year, p.storage.commissioning_month, -devTotalMonths);
+      p.storage.development = { mode: "greenfield", start_year: stDevStart.year, start_month: stDevStart.month, first_pending_stage: 0, stages: cloneDevStages() };
+    }
+    return p;
+  }
+
+  /** Older saves (before "Projekt własny działający" gained its own
+   *  directly-entered debt/book-value fields) are missing
+   *  financing.outstanding_debt_pln and development.remaining_book_value_pln/
+   *  remaining_depreciation_years. Seed the same defaults a fresh project
+   *  gets (see defaultProject) — 0 PLN outstanding debt, 0 PLN remaining
+   *  book value, 10 years remaining depreciation — so these fields have
+   *  sane values to show even for a farm that was already in own_operating
+   *  mode before this update (this app has no earlier own_operating saves in
+   *  practice, but the same seed also covers a farm the user switches into
+   *  that mode for the first time after loading an old save). Runs after
+   *  migrateDevelopmentTimeline, which guarantees p.pv.development/
+   *  p.storage.development already exist. */
+  function migrateOwnOperatingFields(p) {
+    if (p.pv.financing.outstanding_debt_pln === undefined) p.pv.financing.outstanding_debt_pln = 0;
+    if (p.pv.development.remaining_book_value_pln === undefined) p.pv.development.remaining_book_value_pln = 0;
+    if (p.pv.development.remaining_depreciation_years === undefined) p.pv.development.remaining_depreciation_years = 10;
+    if (p.storage) {
+      if (p.storage.financing.outstanding_debt_pln === undefined) p.storage.financing.outstanding_debt_pln = 0;
+      if (p.storage.development.remaining_book_value_pln === undefined) p.storage.development.remaining_book_value_pln = 0;
+      if (p.storage.development.remaining_depreciation_years === undefined) p.storage.development.remaining_depreciation_years = 10;
+    }
     return p;
   }
 
@@ -1962,12 +2429,19 @@
   }
 
   function getFixedCosts() { return Object.assign({}, DEFAULT_FIXED_COSTS, state.fixedCosts || {}); }
-  function setFixedCostsField(path, value) {
-    var fc = getFixedCosts();
-    setDeep(fc, path, value);
+  /** Shared tail for every fixed-costs write: update local state, push to
+   *  whichever persistence layer is active (Firestore or the localStorage
+   *  fallback — see makeFixedCostsDbLayer/makeFixedCostsMemoryLayer), and
+   *  re-render the compare view if it's the one currently shown. */
+  function setFixedCosts(fc) {
     state.fixedCosts = fc;
     if (fixedCostsLayer) fixedCostsLayer.setFixedCosts(fc);
     if (state.view === "compare") renderCompare();
+  }
+  function setFixedCostsField(path, value) {
+    var fc = getFixedCosts();
+    setDeep(fc, path, value);
+    setFixedCosts(fc);
   }
 
   function getSelectedIds() {
@@ -2010,6 +2484,44 @@
         dataLayer.update(state.selectedId, data);
       }
     }, 500);
+  }
+
+  /** Appends a free-text "Komentarz" box to the end of every rendered card
+   *  that carries a data-section="<key>" attribute (set on the card's own
+   *  wrapping <div class="card section">, right in the same HTML string
+   *  each card-building function already returns — see techFieldsHtml,
+   *  oneTimeCostsCardHtml and renderInputsTab's own title/pricing cards).
+   *  Deliberately a post-render DOM pass rather than baked into every card's
+   *  HTML string, so adding this to a new card later is a one-attribute
+   *  change, not a copy-pasted textarea block. The textarea writes straight
+   *  into state.draft.comments[key] — plain project data, so it saves,
+   *  loads, exports/imports and migrates exactly like any other project
+   *  field (see defaultProject/migrateProject) — and never triggers a
+   *  re-render (a plain "input" listener + scheduleSave, same spirit as the
+   *  [data-path] handler for ordinary text fields), so typing never loses
+   *  focus or gets clobbered by an in-flight recompute. Safe to call
+   *  multiple times on the same container (idempotent via the .section-
+   *  comment presence check) though in practice it's only ever called once,
+   *  right after that tab's innerHTML is (re)assigned. */
+  function injectSectionComments(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll("[data-section]").forEach(function (card) {
+      if (card.querySelector(".section-comment")) return;
+      var key = card.getAttribute("data-section");
+      var val = getDeep(state.draft, "comments." + key);
+      var wrap = document.createElement("div");
+      wrap.className = "section-comment";
+      wrap.innerHTML = '<label for="cmt-' + key + '">Komentarz</label>' +
+        '<textarea id="cmt-' + key + '" data-comment-key="' + key + '" rows="2" placeholder="Twoja notatka do tej sekcji (widoczna tylko w tym projekcie)…">' + escapeHtml(val || "") + '</textarea>';
+      card.appendChild(wrap);
+    });
+    container.querySelectorAll("[data-comment-key]").forEach(function (ta) {
+      ta.addEventListener("input", function () {
+        setDeep(state.draft, "comments." + ta.getAttribute("data-comment-key"), ta.value);
+        scheduleSave();
+      });
+    });
   }
 
   function findProject(id) { for (var i = 0; i < state.projects.length; i++) if (state.projects[i].id === id) return state.projects[i]; return null; }
@@ -2094,11 +2606,27 @@
     var opts = options.map(function (o) { return '<option value="' + o.value + '"' + (String(v) === String(o.value) ? " selected" : "") + '>' + o.label + "</option>"; }).join("");
     return '<div class="field"><label for="' + id + '">' + label + '</label><select id="' + id + '" data-path="' + path + '" data-numeric="1">' + opts + "</select></div>";
   }
+  // Same markup as fieldSelect, but for a STRING-valued option list (e.g.
+  // "rynek_dnia_nastepnego") rather than a numeric code. fieldSelect's
+  // sibling change-listener branch always coerces <select data-path> values
+  // to a number (data-numeric="1", though that attribute itself isn't
+  // actually read/branched on — every select was numeric until now), which
+  // would silently corrupt a string value. data-strval="1" marks this
+  // select so the listener reads input.value as-is instead — see the
+  // isSelect && data-strval branch in renderInputsTab's change listener.
+  function fieldSelectStr(path, label, options) {
+    var v = getDeep(state.draft, path);
+    var id = "f-" + path.replace(/\./g, "-");
+    var opts = options.map(function (o) { return '<option value="' + o.value + '"' + (String(v) === String(o.value) ? " selected" : "") + '>' + o.label + "</option>"; }).join("");
+    return '<div class="field"><label for="' + id + '">' + label + '</label><select id="' + id + '" data-path="' + path + '" data-strval="1">' + opts + "</select></div>";
+  }
   // Same field markup as fieldNum/fieldSelect, but reading/writing the portfolio-
   // level fixed-costs object (via data-fcpath) instead of the project draft.
   function fcFieldNum(fc, key, label, unit, step) {
-    var v = fc[key];
-    var id = "f-fc-" + key;
+    // getDeep (not a plain fc[key] lookup) so "key" can also be a dotted path
+    // into the itemized breakdown, e.g. "items.0.monthly_current_pln".
+    var v = getDeep(fc, key);
+    var id = "f-fc-" + key.replace(/\./g, "-");
     var isYear = unit === "rok";
     var displayVal = v === undefined ? "" : (isYear ? String(v) : formatNumericInputValue(String(v)));
     return '<div class="field"><label for="' + id + '">' + label + '</label>' +
@@ -2106,10 +2634,20 @@
       (unit ? '<span class="unit">' + unit + '</span>' : "") + '</div></div>';
   }
   function fcFieldSelect(fc, key, label, options) {
-    var v = fc[key];
-    var id = "f-fc-" + key;
+    var v = getDeep(fc, key);
+    var id = "f-fc-" + key.replace(/\./g, "-");
     var opts = options.map(function (o) { return '<option value="' + o.value + '"' + (String(v) === String(o.value) ? " selected" : "") + '>' + o.label + "</option>"; }).join("");
     return '<div class="field"><label for="' + id + '">' + label + '</label><select id="' + id + '" data-fcpath="' + key + '" data-numeric="1">' + opts + "</select></div>";
+  }
+  /** Plain-text row field for the itemized fixed-costs list (a cost line's
+   *  own label) — same markup convention as fcFieldNum/fcFieldSelect above,
+   *  but data-fctext marks it for the data-fcpath change listener so the raw
+   *  string is stored instead of being parsed as a number. */
+  function fcFieldText(fc, key, label) {
+    var v = getDeep(fc, key);
+    var id = "f-fc-" + key.replace(/\./g, "-");
+    return '<div class="field"><label for="' + id + '">' + label + '</label>' +
+      '<input type="text" id="' + id + '" data-fcpath="' + key + '" data-fctext="1" value="' + escapeHtml(v || "") + '"></div>';
   }
 
   function renderEditorForm() {
@@ -2165,10 +2703,69 @@
   function techFieldsHtml(prefix, capexLabels, opexLabels, isStorage) {
     var d = state.draft[prefix];
     var powerMW = isStorage ? num(d.power_mw) : num(d.power_kwp) / 1000;
-    var capexTotal = techCapexTotal(d, powerMW);
     var opexAnnual = techOpexAnnual(d.opex, powerMW);
-    var finAmt = techFinancingAmounts(d, capexTotal);
+    // techCapexFinancingSummary (shared with computeMetrics/
+    // refreshInlineSums — see its own doc comment) so this card's figures
+    // can never drift from what the engine actually computes. Normally
+    // capexTotal/finAmt come from techCapexTotal + techFinancingAmounts as
+    // before; for "own_operating" (an already-running farm — CAPEX is
+    // irrelevant/sunk before this analysis even starts) capexTotal/finAmt
+    // instead come from the user-entered "pozostała wartość księgowa" and
+    // "dług pozostały do spłaty" fields — see capexCard/financingCard below.
+    var capexSummary = techCapexFinancingSummary(d, powerMW);
+    var capexTotal = capexSummary.capexTotal;
+    var finAmt = { debtAmt: capexSummary.debtAmt, equityAmt: capexSummary.equityAmt };
     var financingType = d.financing.type === "stala" ? "stala" : "malejaca";
+    // One-time PV costs (przyłącze, projekt/dokumentacja, inne/pozostałe) are
+    // always funded entirely from equity, on top of whatever equity the
+    // debt-share split below requires for the power-scalable CAPEX. Kept as
+    // two separate figures so the Financing card's own "Wkład własny" shows
+    // only the amount tied to financing — not a merged total that folds in
+    // the one-time items, which used to make that figure misleading (the
+    // combined total is shown separately, right after this card — see
+    // totalEquityCard below). Always 0 in "own_operating" mode (see
+    // techCapexFinancingSummary).
+    var oneTimeTotalPV = capexSummary.oneTimeTotal;
+    var financingEquityAmt = finAmt.equityAmt - oneTimeTotalPV;
+    // Same separation, applied one step earlier: capexTotal (from
+    // techCapexTotal) already folds PV's one-time costs on top of the
+    // power-scalable CAPEX. Showing that combined figure in the CAPEX
+    // card's own header — right next to an input that only edits the
+    // scalable part (capex_total_per_mw_pln in "Łącznie" mode, or the
+    // itemized lines minus the one-time ones in "Szczegółowo" mode) — is
+    // exactly the kind of merged, misleading figure raised for "Wkład
+    // własny" above. So the CAPEX card's own section-sum shows ONLY the
+    // scalable/construction CAPEX; the combined total (scalable + one-time)
+    // is its own separate readout further down — see totalCapexCard below,
+    // positioned right after "Koszty jednorazowe" so it reads as their sum.
+    var scalableCapexAmt = capexTotal - oneTimeTotalPV;
+
+    // Transzowanie wypłat finansowania (opt-in, see debtDrawnFraction): during
+    // the grace period, interest is normally charged on the WHOLE debt
+    // facility from the very first month, as if it were disbursed in one lump
+    // sum on day one. In reality a construction loan is drawn in tranches as
+    // CAPEX is actually incurred, so this lets the user define that
+    // drawdown schedule and have interest track it instead.
+    var tranchingEnabled = !!d.financing.tranching_enabled;
+    var tranchesArr = Array.isArray(d.financing.tranches) ? d.financing.tranches : [];
+    var trancheRowsHtml = tranchesArr.map(function (tr, i) {
+      return '<div class="capex-item-row">' +
+        fieldNum(prefix + ".financing.tranches." + i + ".month", "Miesiąc (od rozpoczęcia finansowania)", "mies.", "1") +
+        fieldNum(prefix + ".financing.tranches." + i + ".pct", "Wypłacone narastająco", "%", "1") +
+        '<button type="button" class="btn btn-sm" data-trancheremove="' + prefix + ':' + i + '" style="align-self:end;">Usuń</button>' +
+        '</div>';
+    }).join("");
+    var tranchingBlock =
+      '<div class="field-check field" style="margin:14px 0 4px;">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);"><input type="checkbox" data-path="' + prefix + '.financing.tranching_enabled" data-toggle-tranching="' + prefix + '" ' + (tranchingEnabled ? "checked" : "") + '> Transzowanie wypłat finansowania (odsetki w karencji liczone tylko od wypłaconej części, nie od całości od razu)</label></div>' +
+      (tranchingEnabled ?
+        '<div class="capex-items-list" style="margin-top:8px;">' +
+        (trancheRowsHtml || '<div class="assumption-note">Brak zdefiniowanych transz — do czasu dodania choć jednej cała kwota liczona jest jako wypłacona od pierwszego miesiąca, tak jak przy wyłączonym transzowaniu.</div>') +
+        '</div>' +
+        '<button type="button" class="btn btn-sm" data-trancheadd="' + prefix + '" style="margin-top:8px;">+ Dodaj transzę</button>' +
+        trancheWarningHtml(prefix, d.financing) +
+        '<div class="assumption-note" style="margin-top:8px;">„Miesiąc” liczony jest od miesiąca rozpoczęcia finansowania (miesiąc 1 = ten sam miesiąc co „Rok/miesiąc rozpoczęcia finansowania” powyżej). „Wypłacone narastająco” to procent CAŁEGO finansowania wypłacony NA DANY MIESIĄC łącznie (nie kwota samej tej transzy) — np. 30% w miesiącu 1, potem 70% w miesiącu 4 oznacza, że druga transza dopłaca kolejne 40 punktów procentowych, nie kolejne 70%. Odsetki w okresie karencji liczone są każdego miesiąca od kwoty faktycznie wypłaconej do tego miesiąca.</div>'
+        : '');
 
     var capexMode = d.capex_mode === "total" ? "total" : "detailed";
     var capexModeToggle =
@@ -2206,7 +2803,7 @@
           '</div>';
       }
     }
-    var oneTimeForNote = prefix === "pv" ? pvOneTimeCostsTotal(d) : 0;
+    var oneTimeForNote = oneTimeTotalPV;
     var scalableCapexNote = fmt(powerMW, 2) + ' MW × ' + fmt(num(d.capex_total_per_mw_pln), 0) + ' PLN/MW = <b class="money">' + fmt(num(d.capex_total_per_mw_pln) * powerMW, 0) + ' PLN</b>';
     var capexBody = capexMode === "total"
       ? '<div class="field-grid cols-2">' + fieldNum(prefix + ".capex_total_per_mw_pln", "CAPEX total", "PLN/MW", "1000") + '</div>' +
@@ -2224,6 +2821,14 @@
       if (k2 === "dzierzawa_pln_mw") {
         opexFields += fieldNum(prefix + ".opex.dzierzawa_start_year", "Dzierżawa — rok pierwszej płatności", "rok", "1") +
           fieldSelect(prefix + ".opex.dzierzawa_payment_month", "Dzierżawa — miesiąc płatności", MONTH_OPTIONS);
+        // Okres dzierżawy gruntu — PV-only: to pole napędza auto-liczony
+        // "Horyzont analizy" (patrz computeAutoHorizonYears/
+        // horizonLeaseNoteHtml, wywoływane z górnej karty tytułowej) — magazyn
+        // energii jest zwykle posadowiony na tym samym gruncie co farma PV,
+        // więc nie ma odrębnego okresu dzierżawy wpływającego na horyzont.
+        if (!isStorage) {
+          opexFields += fieldNum(prefix + ".opex.dzierzawa_okres_lat", "Pozostały okres dzierżawy gruntu", "lat", "1");
+        }
       }
     }
 
@@ -2235,57 +2840,193 @@
       ? fieldNum("storage.degradation_pct", "Degradacja pojemności", "%/rok", "0.1")
       : fieldNum("pv.production.specific_yield_kwh_kwp", "Uzysk specyficzny", "kWh/kWp/rok", "1") + fieldNum("pv.production.degradation_pct", "Degradacja paneli", "%/rok", "0.1");
 
-    var html =
-      '<div class="card section"><div class="section-head"><h3>' + (isStorage ? "Magazyn energii — dane i CAPEX" : "Fotowoltaika — dane i CAPEX") + '</h3>' +
-      '<div class="section-sum" id="' + prefix + '-capex-sum">CAPEX: <b class="money">' + fmt(capexTotal, 0) + ' PLN</b></div></div>' +
-      '<div class="field-grid cols-2" style="margin-bottom:14px;">' +
+    // ------------------------------------------------------------------
+    // Cards are built and handed back as separate strings (rather than one
+    // concatenated block) so renderInputsTab can interleave them in a more
+    // logical, less overwhelming reading order — e.g. inserting the PV-only
+    // "Koszty jednorazowe" card right after CAPEX instead of far downstream.
+    // Every data-path/id below is unchanged from the previous layout — this
+    // is a pure regrouping, not a data or calculation change.
+    // ------------------------------------------------------------------
+
+    var sizingCard =
+      '<div class="card section" data-section="' + prefix + '_sizing"><div class="section-head"><h3>' + (isStorage ? "Magazyn energii — dane podstawowe" : "Fotowoltaika — dane podstawowe") + '</h3></div>' +
+      '<div class="field-grid cols-2">' +
       sizingFields +
+      '</div></div>';
+
+    // "Etap projektu i harmonogram realizacji" — lets the user say where a
+    // technology's development pipeline currently stands (building from
+    // scratch / already-operating own project / buying a partly-developed
+    // project / buying an already-operating farm) and how long each
+    // remaining stage is expected to take. Drives "Miesiąc/Rok uruchomienia"
+    // below via computeAutoCommissioning/applyAutoCommissioning — same
+    // always-overridable auto-sync pattern as horizon_years↔okres dzierżawy
+    // (see horizonLeaseNoteHtml). PV and storage each carry their own,
+    // independent timeline (d.development), since a storage retrofit can be
+    // added to an already-operating PV farm, or vice versa, on its own
+    // schedule.
+    var dev = getDevelopment(d);
+    var devMode = (dev.mode === "in_progress" || dev.mode === "operating" || dev.mode === "own_operating") ? dev.mode : "greenfield";
+    var devIsAlreadyOperating = devMode === "operating" || devMode === "own_operating";
+    var devModeToggle =
+      '<div class="segmented" style="margin-bottom:12px;">' +
+      '<button type="button" data-devmode="' + prefix + ':greenfield" class="' + (devMode === "greenfield" ? "active" : "") + '">Budowa od podstaw</button>' +
+      '<button type="button" data-devmode="' + prefix + ':in_progress" class="' + (devMode === "in_progress" ? "active" : "") + '">Zakup w trakcie realizacji</button>' +
+      '<button type="button" data-devmode="' + prefix + ':operating" class="' + (devMode === "operating" ? "active" : "") + '">Zakup farmy działającej</button>' +
+      '<button type="button" data-devmode="' + prefix + ':own_operating" class="' + (devMode === "own_operating" ? "active" : "") + '">Projekt własny działający</button>' +
+      '</div>';
+    var devStartMonthLabel = devMode === "operating" ? "Miesiąc przejęcia farmy" : (devMode === "own_operating" ? "Miesiąc uruchomienia farmy" : (devMode === "in_progress" ? "Miesiąc zakupu projektu" : "Miesiąc rozpoczęcia realizacji"));
+    var devStartYearLabel = devMode === "operating" ? "Rok przejęcia farmy" : (devMode === "own_operating" ? "Rok uruchomienia farmy" : (devMode === "in_progress" ? "Rok zakupu projektu" : "Rok rozpoczęcia realizacji"));
+    var devStagesForUi = Array.isArray(dev.stages) && dev.stages.length ? dev.stages : DEFAULT_DEV_STAGES;
+    var devFromIdx = devMode === "in_progress" ? clamp(Math.round(num(dev.first_pending_stage, 0)), 0, devStagesForUi.length) : 0;
+    var firstPendingOptions = [];
+    for (var fpi = 0; fpi <= devStagesForUi.length; fpi++) {
+      firstPendingOptions.push({ value: fpi, label: fpi === 0 ? "Brak ukończonych etapów (pełny pozostały harmonogram)" : "Ukończono do etapu: „" + devStagesForUi[fpi - 1].label + "”" });
+    }
+    var firstPendingField = devMode === "in_progress" ? fieldSelect(prefix + ".development.first_pending_stage", "Etap zaawansowania na dzień zakupu", firstPendingOptions) : "";
+    var developmentCard =
+      '<div class="card section" data-section="' + prefix + '_development"><div class="section-head"><h3>' + (isStorage ? "Magazyn — etap projektu i harmonogram realizacji" : "Fotowoltaika — etap projektu i harmonogram realizacji") + '</h3></div>' +
+      devModeToggle +
+      '<div class="field-grid cols-2">' +
+      fieldSelect(prefix + ".development.start_month", devStartMonthLabel, MONTH_OPTIONS) +
+      fieldNum(prefix + ".development.start_year", devStartYearLabel, "rok", "1") +
+      '</div>' +
+      (firstPendingField ? '<div class="field-grid cols-2" style="margin-top:4px;">' + firstPendingField + '</div>' : '') +
+      (!devIsAlreadyOperating ? devStageRowsHtml(prefix, dev) +
+        '<div style="margin-top:8px;"><button type="button" class="btn btn-sm" data-resetdevstages="' + prefix + '">Resetuj harmonogram do domyślnych</button></div>' : '') +
+      devGanttHtml(prefix, dev) +
+      '<div class="assumption-note" style="margin-top:2px;">' +
+      (devMode === "operating"
+        ? "Farma jest kupowana już działająca — przychody i OPEX liczone są od razu od daty przejęcia powyżej, bez okresu budowy."
+        : devMode === "own_operating"
+          ? "Własny projekt jest już w eksploatacji (nigdy nie był „kupowany” — został wybudowany lub uruchomiony wcześniej przez użytkownika) — przychody i OPEX liczone są od razu od daty uruchomienia farmy powyżej, bez okresu budowy."
+          : devMode === "in_progress"
+            ? "Projekt jest kupowany w trakcie realizacji — etapy oznaczone jako ukończone (przed wybranym powyżej etapem zaawansowania) nie wliczają się już do czasu pozostałego do uruchomienia; liczy się tylko czas etapów od tego miejsca w dół."
+            : "Farma budowana jest od podstaw — liczy się pełny czas wszystkich etapów poniżej, od daty rozpoczęcia realizacji.") +
+      (devIsAlreadyOperating ? "" : ' Czas trwania poszczególnych etapów jest w pełni edytowalny — wartości domyślne są orientacyjne.') + '</div>' +
+      '<div class="field-grid cols-2" style="margin-top:14px;">' +
       fieldSelect(prefix + ".commissioning_month", "Miesiąc uruchomienia", MONTH_OPTIONS) +
       fieldNum(prefix + ".commissioning_year", "Rok uruchomienia", "rok", "1") +
-      '</div>' + capexModeToggle + capexBody + '</div>' +
-
-      '<div class="card section"><div class="section-head"><h3>' + (isStorage ? "Magazyn — OPEX i przychody" : "Fotowoltaika — OPEX i przychody") + '</h3>' +
-      '<div class="section-sum" id="' + prefix + '-opex-sum">OPEX (rok 1): <b class="money">' + fmt(opexAnnual, 0) + ' PLN/rok</b></div></div>' +
-      '<div class="field-grid">' + opexFields + fieldNum(prefix + ".opex_escalation_pct", "Indeksacja OPEX", "%/rok", "0.1") + '</div>' +
-      '<div class="field-grid cols-2" style="margin-top:12px;">' +
-      productionFields +
-      fieldNum(prefix + ".revenue.price_pln_mwh", isStorage ? "Cena energii z magazynu (arbitraż)" : "Cena sprzedaży energii", "PLN/MWh", "1") +
-      fieldNum(prefix + ".revenue.price_escalation_pct", "Indeksacja ceny", "%/rok", "0.1") +
       '</div>' +
-      '<div class="assumption-note">Dzierżawa gruntu jest płatna jednorazowo raz w roku — w miesiącu wskazanym powyżej, począwszy od wskazanego roku — a nie rozłożona na raty miesięczne jak pozostałe pozycje OPEX. Pozostałe koszty (obsługa techniczna, ubezpieczenia) nadal rozliczane są równomiernie w każdym miesiącu.' +
-      (isStorage ? " Cena energii uzyskiwanej z arbitrażu magazynu jest ustawiana niezależnie od ceny sprzedaży energii z PV powyżej — magazyn ładuje się i rozładowuje w oparciu o zmienność cen na rynku, więc jego przychód na MWh zwykle różni się (najczęściej jest wyższy) od ceny PV." : "") + '</div>' +
-      (!isStorage ? (
-        '<div class="field-grid cols-2" style="margin-top:12px;">' +
-        fieldNum("pv.revenue.price_go_pln_mwh", "Gwarancje pochodzenia energii", "PLN/MWh", "0.1") +
-        fieldNum("pv.revenue.price_go_escalation_pct", "Indeksacja ceny GO", "%/rok", "0.1") +
-        fieldNum("pv.revenue.inne_przychody_pln_rok", "Inne/pozostałe przychody", "PLN/rok", "100") +
-        '</div>' +
-        '<div class="assumption-note">Gwarancje pochodzenia energii (GO) to osobny, dodatkowy przychód za każdą MWh wyprodukowanej energii z OZE — rozliczany niezależnie od samej energii (np. przez Rejestr Gwarancji Pochodzenia prowadzony przez TGE, na podstawie wniosku do Prezesa URE), nie jest częścią ceny energii powyżej. Rynek GO jest obecnie w nadpodaży, a ceny mocno spadły i pozostają zmienne — domyślna stawka (2,5 PLN/MWh) odzwierciedla bieżącą ofertę rynkową i jest w pełni edytowalna, podobnie jak jej własna indeksacja (domyślnie 0%/rok, niezależna od indeksacji ceny energii powyżej). „Inne/pozostałe przychody” to stała kwota roczna na drobne źródła przychodu niezwiązane z produkcją (np. dzierżawa fragmentu terenu pod baner reklamowy) — indeksowana tą samą stopą co OPEX powyżej.</div>'
-      ) : "") +
-      '</div>' +
-
-      '<div class="card section"><div class="section-head"><h3>' + (isStorage ? "Magazyn — finansowanie" : "Fotowoltaika — finansowanie") + '</h3>' +
-      '<div class="section-sum" id="' + prefix + '-fin-sum">Dług: <b class="money">' + fmt(finAmt.debtAmt, 0) + ' PLN</b> · Wkład własny: <b class="money">' + fmt(finAmt.equityAmt, 0) + ' PLN</b></div></div>' +
-      '<div class="segmented" style="margin-bottom:12px;">' +
-      '<button type="button" data-fintype="' + prefix + ':malejaca" class="' + (financingType === "malejaca" ? "active" : "") + '">Raty malejące</button>' +
-      '<button type="button" data-fintype="' + prefix + ':stala" class="' + (financingType === "stala" ? "active" : "") + '">Raty stałe</button>' +
-      '</div>' +
-      '<div class="field-grid cols-2" style="margin-bottom:12px;">' +
-      fieldSelect(prefix + ".financing.start_month", "Miesiąc rozpoczęcia finansowania", MONTH_OPTIONS) +
-      fieldNum(prefix + ".financing.start_year", "Rok rozpoczęcia finansowania", "rok", "1") +
-      '</div>' +
-      '<div class="field-grid">' +
-      fieldNum(prefix + ".financing.debt_share_pct", "Udział długu", "%", "1") +
-      fieldNum(prefix + ".financing.wibor_pct", "WIBOR", "%", "0.01") +
-      fieldNum(prefix + ".financing.marza_pct", "Marża", "%", "0.01") +
-      fieldNum(prefix + ".financing.loan_term_years", "Okres finansowania", "lat", "1") +
-      fieldNum(prefix + ".financing.grace_months", "Karencja w spłacie kapitału", "miesięcy", "1") +
-      '</div>' +
-      '<div class="assumption-note">Data rozpoczęcia finansowania to moment poniesienia CAPEX i wpłaty wkładu własnego oraz uruchomienia kredytu/leasingu — niezależny od daty uruchomienia (komisjonowania) farmy powyżej; w typowym projekcie poprzedza uruchomienie o czas budowy. Karencja w spłacie kapitału liczona jest od tej daty (przez wskazaną liczbę miesięcy płacone są tylko odsetki), niezależnie od tego, kiedy farma faktycznie zacznie generować przychód.' +
-      (financingType === "stala"
-        ? " Raty stałe (annuitetowe): łączna rata (kapitał + odsetki) jest stała przez cały okres spłaty — udział kapitału w racie rośnie, a udział odsetek maleje w miarę spłaty zadłużenia."
-        : " Raty malejące: stała rata kapitałowa przez cały okres spłaty — łączna rata (kapitał + odsetki) maleje z czasem wraz ze spadkiem salda i odsetek.") + '</div>' +
+      developmentNoteHtml(prefix, d) +
       '</div>';
+
+    // "own_operating" (Projekt własny działający): the farm is already
+    // built and running before this analysis even starts, so CAPEX, one-
+    // time development costs, and the CAPEX-derived debt/equity split are
+    // all irrelevant/ignored here — even if old values are still sitting
+    // in d.capex/d.financing.debt_share_pct from a previous mode (switching
+    // modes never clears that data, only capexTotal/finAmt's SOURCE changes
+    // — see techCapexFinancingSummary). So for this mode: no CAPEX card, no
+    // "Koszty jednorazowe" card (hidden by renderInputsTab), no "Łączny
+    // CAPEX" card — the Financing card is restructured into a "finansowanie
+    // dalszej działalności" card instead: a directly-entered "dług
+    // pozostały do spłaty" (replacing the CAPEX-derived debt-share
+    // percentage) under the same rate/term/type fields ("bieżące warunki
+    // finansowe"), plus a "pozostała wartość księgowa" + "pozostały okres
+    // amortyzacji" pair that drives CIT going forward instead of CAPEX-
+    // derived depreciation (see techDepreciationSchedule).
+    var isOwnOperating = devMode === "own_operating";
+
+    var capexCard = isOwnOperating ? '' :
+      '<div class="card section" data-section="' + prefix + '_capex"><div class="section-head"><h3>' + (isStorage ? "Magazyn energii — CAPEX" : "Fotowoltaika — CAPEX") + '</h3>' +
+      '<div class="section-sum" id="' + prefix + '-capex-sum">' + (isStorage ? 'CAPEX: ' : 'CAPEX (budowa, bez kosztów jednorazowych): ') + '<b class="money">' + fmt(scalableCapexAmt, 0) + ' PLN</b></div></div>' +
+      capexModeToggle + capexBody + '</div>';
+
+    // Shown as its own small card right after "Koszty jednorazowe" (PV
+    // only, since storage never has one-time costs — see oneTimeTotalPV
+    // above) so the combined CAPEX is visible, but never merged into the
+    // CAPEX card's own section-sum above, which would be misleading (that
+    // figure is the scalable/construction part only — see scalableCapexAmt
+    // above). Mirrors totalEquityCard's own layout exactly. Hidden in
+    // "own_operating" mode along with the CAPEX card itself.
+    var totalCapexCard = (!isStorage && !isOwnOperating) ?
+      '<div class="card section" data-section="pv_total_capex"><div class="section-head"><h3>Łączny CAPEX farmy PV</h3></div>' +
+      '<div class="one-time-readout-row"><span class="one-time-readout-label">CAPEX budowy (sekcja „Fotowoltaika — CAPEX” powyżej)</span><span class="one-time-readout-value money" id="pv-capex-scalable-value">' + fmt(scalableCapexAmt, 0) + ' PLN</span></div>' +
+      '<div class="one-time-readout-row"><span class="one-time-readout-label">Koszty jednorazowe (sekcja „Koszty jednorazowe” powyżej)</span><span class="one-time-readout-value money" id="pv-capex-onetime-value">' + fmt(oneTimeTotalPV, 0) + ' PLN</span></div>' +
+      '<div class="one-time-readout-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px;"><span class="one-time-readout-label" style="font-weight:600;color:var(--text);">Łącznie CAPEX</span><span class="one-time-readout-value money" id="pv-capex-total-value">' + fmt(capexTotal, 0) + ' PLN</span></div>' +
+      '<div class="assumption-note">Łączny CAPEX farmy PV — suma CAPEX-u skalującego się z mocą (panele, inwertery, konstrukcja itd. — sekcja „Fotowoltaika — CAPEX” powyżej) oraz kosztów jednorazowych (przyłącze, projekt/dokumentacja, inne/pozostałe — sekcja „Koszty jednorazowe” powyżej). To właśnie ta łączna kwota jest podstawą podziału na dług i wkład własny w sekcji „Fotowoltaika — finansowanie” poniżej (patrz „Łączny wkład własny farmy PV”).</div>' +
+      '</div>'
+      : '';
+
+    var financingCard;
+    var totalEquityCard;
+    if (isOwnOperating) {
+      financingCard =
+        '<div class="card section" data-section="' + prefix + '_financing"><div class="section-head"><h3>' + (isStorage ? "Magazyn — finansowanie dalszej działalności" : "Fotowoltaika — finansowanie dalszej działalności") + '</h3>' +
+        '<div class="section-sum" id="' + prefix + '-fin-sum">Dług pozostały: <b class="money">' + fmt(finAmt.debtAmt, 0) + ' PLN</b> · Wartość księgowa netto (kapitał własny): <b class="money">' + fmt(financingEquityAmt, 0) + ' PLN</b></div></div>' +
+        '<div class="assumption-note" style="margin:-6px 0 14px;">Projekt jest już działający — CAPEX i koszty jednorazowe zostały poniesione przed rozpoczęciem tej analizy i nie są tu uwzględniane. Liczy się tylko obsługa ewentualnego pozostałego długu oraz dalsza amortyzacja pozostałej wartości księgowej środka trwałego.</div>' +
+        '<div class="segmented" style="margin-bottom:12px;">' +
+        '<button type="button" data-fintype="' + prefix + ':malejaca" class="' + (financingType === "malejaca" ? "active" : "") + '">Raty malejące</button>' +
+        '<button type="button" data-fintype="' + prefix + ':stala" class="' + (financingType === "stala" ? "active" : "") + '">Raty stałe</button>' +
+        '</div>' +
+        '<div class="field-grid cols-2" style="margin-bottom:12px;">' +
+        fieldSelect(prefix + ".financing.start_month", "Miesiąc rozpoczęcia finansowania", MONTH_OPTIONS) +
+        fieldNum(prefix + ".financing.start_year", "Rok rozpoczęcia finansowania", "rok", "1") +
+        '</div>' +
+        '<div class="field-grid">' +
+        fieldNum(prefix + ".financing.outstanding_debt_pln", "Dług pozostały do spłaty", "PLN", "1000") +
+        fieldNum(prefix + ".financing.wibor_pct", "WIBOR", "%", "0.01") +
+        fieldNum(prefix + ".financing.marza_pct", "Marża", "%", "0.01") +
+        fieldNum(prefix + ".financing.loan_term_years", "Pozostały okres spłaty", "lat", "1") +
+        fieldNum(prefix + ".financing.grace_months", "Karencja w spłacie kapitału", "miesięcy", "1") +
+        '</div>' +
+        '<div class="assumption-note">Bieżące warunki finansowania pozostałego zadłużenia — data, od której liczony jest harmonogram spłaty, aktualne oprocentowanie (WIBOR + marża) i pozostały okres spłaty (nie okres pierwotnego kredytu). Jeśli farma nie ma już żadnego zadłużenia, wpisz 0 jako dług pozostały do spłaty.' +
+        (financingType === "stala"
+          ? " Raty stałe (annuitetowe): łączna rata (kapitał + odsetki) jest stała przez cały okres spłaty — udział kapitału w racie rośnie, a udział odsetek maleje w miarę spłaty zadłużenia."
+          : " Raty malejące: stała rata kapitałowa przez cały okres spłaty — łączna rata (kapitał + odsetki) maleje z czasem wraz ze spadkiem salda i odsetek.") + '</div>' +
+        '<div class="field-grid cols-2" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">' +
+        fieldNum(prefix + ".development.remaining_book_value_pln", "Pozostała wartość księgowa do zamortyzowania", "PLN", "1000") +
+        fieldNum(prefix + ".development.remaining_depreciation_years", "Pozostały okres amortyzacji", "lat", "1") +
+        '</div>' +
+        '<div class="assumption-note">Pozostała wartość księgowa środka trwałego (po dotychczasowej amortyzacji) oraz liczba lat, w ciągu których zostanie w pełni zamortyzowana liniowo od miesiąca rozpoczęcia finansowania powyżej. To ta wartość — a nie CAPEX — stanowi tarczę podatkową w CIT dla już działającego projektu.</div>' +
+        '</div>';
+      totalEquityCard = "";
+    } else {
+      financingCard =
+        '<div class="card section" data-section="' + prefix + '_financing"><div class="section-head"><h3>' + (isStorage ? "Magazyn — finansowanie" : "Fotowoltaika — finansowanie") + '</h3>' +
+        '<div class="section-sum" id="' + prefix + '-fin-sum">Dług: <b class="money">' + fmt(finAmt.debtAmt, 0) + ' PLN</b> · Wkład własny (z finansowania): <b class="money">' + fmt(financingEquityAmt, 0) + ' PLN</b></div></div>' +
+        '<div class="segmented" style="margin-bottom:12px;">' +
+        '<button type="button" data-fintype="' + prefix + ':malejaca" class="' + (financingType === "malejaca" ? "active" : "") + '">Raty malejące</button>' +
+        '<button type="button" data-fintype="' + prefix + ':stala" class="' + (financingType === "stala" ? "active" : "") + '">Raty stałe</button>' +
+        '</div>' +
+        '<div class="field-grid cols-2" style="margin-bottom:12px;">' +
+        fieldSelect(prefix + ".financing.start_month", "Miesiąc rozpoczęcia finansowania", MONTH_OPTIONS) +
+        fieldNum(prefix + ".financing.start_year", "Rok rozpoczęcia finansowania", "rok", "1") +
+        '</div>' +
+        '<div class="field-grid">' +
+        fieldNum(prefix + ".financing.debt_share_pct", "Udział długu", "%", "1") +
+        fieldNum(prefix + ".financing.wibor_pct", "WIBOR", "%", "0.01") +
+        fieldNum(prefix + ".financing.marza_pct", "Marża", "%", "0.01") +
+        fieldNum(prefix + ".financing.loan_term_years", "Okres finansowania", "lat", "1") +
+        fieldNum(prefix + ".financing.grace_months", "Karencja w spłacie kapitału", "miesięcy", "1") +
+        '</div>' +
+        '<div class="assumption-note">Data rozpoczęcia finansowania to moment poniesienia CAPEX i wpłaty wkładu własnego oraz uruchomienia kredytu/leasingu — niezależny od daty uruchomienia (komisjonowania) farmy powyżej; w typowym projekcie poprzedza uruchomienie o czas budowy. Karencja w spłacie kapitału liczona jest od tej daty (przez wskazaną liczbę miesięcy płacone są tylko odsetki), niezależnie od tego, kiedy farma faktycznie zacznie generować przychód.' +
+        (financingType === "stala"
+          ? " Raty stałe (annuitetowe): łączna rata (kapitał + odsetki) jest stała przez cały okres spłaty — udział kapitału w racie rośnie, a udział odsetek maleje w miarę spłaty zadłużenia."
+          : " Raty malejące: stała rata kapitałowa przez cały okres spłaty — łączna rata (kapitał + odsetki) maleje z czasem wraz ze spadkiem salda i odsetek.") + '</div>' +
+        tranchingBlock +
+        '</div>';
+
+      // Shown as its own small card right after "Finansowanie" (PV only,
+      // since storage never has one-time costs — see oneTimeTotalPV above)
+      // so the combined equity requirement is visible, but never merged
+      // into the Financing card's own "Wkład własny" figure, which would
+      // be misleading (that figure is financing-only — see
+      // financingEquityAmt above). Not shown in "own_operating" mode — that
+      // mode's Financing card header already shows both figures directly,
+      // with no one-time-costs split left to reconcile.
+      totalEquityCard = (!isStorage) ?
+        '<div class="card section" data-section="pv_total_equity"><div class="section-head"><h3>Łączny wkład własny farmy PV</h3></div>' +
+        '<div class="one-time-readout-row"><span class="one-time-readout-label">Wkład własny z finansowania (sekcja powyżej)</span><span class="one-time-readout-value money" id="pv-fin-equity-value">' + fmt(financingEquityAmt, 0) + ' PLN</span></div>' +
+        '<div class="one-time-readout-row"><span class="one-time-readout-label">Koszty jednorazowe (sekcja „Koszty jednorazowe”)</span><span class="one-time-readout-value money" id="pv-onetime-equity-value">' + fmt(oneTimeTotalPV, 0) + ' PLN</span></div>' +
+        '<div class="one-time-readout-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:2px;"><span class="one-time-readout-label" style="font-weight:600;color:var(--text);">Łącznie wkład własny</span><span class="one-time-readout-value money" id="pv-total-equity-value">' + fmt(finAmt.equityAmt, 0) + ' PLN</span></div>' +
+        '<div class="assumption-note">Łączna jednorazowa wpłata kapitału własnego wymagana przy uruchomieniu farmy PV — suma wkładu własnego wynikającego z finansowania (CAPEX skalujący się z mocą, pomniejszony o kwotę kredytu) oraz kosztów jednorazowych, które zawsze pokrywane są w całości z kapitału własnego, niezależnie od udziału długu.</div>' +
+        '</div>'
+        : '';
+    }
+    financingCard += totalEquityCard;
 
     var profileArr = Array.isArray(d.monthly_profile_pct) ? d.monthly_profile_pct : [];
     var profileSum = profileArr.reduce(function (a, b) { return a + num(b); }, 0);
@@ -2297,15 +3038,49 @@
       ? "Rozkład wykorzystania (rozładowań) magazynu w ciągu roku — kierowany opłacalnością arbitrażu cenowego, nie nasłonecznieniem: w typowym profilu wyższy zimą (większa zmienność cen, mniej PV do arbitrażu), niższy latem. Wartości domyślne wyznaczone na podstawie rzeczywistej symulacji dyspozycji magazynu."
       : "Rozkład produkcji PV w ciągu roku wynika z nasłonecznienia — najniższy w grudniu/styczniu, szczyt w maju–lipcu. Wartości domyślne odpowiadają przyjętemu w firmie rocznemu rozkładowi produkcji FV; edytuj je, jeśli masz dane specyficzne dla Twojej farmy (np. z raportu PVGIS/PVsyst).";
 
-    html += '<div class="card section"><div class="section-head"><h3>' + (isStorage ? "Magazyn — profil miesięczny wykorzystania" : "Fotowoltaika — profil miesięczny produkcji") + '</h3>' +
+    // "Produkcja" merges the yield/degradation fields (previously tucked
+    // inside the OPEX/revenue card) with the monthly production profile
+    // (previously its own separate card, positioned after financing) — both
+    // describe the same thing (how much energy is generated/used when), so
+    // they now sit together as one step in the form.
+    var productionCard =
+      '<div class="card section" data-section="' + prefix + '_production"><div class="section-head"><h3>' + (isStorage ? "Magazyn — produkcja / wykorzystanie" : "Fotowoltaika — produkcja") + '</h3></div>' +
+      '<div class="field-grid cols-2" style="margin-bottom:14px;">' + productionFields + '</div>' +
       '<div style="display:flex;gap:12px;align-items:center;">' +
       '<span class="hint">Suma: ' + profileSum.toFixed(2) + '% (powinno wynosić 100%)</span>' +
       '<button type="button" class="btn btn-sm" data-resetprofile="' + prefix + '">Resetuj do domyślnych</button>' +
-      '</div></div>' +
-      '<div class="month-grid">' + monthFields + '</div>' +
+      '</div>' +
+      '<div class="month-grid" style="margin-top:10px;">' + monthFields + '</div>' +
       '<div class="assumption-note">' + profileNote + '</div></div>';
 
-    return html;
+    // "OPEX" — pure operating costs, split out from what used to be one
+    // combined "OPEX i przychody" card (the single most overloaded card in
+    // the old layout).
+    var opexCard =
+      '<div class="card section" data-section="' + prefix + '_opex"><div class="section-head"><h3>' + (isStorage ? "Magazyn — OPEX" : "Fotowoltaika — OPEX") + '</h3>' +
+      '<div class="section-sum" id="' + prefix + '-opex-sum">OPEX (rok 1): <b class="money">' + fmt(opexAnnual, 0) + ' PLN/rok</b></div></div>' +
+      '<div class="field-grid">' + opexFields + fieldNum(prefix + ".opex_escalation_pct", "Indeksacja OPEX", "%/rok", "0.1") + '</div>' +
+      '<div class="assumption-note">Dzierżawa gruntu jest płatna jednorazowo raz w roku — w miesiącu wskazanym powyżej, począwszy od wskazanego roku — a nie rozłożona na raty miesięczne jak pozostałe pozycje OPEX. Pozostałe koszty (obsługa techniczna, ubezpieczenia) nadal rozliczane są równomiernie w każdym miesiącu.</div></div>';
+
+    // "Przychody" — the revenue/pricing half of the old combined card.
+    var revenueCard =
+      '<div class="card section" data-section="' + prefix + '_revenue"><div class="section-head"><h3>' + (isStorage ? "Magazyn — przychody" : "Fotowoltaika — przychody") + '</h3></div>' +
+      '<div class="field-grid cols-2">' +
+      fieldNum(prefix + ".revenue.price_pln_mwh", isStorage ? "Cena energii z magazynu (arbitraż)" : "Cena sprzedaży energii", "PLN/MWh", "1") +
+      fieldNum(prefix + ".revenue.price_escalation_pct", "Indeksacja ceny", "%/rok", "0.1") +
+      '</div>' +
+      (isStorage ? '<div class="assumption-note">Cena energii uzyskiwanej z arbitrażu magazynu jest ustawiana niezależnie od ceny sprzedaży energii z PV powyżej — magazyn ładuje się i rozładowuje w oparciu o zmienność cen na rynku, więc jego przychód na MWh zwykle różni się (najczęściej jest wyższy) od ceny PV.</div>' : '') +
+      (!isStorage ? (
+        '<div class="field-grid cols-2" style="margin-top:12px;">' +
+        fieldNum("pv.revenue.price_go_pln_mwh", "Gwarancje pochodzenia energii", "PLN/MWh", "0.1") +
+        fieldNum("pv.revenue.price_go_escalation_pct", "Indeksacja ceny GO", "%/rok", "0.1") +
+        fieldNum("pv.revenue.inne_przychody_pln_rok", "Inne/pozostałe przychody", "PLN/rok", "100") +
+        '</div>' +
+        '<div class="assumption-note">Gwarancje pochodzenia energii (GO) to osobny, dodatkowy przychód za każdą MWh wyprodukowanej energii z OZE — rozliczany niezależnie od samej energii (np. przez Rejestr Gwarancji Pochodzenia prowadzony przez TGE, na podstawie wniosku do Prezesa URE), nie jest częścią ceny energii powyżej. Rynek GO jest obecnie w nadpodaży, a ceny mocno spadły i pozostają zmienne — domyślna stawka (2,5 PLN/MWh) odzwierciedla bieżącą ofertę rynkową i jest w pełni edytowalna, podobnie jak jej własna indeksacja (domyślnie 0%/rok, niezależna od indeksacji ceny energii powyżej). „Inne/pozostałe przychody” to stała kwota roczna na drobne źródła przychodu niezwiązane z produkcją (np. dzierżawa fragmentu terenu pod baner reklamowy) — indeksowana tą samą stopą co OPEX powyżej.</div>'
+      ) : "") +
+      '</div>';
+
+    return { sizing: sizingCard, development: developmentCard, capex: capexCard, totalCapex: totalCapexCard, financing: financingCard, production: productionCard, opex: opexCard, revenue: revenueCard };
   }
 
   /** "Koszty jednorazowe" — one-time-cost items for the PV farm: przyłącze
@@ -2324,21 +3099,29 @@
    *  default) depreciates it on its own schedule just like the other two;
    *  unchecked expenses it in full in the month it's incurred instead (see
    *  itemDepreciationMonths), for costs that don't really qualify as a
-   *  depreciable fixed asset. Also shows a read-only readout of PV's wkład
-   *  własny (the equity contribution due at financing close — see
-   *  techFinancingAmounts) as its own one-time cash outlay. Storage's own
-   *  equity contribution is unaffected and still shown in the "Magazyn —
-   *  finansowanie" card as before. */
+   *  depreciable fixed asset. Does NOT show the equity-contribution readout
+   *  itself — that combined figure (financing equity + these one-time costs)
+   *  lives in its own small card ("Łączny wkład własny farmy PV") right
+   *  after the Financing card, kept deliberately separate from both this
+   *  card and the Financing card's own "Wkład własny" figure (which is
+   *  financing-only) so the two amounts are never shown merged together in
+   *  a way that reads as one number — see techFieldsHtml's financingEquityAmt/
+   *  totalEquityCard. */
   function oneTimeCostsCardHtml(p) {
     var d = p.pv;
-    var powerMW = num(d.power_kwp) / 1000;
-    var capexTotal = techCapexTotal(d, powerMW);
-    var finAmt = techFinancingAmounts(d, capexTotal);
     var oneTimeTotal = pvOneTimeCostsTotal(d);
     var rows = '<div class="capex-items-list">' + PV_ONE_TIME_KEYS.map(function (k) {
       var depYearsK = getDeep(d, "capex_depreciation_years." + k);
       var depYearsKVal = depYearsK === undefined ? 10 : num(depYearsK, 10);
       var rateK = depYearsKVal > 0 ? (100 / depYearsKVal) : 0;
+      // When incurred (miesiąc/rok poniesienia) — independently editable per
+      // item, defaulting to the PV commissioning date (seeded by
+      // defaultProject/migrateOneTimeCostTiming, so these never render
+      // blank) — actually moves this item's cash outflow in the CF engine
+      // (see pvOneTimeItemDates/computeMetrics), not just a label.
+      var timingFields =
+        fieldSelect("pv.capex_onetime_timing." + k + ".month", "Miesiąc poniesienia", MONTH_OPTIONS) +
+        fieldNum("pv.capex_onetime_timing." + k + ".year", "Rok poniesienia", "rok", "1");
       if (k === "inne_jednorazowe") {
         var amortize = d.capex_amortize_inne_jednorazowe !== false;
         var amortizeCheckbox = '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer;">' +
@@ -2352,43 +3135,280 @@
           (amortize ? '<div class="dep-rate-hint" data-deprate="pv:' + k + '">Stawka: ' + rateK.toFixed(2) + '%/rok</div>' : '') +
           amortizeCheckbox +
           '</div>' +
+          timingFields +
           '</div>';
       }
       return '<div class="capex-item-row">' +
         fieldNum("pv.capex." + k, PV_CAPEX_LABELS[k], "PLN", "1000") +
         fieldNum("pv.capex_depreciation_years." + k, "Okres amortyzacji", "lat", "1") +
         '<div class="dep-rate-hint" data-deprate="pv:' + k + '">Stawka: ' + rateK.toFixed(2) + '%/rok</div>' +
+        timingFields +
         '</div>';
     }).join("") + '</div>';
-    return '<div class="card section"><div class="section-head"><h3>Koszty jednorazowe</h3>' +
+    return '<div class="card section" data-section="pv_onetime"><div class="section-head"><h3>Koszty jednorazowe</h3>' +
       '<div class="section-sum" id="pv-onetime-sum">Razem: <b class="money">' + fmt(oneTimeTotal, 0) + ' PLN</b></div></div>' +
       rows +
-      '<div class="one-time-readout-row"><span class="one-time-readout-label">Wkład własny do finansowania farmy PV</span><span class="one-time-readout-value money" id="pv-onetime-equity-value">' + fmt(finAmt.equityAmt, 0) + ' PLN</span></div>' +
-      '<div class="assumption-note">Przyłącze do sieci OSD, koszty projektu/dokumentacji oraz Inne/pozostałe to pozycje jednorazowe, niezależne od trybu CAPEX farmy PV powyżej (Szczegółowo / Łącznie) — edytujesz je tutaj zawsze, niezależnie od wybranego trybu. Doliczają się w całości do łącznego CAPEX farmy PV — w trybie „Łącznie (PLN/MW)” kwota PLN/MW powyżej powinna obejmować tylko koszty skalujące się z mocą (panele, inwertery, konstrukcję itd.), bez tych trzech pozycji, ponieważ są doliczane osobno. Przyłącze i projekt/dokumentacja są zawsze amortyzowane własną, wskazaną tutaj stawką. Pozycja „Inne/pozostałe” ma dodatkowo checkbox „Amortyzować” — zaznaczony (domyślnie) rozlicza ją tak samo amortyzacyjnie na wskazaną liczbę lat; odznaczony ujmuje cały koszt jednorazowo, w całości, w miesiącu poniesienia (bez amortyzacji) — przydatne dla kosztów, które nie kwalifikują się jako środek trwały podlegający amortyzacji. Cykliczne, powtarzające się co roku koszty utrzymania terenu (np. coroczne koszenie trawy, bieżące naprawy drogi dojazdowej) nie są kosztem jednorazowym — wpisz je jako roczną kwotę w polu „Inne/pozostałe” w sekcji „OPEX i przychody” poniżej, gdzie rozliczane są na bieżąco co roku. Wkład własny to wymagana jednorazowa wpłata kapitału własnego w momencie finansowania (CAPEX pomniejszony o kwotę kredytu) — ustawiana pośrednio przez udział długu w sekcji „Fotowoltaika — finansowanie” poniżej; pole tutaj jest tylko podglądem.</div>' +
+      '<div class="assumption-note">Każda pozycja ma własny „Miesiąc/Rok poniesienia” (domyślnie miesiąc uruchomienia farmy PV, w pełni edytowalny) — to właśnie w tym miesiącu wypływ gotówkowy tej pozycji faktycznie pojawia się w przepływach kapitału własnego, niezależnie od terminu pozostałych kosztów jednorazowych i niezależnie od miesiąca rozpoczęcia finansowania w sekcji „Fotowoltaika — finansowanie” poniżej (np. przyłącze do sieci OSD można opłacić dużo wcześniej niż pozostałe koszty budowy). Amortyzacja każdej pozycji nadal zaczyna się od miesiąca uruchomienia farmy, niezależnie od miesiąca faktycznego poniesienia kosztu. Przyłącze do sieci OSD, koszty projektu/dokumentacji oraz Inne/pozostałe to pozycje jednorazowe, niezależne od trybu CAPEX farmy PV powyżej (Szczegółowo / Łącznie) — edytujesz je tutaj zawsze, niezależnie od wybranego trybu. Doliczają się w całości do łącznego CAPEX farmy PV — w trybie „Łącznie (PLN/MW)” kwota PLN/MW powyżej powinna obejmować tylko koszty skalujące się z mocą (panele, inwertery, konstrukcję itd.), bez tych trzech pozycji, ponieważ są doliczane osobno. Przyłącze i projekt/dokumentacja są zawsze amortyzowane własną, wskazaną tutaj stawką. Pozycja „Inne/pozostałe” ma dodatkowo checkbox „Amortyzować” — zaznaczony (domyślnie) rozlicza ją tak samo amortyzacyjnie na wskazaną liczbę lat; odznaczony ujmuje cały koszt jednorazowo, w całości, w miesiącu poniesienia (bez amortyzacji) — przydatne dla kosztów, które nie kwalifikują się jako środek trwały podlegający amortyzacji. Cykliczne, powtarzające się co roku koszty utrzymania terenu (np. coroczne koszenie trawy, bieżące naprawy drogi dojazdowej) nie są kosztem jednorazowym — wpisz je jako roczną kwotę w polu „Inne/pozostałe” w sekcji „OPEX” poniżej, gdzie rozliczane są na bieżąco co roku. Te pozycje zawsze finansowane są w całości z kapitału własnego, niezależnie od udziału długu wybranego w sekcji „Fotowoltaika — finansowanie” poniżej — łączny wymagany wkład własny (finansowanie + koszty jednorazowe) pokazany jest w osobnej karcie „Łączny wkład własny farmy PV”, zaraz pod sekcją finansowania.</div>' +
       '</div>';
+  }
+
+  /** Note shown right under "Horyzont analizy" in the title-row card,
+   *  reflecting whether horizon_years currently matches the value implied
+   *  by the PV land-lease term (computeAutoHorizonYears) — a plain
+   *  confirmation when they match, a warning when the user has manually
+   *  overridden the horizon away from it. Never blocks editing either
+   *  field, just flags the mismatch. */
+  function horizonLeaseNoteHtml(p) {
+    var auto = computeAutoHorizonYears(p);
+    var current = Math.max(1, Math.round(num(p.horizon_years, 25)));
+    var okresLat = Math.max(1, Math.round(num(p.pv.opex.dzierzawa_okres_lat, 25)));
+    if (current === auto) {
+      return '<div class="assumption-note" id="horizon-lease-note">Horyzont analizy jest zgodny z okresem dzierżawy gruntu (' + okresLat + ' lat, licząc od pierwszej płatności dzierżawy): ' + auto + ' lat.</div>';
+    }
+    return '<div class="assumption-note" id="horizon-lease-note" style="color:var(--negative);">⚠ Horyzont analizy (' + current + ' lat) różni się od okresu wynikającego z dzierżawy gruntu (' + okresLat + ' lat dzierżawy → sugerowany horyzont ' + auto + ' lat). Jeśli to niezamierzone, popraw jedno z tych dwóch pól.</div>';
+  }
+  /** Live-refreshes the note above via direct DOM write (no full re-render,
+   *  same pattern as the CAPEX per-MW↔itemized sync) whenever horizon_years
+   *  or any of the PV lease-timing fields change. */
+  function updateHorizonLeaseNote() {
+    var el = document.getElementById("horizon-lease-note");
+    if (!el) return;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = horizonLeaseNoteHtml(state.draft);
+    el.outerHTML = wrap.firstChild.outerHTML;
+  }
+
+  /** Gantt-style visual of a technology's development-stage pipeline —
+   *  purely a rendering helper, never mutates state. Segment width is
+   *  proportional to each stage's month count (CSS flex-grow, min 1 so a
+   *  0-month stage still shows as a sliver rather than collapsing); stages
+   *  already completed under "in_progress" mode (index < first_pending_stage)
+   *  are dimmed via .dev-gantt-seg-done, matching the ones excluded from
+   *  computeAutoCommissioning's sum for that mode. In "operating"/
+   *  "own_operating" modes there is no pipeline to draw — the farm is
+   *  already producing from its start date — so a short note is shown
+   *  instead of the bar (worded differently for each, since one was bought
+   *  and the other was never acquired). */
+  function devGanttHtml(prefix, dev) {
+    if (dev.mode === "operating" || dev.mode === "own_operating") {
+      var alreadyOperatingNote = dev.mode === "own_operating"
+        ? "Własny projekt jest już w eksploatacji — brak etapów budowy do przedstawienia; przychód liczony jest od razu od daty uruchomienia farmy powyżej."
+        : "Farma jest już w eksploatacji — brak etapów budowy do przedstawienia; przychód liczony jest od razu od daty przejęcia powyżej.";
+      return '<div class="assumption-note" id="dev-gantt-' + prefix + '">' + alreadyOperatingNote + '</div>';
+    }
+    var stages = Array.isArray(dev.stages) && dev.stages.length ? dev.stages : DEFAULT_DEV_STAGES;
+    var fromIdx = dev.mode === "in_progress" ? clamp(Math.round(num(dev.first_pending_stage, 0)), 0, stages.length) : 0;
+    var segs = stages.map(function (s, i) {
+      var done = i < fromIdx;
+      var months = Math.max(0, num(s.months));
+      return '<div class="dev-gantt-seg' + (done ? ' dev-gantt-seg-done' : '') + '" style="flex-grow:' + Math.max(1, months) + ';">' +
+        '<div class="dev-gantt-seg-label">' + (done ? '✓ ' : '') + s.label + '</div>' +
+        '<div class="dev-gantt-seg-months">' + months + ' mies.' + (done ? ' (ukończono)' : '') + '</div>' +
+        '</div>';
+    }).join("");
+    return '<div class="dev-gantt" id="dev-gantt-' + prefix + '">' + segs + '</div>';
+  }
+  /** Live-refreshes the Gantt bar via direct DOM write (outerHTML swap on the
+   *  stable id above), same pattern as updateHorizonLeaseNote/
+   *  updateTrancheWarning — called whenever a stage's month count or
+   *  first_pending_stage changes, without a full re-render (would steal
+   *  focus while typing a duration). */
+  function updateDevGantt(prefix) {
+    var el = document.getElementById("dev-gantt-" + prefix);
+    if (!el) return;
+    var dev = getDevelopment(state.draft[prefix]);
+    var wrap = document.createElement("div");
+    wrap.innerHTML = devGanttHtml(prefix, dev);
+    el.outerHTML = wrap.firstChild.outerHTML;
+  }
+
+  /** Computes each stage's cumulative-months-elapsed-since-start "end
+   *  point" (only stages from fromIdx onward count — earlier ones are
+   *  "ukończono" and have no knowable end date here, only that they
+   *  finished before the timeline's own start date). This is the SAME
+   *  running total computeAutoCommissioning sums, so the last pending
+   *  stage's own end point always equals the auto-suggested "Miesiąc/Rok
+   *  uruchomienia" exactly — a built-in cross-check for the user. Shared by
+   *  devStageRowsHtml (initial render) and updateDevStageRows (live-patch)
+   *  so the two can never drift apart. Returns an array parallel to
+   *  `stages`, each entry either null (done stage, nothing to show) or
+   *  {year, month}. */
+  function devStageEndDates(dev, stages, fromIdx) {
+    var startY = Math.round(num(dev.start_year, new Date().getFullYear()));
+    var startM = clamp(Math.round(num(dev.start_month, 1)), 1, 12);
+    var cumulativeMonths = 0;
+    return stages.map(function (s, i) {
+      if (i < fromIdx) return null;
+      cumulativeMonths += Math.max(0, num(s.months));
+      return addMonths(startY, startM, cumulativeMonths);
+    });
+  }
+  /** The editable list of per-stage "Czas trwania" rows shown under the
+   *  Gantt-style mode toggle (greenfield/in_progress only — "operating"/
+   *  "own_operating" have no pipeline, see devIsAlreadyOperating at the
+   *  call site). Each row now also shows a running "Koniec: <miesiąc rok>"
+   *  readout (see devStageEndDates) in its own element, given a stable
+   *  per-row id (dev-stage-end-<prefix>-<i>) so updateDevStageRows can
+   *  patch just that .textContent directly — deliberately NOT part of any
+   *  outerHTML-swapped wrapper, since that wrapper would also contain the
+   *  "Czas trwania" fieldNum INPUT itself, and swapping it out from under
+   *  the user mid-keystroke would steal focus/cursor position every time
+   *  they type a digit (this bit before being caught by a Playwright check
+   *  — see verify_analysis_start_and_labels.js). Returns '' for operating/
+   *  own_operating (nothing to show). */
+  function devStageRowsHtml(prefix, dev) {
+    if (dev.mode === "operating" || dev.mode === "own_operating") return "";
+    var stages = Array.isArray(dev.stages) && dev.stages.length ? dev.stages : DEFAULT_DEV_STAGES;
+    var fromIdx = dev.mode === "in_progress" ? clamp(Math.round(num(dev.first_pending_stage, 0)), 0, stages.length) : 0;
+    var endDates = devStageEndDates(dev, stages, fromIdx);
+    var rows = stages.map(function (s, i) {
+      var doneRow = i < fromIdx;
+      var endDate = endDates[i];
+      var endLabel = endDate ? "Koniec: " + MONTH_NAMES_PL[endDate.month - 1] + " " + endDate.year : "";
+      return '<div class="dev-stage-row">' +
+        '<div class="dev-stage-label">' + (doneRow ? "✓ " : "") + s.label + '</div>' +
+        fieldNum(prefix + ".development.stages." + i + ".months", "Czas trwania", "mies.", "1") +
+        '<div class="dev-stage-end" id="dev-stage-end-' + prefix + '-' + i + '">' + endLabel + '</div>' +
+        '<div class="dev-stage-done-tag">' + (doneRow ? "ukończono" : "") + '</div>' +
+        '</div>';
+    }).join("");
+    return '<div class="capex-items-list" style="margin-top:14px;">' + rows + '</div>';
+  }
+  /** Live-refreshes ONLY the "Koniec: ..." end-month text of each stage row
+   *  (direct .textContent writes on the stable per-row ids from
+   *  devStageRowsHtml — never an outerHTML swap, unlike updateDevGantt/
+   *  updateHorizonLeaseNote/updateDevelopmentNote, precisely because this
+   *  row also contains a live-typed INPUT that must never be recreated out
+   *  from under the user's cursor). Called whenever start_year/start_month/
+   *  a stage's own month count changes, since all of those shift the
+   *  cumulative running total every subsequent row's end-month label
+   *  depends on. No-ops harmlessly if the ids aren't in the DOM (operating/
+   *  own_operating modes, or a stage count mismatch mid-transition). */
+  function updateDevStageRows(prefix) {
+    var dev = getDevelopment(state.draft[prefix]);
+    if (dev.mode === "operating" || dev.mode === "own_operating") return;
+    var stages = Array.isArray(dev.stages) && dev.stages.length ? dev.stages : DEFAULT_DEV_STAGES;
+    var fromIdx = dev.mode === "in_progress" ? clamp(Math.round(num(dev.first_pending_stage, 0)), 0, stages.length) : 0;
+    var endDates = devStageEndDates(dev, stages, fromIdx);
+    stages.forEach(function (s, i) {
+      var el = document.getElementById("dev-stage-end-" + prefix + "-" + i);
+      if (!el) return;
+      var endDate = endDates[i];
+      el.textContent = endDate ? "Koniec: " + MONTH_NAMES_PL[endDate.month - 1] + " " + endDate.year : "";
+    });
+  }
+
+  /** Note shown under a technology's "Miesiąc/Rok uruchomienia" fields,
+   *  mirroring horizonLeaseNoteHtml's role for the analysis horizon:
+   *  reflects whether commissioning_year/month currently matches the date
+   *  implied by the development-stage timeline above
+   *  (computeAutoCommissioning) — a plain confirmation when they match, a
+   *  warning when the user has manually overridden commissioning away from
+   *  it. Never blocks editing either side, just flags the mismatch. */
+  function developmentNoteHtml(prefix, d) {
+    var dev = getDevelopment(d);
+    var auto = computeAutoCommissioning(dev);
+    var currentY = Math.round(num(d.commissioning_year, auto.year));
+    var currentM = clamp(Math.round(num(d.commissioning_month, auto.month)), 1, 12);
+    var autoLabel = MONTH_NAMES_PL[auto.month - 1] + " " + auto.year;
+    if (currentY === auto.year && currentM === auto.month) {
+      return '<div class="assumption-note" id="dev-note-' + prefix + '">Data uruchomienia jest zgodna z harmonogramem etapów powyżej: ' + autoLabel + '.</div>';
+    }
+    return '<div class="assumption-note" id="dev-note-' + prefix + '" style="color:var(--negative);">⚠ Data uruchomienia (' + MONTH_NAMES_PL[currentM - 1] + ' ' + currentY + ') różni się od daty wynikającej z harmonogramu etapów powyżej (sugerowana: ' + autoLabel + '). Jeśli to niezamierzone, popraw jedno z tych dwóch pól.</div>';
+  }
+  /** Live-refreshes the note above via direct DOM write, same pattern as
+   *  updateHorizonLeaseNote. */
+  function updateDevelopmentNote(prefix) {
+    var el = document.getElementById("dev-note-" + prefix);
+    if (!el) return;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = developmentNoteHtml(prefix, state.draft[prefix]);
+    el.outerHTML = wrap.firstChild.outerHTML;
+  }
+
+  /** Auto-syncs a technology's "Miesiąc/Rok uruchomienia" from its
+   *  development-stage timeline (computeAutoCommissioning) — mirrors the
+   *  horizon↔lease-term sync inline in the [data-path] listener below:
+   *  writes the computed date directly into state.draft AND the
+   *  corresponding DOM inputs' .value (no full re-render, so typing a stage
+   *  duration never loses focus), then refreshes the mismatch note. Called
+   *  whenever a development-timeline field changes; never called when the
+   *  user edits commissioning_year/month directly — those edits are always
+   *  respected, only the note flags a mismatch (see developmentNoteHtml). */
+  function applyAutoCommissioning(prefix) {
+    var d = state.draft[prefix];
+    var dev = getDevelopment(d);
+    var auto = computeAutoCommissioning(dev);
+    setDeep(state.draft, prefix + ".commissioning_year", auto.year);
+    setDeep(state.draft, prefix + ".commissioning_month", auto.month);
+    var yearInput = document.getElementById("f-" + prefix + "-commissioning_year");
+    if (yearInput && document.activeElement !== yearInput) yearInput.value = String(auto.year);
+    var monthInput = document.getElementById("f-" + prefix + "-commissioning_month");
+    if (monthInput) monthInput.value = String(auto.month);
+    updateDevelopmentNote(prefix);
+  }
+
+  /** Warning note (empty when not applicable) shown under a technology's
+   *  tranche list when the schedule leaves the facility under-drawn by the
+   *  end of the grace period — see debtDrawnFraction's own note on why
+   *  repayment starts from the full principal regardless. Always wrapped in
+   *  a stable-id div, even when empty, so updateTrancheWarning below can
+   *  live-patch it via direct DOM write (no full re-render — typing a
+   *  tranche's month/% would otherwise lose focus every keystroke, same
+   *  reasoning as updateHorizonLeaseNote/the CAPEX per-MW↔itemized sync). */
+  function trancheWarningHtml(prefix, fin) {
+    var tranchingEnabledLocal = !!(fin && fin.tranching_enabled);
+    var tranchesArrLocal = Array.isArray(fin && fin.tranches) ? fin.tranches : [];
+    if (!tranchingEnabledLocal || !tranchesArrLocal.length) return '<div id="tranche-warning-' + prefix + '"></div>';
+    var graceMonthsLocal = Math.max(0, Math.round(num(fin.grace_months)));
+    var drawnPctLocal = debtDrawnFraction(fin, Math.max(0, graceMonthsLocal - 1)) * 100;
+    if (drawnPctLocal >= 99.99) return '<div id="tranche-warning-' + prefix + '"></div>';
+    return '<div class="assumption-note" id="tranche-warning-' + prefix + '" style="margin-top:8px;">Uwaga: wg podanego harmonogramu do końca karencji (' + graceMonthsLocal + '. mies.) wypłacone jest tylko ' + drawnPctLocal.toFixed(0) + '% finansowania. Spłata kapitału po karencji i tak wystartuje od pełnej kwoty (typowa umowa kredytowa zakłada pełne wykorzystanie transzy do końca budowy) — jeśli harmonogram ma inaczej wyglądać, dodaj transzę domykającą pozostałą część przed końcem karencji.</div>';
+  }
+  function updateTrancheWarning(prefix) {
+    var el = document.getElementById("tranche-warning-" + prefix);
+    if (!el) return;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = trancheWarningHtml(prefix, state.draft[prefix].financing);
+    el.outerHTML = wrap.firstChild.outerHTML;
   }
 
   function renderInputsTab() {
     var p = state.draft;
 
+    // techFieldsHtml now returns each card as a separate string (sizing,
+    // capex, financing, production, opex, revenue) instead of one
+    // concatenated block, so they can be assembled below in a more logical,
+    // step-by-step reading order — see techFieldsHtml's own comment for
+    // why. oneTimeCostsCardHtml (PV-only) is threaded in right after CAPEX,
+    // where it conceptually belongs, instead of sitting far downstream.
+    var pvCards = techFieldsHtml("pv", PV_CAPEX_LABELS, OPEX_LABELS, false);
+    var storageCards = p.storage.enabled ? techFieldsHtml("storage", STORAGE_CAPEX_LABELS, OPEX_LABELS, true) : null;
+    // "Koszty jednorazowe" (one-time development costs) is meaningless once
+    // the PV farm is already built and running ("Projekt własny działający")
+    // -- CAPEX itself is hidden in that mode (see techFieldsHtml), so the
+    // one-time-costs card is hidden alongside it rather than left dangling
+    // with no CAPEX card above it to relate to.
+    var pvDevModeForCards = getDevelopment(p.pv).mode;
+    var oneTimeCostsHtmlOrEmpty = pvDevModeForCards === "own_operating" ? "" : oneTimeCostsCardHtml(p);
+
     var html =
-      '<div class="card section"><div class="title-row">' +
+      '<div class="card section" data-section="general"><div class="title-row">' +
       '<div class="field"><label for="f-name">Nazwa projektu</label><input type="text" id="f-name" data-path="name" value="' + escapeHtml(p.name || "") + '"></div>' +
       '<div class="field"><label for="f-location">Lokalizacja</label><input type="text" id="f-location" data-path="location" value="' + escapeHtml(p.location || "") + '"></div>' +
       '<div class="field small">' + fieldNum("horizon_years", "Horyzont analizy", "lat", "1") + '</div>' +
-      '</div></div>' +
+      '<div class="field small">' + fieldSelectStr("energy_sale_method", "Sposób sprzedaży energii", ENERGY_SALE_METHOD_OPTIONS) + '</div>' +
+      '</div>' + horizonLeaseNoteHtml(p) + '</div>' +
 
-      techFieldsHtml("pv", PV_CAPEX_LABELS, OPEX_LABELS, false) +
-
-      oneTimeCostsCardHtml(p) +
+      pvCards.sizing + pvCards.development + pvCards.capex + oneTimeCostsHtmlOrEmpty + pvCards.totalCapex + pvCards.financing + pvCards.production + pvCards.opex + pvCards.revenue +
 
       '<div class="card section toggle-card">' +
       '<div><label><input type="checkbox" id="f-storage-enabled" data-path="storage.enabled" data-toggle-storage="1" ' + (p.storage.enabled ? "checked" : "") + '> Uwzględnij magazyn energii (BESS)</label>' +
       '<p>Osobny CAPEX, OPEX, finansowanie i termin uruchomienia — magazyn może ruszyć w innym miesiącu niż farma PV.</p></div></div>' +
 
-      (p.storage.enabled ? techFieldsHtml("storage", STORAGE_CAPEX_LABELS, OPEX_LABELS, true) : "") +
+      (storageCards ? (storageCards.sizing + storageCards.development + storageCards.capex + storageCards.totalCapex + storageCards.financing + storageCards.production + storageCards.opex + storageCards.revenue) : "") +
 
-      '<div class="card section"><div class="section-head"><h3>Ceny, podatki i stopa dyskontowa</h3></div>' +
+      '<div class="card section" data-section="pricing_tax"><div class="section-head"><h3>Ceny, podatki i stopa dyskontowa</h3></div>' +
       '<div class="field-grid cols-2">' +
       fieldNum("price_base_year", "Rok bazowy cen (dziś)", "rok", "1") +
       '</div>' +
@@ -2406,6 +3426,7 @@
       '</div>';
 
     document.getElementById("tab-inputs").innerHTML = html;
+    injectSectionComments("tab-inputs");
 
     document.getElementById("tab-inputs").querySelectorAll("[data-path]").forEach(function (input) {
       var isCheckbox = input.type === "checkbox";
@@ -2422,6 +3443,7 @@
         var path = input.getAttribute("data-path");
         var value;
         if (isCheckbox) value = input.checked;
+        else if (isSelect && input.hasAttribute("data-strval")) value = input.value;
         else if (isSelect) value = num(input.value, 0);
         else if (isThousands) value = num(unformatNumericInputValue(input.value), 0);
         else if (isNumField) value = num(input.value, 0);
@@ -2487,7 +3509,63 @@
           if (projRateEl) projRateEl.textContent = "Stawka: " + (100 / Math.max(1, num(value, 10))).toFixed(2) + "%/rok";
         }
 
+        // Horyzont analizy ↔ okres dzierżawy gruntu: editing any of the PV
+        // lease-timing fields live-recomputes the suggested horizon and
+        // writes it straight into horizon_years (both state.draft and the
+        // input's DOM value, mirroring the CAPEX per-MW↔itemized sync above)
+        // — so the horizon tracks the lease by default. Editing horizon_years
+        // directly is always respected (never silently overwritten back) —
+        // only the note below it updates, to flag a mismatch rather than
+        // fight the user's own edit.
+        if (path === "pv.opex.dzierzawa_start_year" || path === "pv.opex.dzierzawa_payment_month" || path === "pv.opex.dzierzawa_okres_lat") {
+          var autoHorizon = computeAutoHorizonYears(state.draft);
+          setDeep(state.draft, "horizon_years", autoHorizon);
+          var horizonInput = document.getElementById("f-horizon_years");
+          if (horizonInput) horizonInput.value = formatNumericInputValue(String(autoHorizon));
+          updateHorizonLeaseNote();
+        }
+        if (path === "horizon_years") updateHorizonLeaseNote();
+
+        // Miesiąc/Rok uruchomienia ↔ harmonogram etapów: editing the
+        // development timeline's own start date or any stage's duration
+        // live-recomputes the suggested commissioning date and writes it
+        // straight into commissioning_year/commissioning_month (state +
+        // DOM, same auto-sync pattern as horizon_years above) — so
+        // commissioning tracks the timeline by default. Editing
+        // commissioning_year/month directly is always respected — only the
+        // note below updates, to flag a mismatch rather than fight the
+        // user's edit (see applyAutoCommissioning/developmentNoteHtml).
+        var devTimelineMatch = path.match(/^(pv|storage)\.development\.(start_year|start_month|stages\.\d+\.months)$/);
+        if (devTimelineMatch) {
+          applyAutoCommissioning(devTimelineMatch[1]);
+          // start_year/start_month shift every row's end-month readout too
+          // (not just the Gantt bar, which only depends on durations), so
+          // this always runs, unlike the Gantt update below.
+          updateDevStageRows(devTimelineMatch[1]);
+          if (devTimelineMatch[2].indexOf("stages.") === 0) updateDevGantt(devTimelineMatch[1]);
+        }
+        var commissioningMatch = path.match(/^(pv|storage)\.commissioning_(year|month)$/);
+        if (commissioningMatch) updateDevelopmentNote(commissioningMatch[1]);
+
+        // Live-update the tranche under-drawn warning (direct DOM write, no
+        // full re-render — see trancheWarningHtml/updateTrancheWarning)
+        // whenever a tranche row's own month/% or the grace period itself
+        // changes.
+        var trancheFieldMatch = path.match(/^(pv|storage)\.financing\.(tranches\.\d+\.(month|pct)|grace_months)$/);
+        if (trancheFieldMatch) updateTrancheWarning(trancheFieldMatch[1]);
+
+        // Changing "Etap zaawansowania na dzień zakupu" reshuffles which
+        // stage rows/Gantt segments show as already-done — needs a full
+        // re-render (same as the storage toggle below), but first
+        // recompute commissioning from the new fromIdx so the rest of the
+        // re-rendered card (and the note) reflects the updated date too.
+        var firstPendingMatch = path.match(/^(pv|storage)\.development\.first_pending_stage$/);
+        if (firstPendingMatch) { applyAutoCommissioning(firstPendingMatch[1]); renderInputsTab(); scheduleSave(); renderSidebarSoft(); return; }
+
         if (input.hasAttribute("data-toggle-storage")) { renderInputsTab(); scheduleSave(); renderSidebarSoft(); return; }
+        // Toggling "Transzowanie wypłat finansowania" shows/hides the tranche
+        // rows list — needs a full re-render, same as the storage toggle above.
+        if (input.hasAttribute("data-toggle-tranching")) { renderInputsTab(); scheduleSave(); renderSidebarSoft(); return; }
         // Toggling "Amortyzować" for inne_jednorazowe swaps the depreciation-
         // years field for a note (or back) — needs a full re-render, same as
         // the storage toggle above.
@@ -2547,29 +3625,134 @@
         renderSidebarSoft();
       });
     });
+
+    document.getElementById("tab-inputs").querySelectorAll("[data-devmode]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var parts = btn.getAttribute("data-devmode").split(":");
+        var techPrefix = parts[0], mode = parts[1];
+        setDeep(state.draft, techPrefix + ".development.mode", mode);
+        // Re-derive commissioning for the newly selected mode before
+        // re-rendering, so the card (stage rows, Gantt, commissioning
+        // fields, note) all reflect the new date immediately rather than
+        // waiting for the next edit.
+        applyAutoCommissioning(techPrefix);
+        renderInputsTab();
+        scheduleSave();
+        renderSidebarSoft();
+      });
+    });
+    document.getElementById("tab-inputs").querySelectorAll("[data-resetdevstages]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var techPrefix = btn.getAttribute("data-resetdevstages");
+        setDeep(state.draft, techPrefix + ".development.stages", cloneDevStages());
+        applyAutoCommissioning(techPrefix);
+        renderInputsTab();
+        scheduleSave();
+        renderSidebarSoft();
+      });
+    });
+
+    document.getElementById("tab-inputs").querySelectorAll("[data-trancheadd]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var techPrefix = btn.getAttribute("data-trancheadd");
+        var fin = state.draft[techPrefix].financing;
+        if (!Array.isArray(fin.tranches)) fin.tranches = [];
+        var graceM = Math.max(1, Math.round(num(fin.grace_months, 1)));
+        // Seed a sensible next row rather than 0/0: next month after the
+        // last one (capped at the grace length), cumulative % halfway from
+        // wherever the schedule currently stands to 100 — so repeated clicks
+        // build a rising staircase toward a full draw instead of requiring
+        // every value to be hand-typed from scratch.
+        var last = fin.tranches.length ? fin.tranches[fin.tranches.length - 1] : null;
+        var nextMonth = last ? Math.min(graceM, Math.round(num(last.month, 0)) + 1) : 1;
+        var nextPct = last ? Math.min(100, Math.round((num(last.pct, 0) + 100) / 2)) : 100;
+        fin.tranches.push({ month: nextMonth, pct: nextPct });
+        renderInputsTab();
+        scheduleSave();
+        renderSidebarSoft();
+      });
+    });
+    document.getElementById("tab-inputs").querySelectorAll("[data-trancheremove]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var parts = btn.getAttribute("data-trancheremove").split(":");
+        var techPrefix = parts[0], idx = parseInt(parts[1], 10);
+        var fin = state.draft[techPrefix].financing;
+        if (Array.isArray(fin.tranches)) fin.tranches.splice(idx, 1);
+        renderInputsTab();
+        scheduleSave();
+        renderSidebarSoft();
+      });
+    });
   }
 
   function refreshInlineSums() {
     var p = state.draft;
     var pvPowerMW = num(p.pv.power_kwp) / 1000;
-    var pvCapexTotal = techCapexTotal(p.pv, pvPowerMW);
-    var pvFin = techFinancingAmounts(p.pv, pvCapexTotal);
+    // techCapexFinancingSummary (shared with computeMetrics/techFieldsHtml —
+    // see its own doc comment) so these live-patched figures can never drift
+    // from what a full re-render would show, including for "own_operating"
+    // (capexTotal/debtAmt there come from the entered remaining book value /
+    // outstanding debt, not from CAPEX at all).
+    var pvSummary = techCapexFinancingSummary(p.pv, pvPowerMW);
+    var pvCapexTotal = pvSummary.capexTotal;
+    var pvFin = { debtAmt: pvSummary.debtAmt, equityAmt: pvSummary.equityAmt };
+    var pvIsOwnOperating = getDevelopment(p.pv).mode === "own_operating";
     // Explicit IDs (set in techFieldsHtml/oneTimeCostsCardHtml) rather than
     // positional order over ".section-sum" — robust against cards being
     // added/reordered (e.g. "Koszty jednorazowe" sitting between the PV and
     // storage sections) without this silently updating the wrong element.
-    var s1 = document.getElementById("pv-capex-sum"); if (s1) s1.innerHTML = 'CAPEX: <b class="money">' + fmt(pvCapexTotal, 0) + ' PLN</b>';
+    // Most of these elements don't exist in the DOM at all in
+    // "own_operating" mode (their cards are hidden — see techFieldsHtml),
+    // so the null-guards below simply no-op for them.
+    var pvOneTimeTotal = pvSummary.oneTimeTotal;
+    var pvFinancingEquityAmt = pvFin.equityAmt - pvOneTimeTotal;
+    // "CAPEX" in the CAPEX card's own header is the scalable/construction
+    // part only (excludes PV's one-time costs) — see techFieldsHtml's
+    // scalableCapexAmt. The combined total (scalable + one-time) is its own
+    // separate readout, "Łączny CAPEX farmy PV" — updated below via
+    // pv-capex-scalable-value/pv-capex-onetime-value/pv-capex-total-value,
+    // deliberately never merged into this line (same split as the equity
+    // figures above).
+    var pvScalableCapexAmt = pvCapexTotal - pvOneTimeTotal;
+    var s1 = document.getElementById("pv-capex-sum"); if (s1) s1.innerHTML = 'CAPEX (budowa, bez kosztów jednorazowych): <b class="money">' + fmt(pvScalableCapexAmt, 0) + ' PLN</b>';
+    var sCapexScalableVal = document.getElementById("pv-capex-scalable-value"); if (sCapexScalableVal) sCapexScalableVal.textContent = fmt(pvScalableCapexAmt, 0) + ' PLN';
+    var sCapexOneTimeVal = document.getElementById("pv-capex-onetime-value"); if (sCapexOneTimeVal) sCapexOneTimeVal.textContent = fmt(pvOneTimeTotal, 0) + ' PLN';
+    var sCapexTotalVal = document.getElementById("pv-capex-total-value"); if (sCapexTotalVal) sCapexTotalVal.textContent = fmt(pvCapexTotal, 0) + ' PLN';
     var s2 = document.getElementById("pv-opex-sum"); if (s2) s2.innerHTML = 'OPEX (rok 1): <b class="money">' + fmt(techOpexAnnual(p.pv.opex, pvPowerMW), 0) + ' PLN/rok</b>';
-    var sFin1 = document.getElementById("pv-fin-sum"); if (sFin1) sFin1.innerHTML = 'Dług: <b class="money">' + fmt(pvFin.debtAmt, 0) + ' PLN</b> · Wkład własny: <b class="money">' + fmt(pvFin.equityAmt, 0) + ' PLN</b>';
-    var sOneTime = document.getElementById("pv-onetime-sum"); if (sOneTime) sOneTime.innerHTML = 'Razem: <b class="money">' + fmt(pvOneTimeCostsTotal(p.pv), 0) + ' PLN</b>';
-    var sOneTimeVal = document.getElementById("pv-onetime-equity-value"); if (sOneTimeVal) sOneTimeVal.textContent = fmt(pvFin.equityAmt, 0) + ' PLN';
+    // "Wkład własny (z finansowania)" here is financing-only (excludes the
+    // one-time PV costs) — see techFieldsHtml's financingEquityAmt. The
+    // combined total (financing + one-time costs) is a separate readout,
+    // its own small card ("Łączny wkład własny farmy PV") right after this
+    // one — updated below via pv-fin-equity-value/pv-onetime-equity-value/
+    // pv-total-equity-value, deliberately never merged into this line. In
+    // "own_operating" mode the header wording itself differs (see
+    // techFieldsHtml) — must be kept in sync here too.
+    var sFin1 = document.getElementById("pv-fin-sum");
+    if (sFin1) {
+      sFin1.innerHTML = pvIsOwnOperating
+        ? 'Dług pozostały: <b class="money">' + fmt(pvFin.debtAmt, 0) + ' PLN</b> · Wartość księgowa netto (kapitał własny): <b class="money">' + fmt(pvFinancingEquityAmt, 0) + ' PLN</b>'
+        : 'Dług: <b class="money">' + fmt(pvFin.debtAmt, 0) + ' PLN</b> · Wkład własny (z finansowania): <b class="money">' + fmt(pvFinancingEquityAmt, 0) + ' PLN</b>';
+    }
+    var sOneTime = document.getElementById("pv-onetime-sum"); if (sOneTime) sOneTime.innerHTML = 'Razem: <b class="money">' + fmt(pvOneTimeTotal, 0) + ' PLN</b>';
+    var sFinEquityVal = document.getElementById("pv-fin-equity-value"); if (sFinEquityVal) sFinEquityVal.textContent = fmt(pvFinancingEquityAmt, 0) + ' PLN';
+    var sOneTimeVal = document.getElementById("pv-onetime-equity-value"); if (sOneTimeVal) sOneTimeVal.textContent = fmt(pvOneTimeTotal, 0) + ' PLN';
+    var sTotalEquityVal = document.getElementById("pv-total-equity-value"); if (sTotalEquityVal) sTotalEquityVal.textContent = fmt(pvFin.equityAmt, 0) + ' PLN';
     if (p.storage.enabled) {
       var storagePowerMW = num(p.storage.power_mw);
-      var stCapexTotal = techCapexTotal(p.storage, storagePowerMW);
-      var stFin = techFinancingAmounts(p.storage, stCapexTotal);
+      var stSummary = techCapexFinancingSummary(p.storage, storagePowerMW);
+      var stCapexTotal = stSummary.capexTotal;
+      var stFin = { debtAmt: stSummary.debtAmt, equityAmt: stSummary.equityAmt };
+      var stIsOwnOperating = getDevelopment(p.storage).mode === "own_operating";
       var s3 = document.getElementById("storage-capex-sum"); if (s3) s3.innerHTML = 'CAPEX: <b class="money">' + fmt(stCapexTotal, 0) + ' PLN</b>';
       var s4 = document.getElementById("storage-opex-sum"); if (s4) s4.innerHTML = 'OPEX (rok 1): <b class="money">' + fmt(techOpexAnnual(p.storage.opex, storagePowerMW), 0) + ' PLN/rok</b>';
-      var sFin2 = document.getElementById("storage-fin-sum"); if (sFin2) sFin2.innerHTML = 'Dług: <b class="money">' + fmt(stFin.debtAmt, 0) + ' PLN</b> · Wkład własny: <b class="money">' + fmt(stFin.equityAmt, 0) + ' PLN</b>';
+      // Storage never has one-time costs (PV_ONE_TIME_KEYS is PV-only), so
+      // its "Wkład własny (z finansowania)" already equals the full figure.
+      var sFin2 = document.getElementById("storage-fin-sum");
+      if (sFin2) {
+        sFin2.innerHTML = stIsOwnOperating
+          ? 'Dług pozostały: <b class="money">' + fmt(stFin.debtAmt, 0) + ' PLN</b> · Wartość księgowa netto (kapitał własny): <b class="money">' + fmt(stFin.equityAmt, 0) + ' PLN</b>'
+          : 'Dług: <b class="money">' + fmt(stFin.debtAmt, 0) + ' PLN</b> · Wkład własny (z finansowania): <b class="money">' + fmt(stFin.equityAmt, 0) + ' PLN</b>';
+      }
     }
     var profileEls = document.querySelectorAll("#tab-inputs .hint");
     if (profileEls[0]) {
@@ -2782,11 +3965,24 @@
     var npvProjCls = m.npvProject >= 0 ? "pos" : "neg";
     var npvEqCls = m.npvEquity !== null ? (m.npvEquity >= 0 ? "pos" : "neg") : "";
 
+    // Prosta (niedyskontowana) marża/zysk z porównania LCOE z ceną sprzedaży
+    // energii PV ustawioną w analizie (cena bazowa, bez indeksacji — patrz
+    // pv.revenue.price_pln_mwh) — zysk = marża × łączna produkcja (PV +
+    // magazyn, zgodnie z tym, co wchodzi do zblendowanego LCOE) w całym
+    // horyzoncie. Zgodnie z ustaleniami: prosta definicja, bez dyskontowania.
+    var salePrice = num(p.pv.revenue.price_pln_mwh);
+    var margin = m.lcoe !== null ? (salePrice - m.lcoe) : null;
+    var estimatedProfit = margin !== null ? margin * m.totalProduction : null;
+    var marginCls = margin !== null ? (margin >= 0 ? "pos" : "neg") : "";
+    var profitCls = estimatedProfit !== null ? (estimatedProfit >= 0 ? "pos" : "neg") : "";
+
     var kpis =
       kpiTile("CAPEX całkowity", fmt(m.capex, 0) + " PLN", m.hasStorage ? ("PV " + fmt(m.pvCapex, 0) + " + MAG " + fmt(m.storageCapex, 0)) : (fmt(m.capexPerKwp, 0) + " PLN/kWp")) +
       kpiTile("NPV projektu (WACC)", fmt(m.npvProject, 0) + " PLN", null, npvProjCls) +
       kpiTile("IRR projektu", fmtPct(m.irrProject), null, irrProjCls) +
       kpiTile("LCOE (zblendowane)", m.lcoe !== null ? fmt(m.lcoe, 0) + " PLN/MWh" : "–") +
+      kpiTile("Marża jednostkowa (cena − LCOE)", margin !== null ? fmt(margin, 0) + " PLN/MWh" : "–", "cena PV bazowa: " + fmt(salePrice, 0) + " PLN/MWh", marginCls) +
+      kpiTile("Szacowany zysk z produkcji (horyzont)", estimatedProfit !== null ? fmt(estimatedProfit, 0) + " PLN" : "–", "marża × produkcja w horyzoncie, bez dyskontowania", profitCls) +
       kpiTile("NPV kapitału własnego", m.npvEquity !== null ? fmt(m.npvEquity, 0) + " PLN" : "–", null, npvEqCls) +
       kpiTile("IRR kapitału własnego", fmtPct(m.irrEquity), null, irrEqCls) +
       kpiTile("Prosty payback (equity)", fmtYears(m.paybackEquity)) +
@@ -2811,7 +4007,9 @@
       '<div class="card"><div class="section-head"><h3>Rachunek zysków i strat (RZiS), pełna forma ustawowa</h3></div>' +
       '<div id="pnl-table"></div></div>' +
       '<div class="card"><div class="section-head"><h3>Bilans, pełna forma ustawowa (stan na koniec okresu)</h3></div>' +
-      '<div id="balance-table"></div></div>';
+      '<div id="balance-table"></div></div>' +
+      memoValuationCardHtml(m) +
+      '';
 
     renderResultsTable(m, granularity);
     renderOpexBreakdownTable(m, granularity);
@@ -2827,6 +4025,111 @@
     });
 
     whenChartReady(function () { buildCashflowChart(m, granularity); }, function () { showChartUnavailable("chart-cashflow"); });
+    whenChartReady(function () { buildMemoValuationChart(m); }, function () { showChartUnavailable("chart-memo-valuation"); });
+  }
+
+  /** OFF-BALANCE-SHEET "wycena metodą dochodową" memo card — formalizes the
+   *  already-computed project NPV as an income-approach valuation figure,
+   *  explicitly NOT posted to the statutory Bilans/RZiS tables above.
+   *
+   *  Background (why this is a memo, not a balance-sheet entry): capitalizing
+   *  a farm's *expected future profit* as an increase to its asset value
+   *  right after construction, then amortizing that added value down over
+   *  the analysis horizon, was the original ask here — but that would
+   *  conflict with Polish statutory accounting law on at least three
+   *  independent grounds: (1) Art. 7 ust. 1 ustawy o rachunkowości (zasada
+   *  ostrożności) — only "niewątpliwe" (certain/indisputable) gains may be
+   *  recognized, never projected future profit; (2) Art. 3 ust. 1 pkt 17 —
+   *  an operating power plant used in the entity's own core business is not
+   *  "nieruchomość inwestycyjna", so it cannot use fair-value/unrealized-gain
+   *  treatment and must stay at historical cost less depreciation (Art. 28);
+   *  (3) KSR 4 uses discounted-future-cash-flow "wartość użytkowa" ONLY as an
+   *  impairment CEILING (a write-DOWN trigger), never a mechanism to write an
+   *  asset UP above cost. Hence: shown here as a clearly-labeled, non-
+   *  statutory memo figure only — never added to capexOut/depreciation/the
+   *  Bilans or RZiS series (computeBalanceSheetSeries/statutoryBalanceRows
+   *  are untouched by this function). */
+  /** Generic income-approach memo card — used both for a single project
+   *  (capex/npvProject from computeMetrics) and for the SELECTED subset of
+   *  the portfolio in the compare view (totalCapex/npvProjectTotal from
+   *  computePortfolioAggregate) — see memoValuationCardHtml/
+   *  portfolioMemoValuationCardHtml below for the two callers. `scopeNote`
+   *  lets the portfolio caller say "N wybranych farm" instead of implying a
+   *  single project. */
+  function incomeApproachMemoCardHtml(canvasId, capex, npvProject, scopeNote, extraStyle) {
+    var npvPortion = Math.max(0, npvProject);
+    var incomeApproachValue = capex + npvPortion;
+    return '<div class="card" style="margin-top:0;' + (extraStyle || "") + '">' +
+      '<div class="section-head"><h3>Wycena metodą dochodową (memo, poza bilansem)</h3><span class="hint">nie stanowi elementu sprawozdania finansowego</span></div>' +
+      '<div class="kpi-grid" style="margin-bottom:10px;">' +
+      kpiTile("Wartość wg podejścia dochodowego", fmt(incomeApproachValue, 0) + " PLN", (scopeNote ? scopeNote + " — " : "") + "CAPEX + zdyskontowana wartość przyszłych zysków (NPV projektu)") +
+      kpiTile("z tego: skapitalizowany przyszły zysk", fmt(npvPortion, 0) + " PLN", "NPV projektu (WACC), część ponad poniesiony CAPEX", npvPortion > 0 ? "pos" : "") +
+      '</div>' +
+      '<div class="chart-wrap short"><canvas id="' + canvasId + '"></canvas></div>' +
+      '<div class="assumption-note">To wyłącznie poglądowa wycena memoriałowa metodą dochodową (DCF), pokazana poza bilansem — NIE jest ujmowana w powyższym Bilansie ani RZiS i nie zwiększa wartości początkowej środków trwałych. Ujęcie oczekiwanego przyszłego zysku z eksploatacji farmy jako podwyższenia wartości aktywa w bilansie — zaraz po budowie, z amortyzacją tej nadwyżki w czasie — byłoby niezgodne z polskim prawem bilansowym z co najmniej trzech powodów: (1) art. 7 ust. 1 ustawy o rachunkowości (zasada ostrożności) pozwala ujmować w wyniku finansowym wyłącznie zyski „niewątpliwe", nie zaś prognozowane; (2) art. 3 ust. 1 pkt 17 ustawy o rachunkowości wyłącza z definicji „nieruchomości inwestycyjnej" składniki majątku wykorzystywane w podstawowej działalności operacyjnej jednostki (a produkcja i sprzedaż energii to podstawowa działalność farmy PV) — taki środek trwały wycenia się według kosztu historycznego pomniejszonego o amortyzację (art. 28), bez opcji wyceny w wartości godziwej z ujęciem niezrealizowanych zysków w wyniku; (3) KSR 4 wykorzystuje „wartość użytkową" (zdyskontowane przyszłe przepływy pieniężne) wyłącznie jako pułap przy teście na utratę wartości — może to prowadzić do odpisu W DÓŁ, nigdy do podwyższenia wartości aktywa powyżej kosztu historycznego. Powyższa figura pokazuje więc, poglądowo, ile wart byłby projekt (lub — dla portfela — suma wybranych projektów) metodą dochodową (DCF) — przydatne np. przy rozmowie z inwestorem czy wycenie transakcyjnej — zamiast sugerować, że taką wartość można wykazać w księgach. Poniższy wykres pokazuje, jak skapitalizowany „przyszły zysk" (NPV) liniowo zanika w miarę upływu horyzontu analizy, aż do zera na jego koniec — tak jak zamortyzowałaby się nadwyżka wartości, gdyby prawo na to pozwalało; nie jest to jednak rzeczywisty odpis amortyzacyjny w księgach.</div>' +
+      '</div>';
+  }
+  function memoValuationCardHtml(m) {
+    return incomeApproachMemoCardHtml("chart-memo-valuation", m.capex, m.npvProject, null, null);
+  }
+  /** Same memo card, scoped to the SELECTED farms in the portfolio compare
+   *  view (agg.totalCapex/agg.npvProjectTotal from computePortfolioAggregate
+   *  — each selected farm's own project-level NPV, weighted by its
+   *  quantity multiplier, summed) — see the "Wstaw również metodą dochodową
+   *  dla wybranych pozycji w porównaniu portfela" request. Only rendered
+   *  when at least one farm is selected (agg is non-null), matching every
+   *  other selected-only chart/card in this view (IRR/NPV/Gantt/sale-method
+   *  donut, portfolio CF chart). */
+  function portfolioMemoValuationCardHtml(agg) {
+    var scopeNote = agg.count + (agg.count === 1 ? " wybrana farma" : " wybranych farm");
+    return incomeApproachMemoCardHtml("chart-portfolio-memo-valuation", agg.totalCapex, agg.npvProjectTotal, scopeNote, "margin-bottom:18px;");
+  }
+
+  /** Straight-line decline of the memo valuation's NPV portion, from its
+   *  full value at t=0 (right after construction) down to 0 at the end of
+   *  the analysis horizon — i.e. the "amortization" of the capitalized
+   *  future profit the user originally described, kept here as a memo
+   *  visualization only (see incomeApproachMemoCardHtml for why it never
+   *  touches the actual Bilans). Uses the same accent color as the rest of
+   *  the app's single-series charts (see buildCashflowChart) — a single
+   *  memo series needs no legend (the card title + axis already name it).
+   *  Shared by both the single-project and portfolio memo cards — see
+   *  buildMemoValuationChart/buildPortfolioMemoValuationChart below. */
+  function buildIncomeApproachChart(canvasId, refKey, capex, npvProject, horizonYears) {
+    if (typeof Chart === "undefined") return;
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (chartRefs[refKey]) { try { chartRefs[refKey].destroy(); } catch (eDestroy) {} }
+    var text = getCSSVar("--text-muted");
+    var border = getCSSVar("--border");
+    var accent = getCSSVar("--accent");
+    var npvPortion = Math.max(0, npvProject);
+    var horizonYearsSafe = Math.max(1, Math.round(horizonYears));
+    var labels = [], data = [];
+    for (var y = 0; y <= horizonYearsSafe; y++) {
+      labels.push("Rok " + y);
+      data.push(Math.round(capex + npvPortion * (1 - y / horizonYearsSafe)));
+    }
+    try {
+      chartRefs[refKey] = new Chart(canvas.getContext("2d"), {
+        type: "line",
+        data: { labels: labels, datasets: [{ label: "Wartość wg podejścia dochodowego (memo)", data: data, borderColor: accent, backgroundColor: accent, tension: 0, pointRadius: 0, borderWidth: 2, fill: false }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (ctx) { return fmt(ctx.parsed.y, 0) + " PLN"; } } } },
+          scales: {
+            x: { ticks: { color: text, maxTicksLimit: 10 }, grid: { display: false } },
+            y: { ticks: { color: text, callback: function (v) { return fmt(v, 0); } }, grid: { color: border } }
+          }
+        }
+      });
+    } catch (eChart) { /* leave the canvas blank rather than breaking the rest of the view */ }
+  }
+  function buildMemoValuationChart(m) {
+    buildIncomeApproachChart("chart-memo-valuation", "memoValuation", m.capex, m.npvProject, m.horizon);
+  }
+  function buildPortfolioMemoValuationChart(agg) {
+    buildIncomeApproachChart("chart-portfolio-memo-valuation", "portfolioMemoValuation", agg.totalCapex, agg.npvProjectTotal, agg.maxHorizon);
   }
 
   function renderResultsTable(m, granularity) {
@@ -3076,15 +4379,31 @@
     }).filter(function (it) { return it.m; });
     if (!items.length) return null;
 
-    var totalCapex = 0, totalDebt = 0, totalEquity = 0, totalPower = 0, npvEquityTotal = 0, waccWeightedNum = 0, hasAnyStorage = false;
+    var totalCapex = 0, totalDebt = 0, totalEquity = 0, totalPower = 0, npvEquityTotal = 0, npvProjectTotal = 0, waccWeightedNum = 0, eqDiscWeightedNum = 0, eqDiscSimpleSum = 0, hasAnyStorage = false;
     items.forEach(function (it) {
       totalCapex += it.m.capex * it.qty; totalDebt += it.m.debtAmount * it.qty; totalEquity += it.m.equityAmount * it.qty;
       totalPower += num(it.p.pv.power_kwp) * it.qty;
       npvEquityTotal += (it.m.npvEquity !== null ? it.m.npvEquity : 0) * it.qty;
+      // Sum of each selected farm's own project-level NPV (WACC) — the basis
+      // for the portfolio's income-approach memo valuation below (see
+      // incomeApproachMemoCardHtml/buildIncomeApproachChart), mirroring how
+      // the single-project results tab derives its own memo figure from
+      // m.capex + max(0, m.npvProject).
+      npvProjectTotal += (it.m.npvProject !== null ? it.m.npvProject : 0) * it.qty;
       waccWeightedNum += it.m.capex * it.qty * (num(it.p.discount.wacc_pct) / 100);
+      // Equity-weighted blended "wymagana stopa zwrotu z kapitału" — the
+      // portfolio-level equivalent of each project's own eqDiscMonthly (see
+      // computeMetrics), used only by filterAggForAnalysisStart to recompute
+      // NPV equity when the "Analiza od" filter is active (a fresh blended-
+      // rate NPV over the combined monthly cash flow, since there's no
+      // longer a per-project NPV to sum once the window has been re-based
+      // to a new "period 0" — see that function's own comment).
+      eqDiscWeightedNum += it.m.equityAmount * it.qty * (num(it.p.discount.equity_discount_pct) / 100);
+      eqDiscSimpleSum += num(it.p.discount.equity_discount_pct) / 100;
       if (it.m.hasStorage) hasAnyStorage = true;
     });
     var waccBlend = totalCapex > 0 ? waccWeightedNum / totalCapex : 0;
+    var eqDiscBlend = totalEquity > 0.01 ? eqDiscWeightedNum / totalEquity : (items.length ? eqDiscSimpleSum / items.length : 0);
 
     // Calendar-aligned rollup: each project's own monthRows already carry real
     // (year, month) dates, so summing by calendar month (rather than by "month N
@@ -3290,10 +4609,152 @@
 
     return {
       count: items.length, totalInstances: totalInstances, totalPower: totalPower, totalCapex: totalCapex, totalDebt: totalDebt, totalEquity: totalEquity,
-      maxHorizon: maxHorizon, yearRows: yearRows, monthRows: monthRows, npvEquityTotal: npvEquityTotal, irrPortfolio: irrPortfolio,
+      maxHorizon: maxHorizon, yearRows: yearRows, monthRows: monthRows, npvEquityTotal: npvEquityTotal, npvProjectTotal: npvProjectTotal, irrPortfolio: irrPortfolio,
       paybackPortfolio: paybackPortfolio, dscrMin: dscrMin, dscrAvg: dscrAvg, lcoe: lcoe,
-      farmSeries: farmSeries, farmSeriesMonthly: farmSeriesMonthly, bep: bep, fixedCostsTotalPln: fixedCostsTotalPln, hasAnyStorage: hasAnyStorage
+      farmSeries: farmSeries, farmSeriesMonthly: farmSeriesMonthly, bep: bep, fixedCostsTotalPln: fixedCostsTotalPln, hasAnyStorage: hasAnyStorage,
+      waccBlend: waccBlend, eqDiscBlend: eqDiscBlend
     };
+  }
+
+  /** True when a monthRows/yearRows row is the portfolio's break-even (BEP)
+   *  row — matched by calendar (year, month) rather than array position, so
+   *  it stays correct even when the row array has been trimmed/re-sliced
+   *  (e.g. by filterAggForAnalysisStart below, or the existing "first 5
+   *  years" monthly-table truncation) and the BEP row's index has shifted
+   *  or the row itself is no longer present at all (in which case this
+   *  simply never matches — no marker shown, which is correct: BEP already
+   *  happened before the visible window). Annual rows carry their own
+   *  precomputed r.isBep instead (see computePortfolioAggregate's yearRows
+   *  build) since a year has no single "month" to match against. */
+  function monthRowIsBep(r, bep) { return !!(bep && r.year === bep.year && r.month === bep.month); }
+
+  /** "Analiza od" (analysis-from) filter for the portfolio comparison —
+   *  trims monthRows/yearRows (and their parallel per-farm chart series) to
+   *  start from a chosen calendar month, e.g. "today" rather than whichever
+   *  selected farm happened to start earliest, AND fully re-analyzes that
+   *  trimmed window as its own fresh "period 0": skumulowany CF kapitału
+   *  własnego restarts at zero at the chosen month, and NPV equity / IRR
+   *  equity / próg rentowności (BEP) / payback / DSCR / LCOE are all
+   *  recomputed purely from the trimmed series — not copied through from
+   *  the full-history agg. This is a deliberate, explicit choice (over
+   *  leaving KPIs on full history): it means a filter that lands after the
+   *  portfolio's last equity contribution will typically show IRR/payback
+   *  as not computable ("–") — there's no negative cash flow left in the
+   *  window for those to be measured against — which is the expected,
+   *  correct answer for "what does this look like from this month forward",
+   *  not a bug.
+   *
+   *  Structural/composition figures that don't have a "from month X"
+   *  meaning — totalCapex, totalDebt, totalEquity, totalPower, count,
+   *  totalInstances, fixedCostsTotalPln, hasAnyStorage, npvProjectTotal
+   *  (feeds the separate income-approach memo valuation, deliberately left
+   *  on full history) — are copied through untouched via Object.assign, so
+   *  only the fields explicitly overridden below actually change. The
+   *  balance-sheet STOCK fields on each kept row (cash, fixedAssetsNet,
+   *  debtBalance, assets, contributedCapital, retainedEarnings, equityTotal,
+   *  debtShortTerm/LongTerm, liabEquityTotal) are also left exactly as
+   *  computePortfolioAggregate computed them — those are true historical
+   *  balances (e.g. "ile długu naprawdę jeszcze zostało"), not something a
+   *  view filter should be able to reset to zero; only the FLOW-derived
+   *  cumEquity/cumEquityNetOperating columns (and the KPIs built from them)
+   *  are re-based.
+   *
+   *  NPV/IRR use agg.eqDiscBlend (equity-weighted blended discount rate
+   *  across the selected projects); LCOE uses agg.waccBlend — both computed
+   *  once in computePortfolioAggregate. There is no longer a per-project NPV
+   *  to sum once the window has its own "period 0" (each project's own
+   *  m.npvEquity is fixed to ITS full history), so this computes a single
+   *  blended-rate NPV directly over the combined monthly net equity CF
+   *  instead — a genuinely different (and, for a partial window, more
+   *  correct) method than the full-history npvEquityTotal's simple sum.
+   *
+   *  Returns agg completely unchanged when startYear is falsy (null/
+   *  undefined) — the default "od początku" (from the beginning) state. */
+  function filterAggForAnalysisStart(agg, startYear, startMonth) {
+    if (!agg || !startYear) return agg;
+    var y = Math.round(num(startYear));
+    var mo = clamp(Math.round(num(startMonth, 1)), 1, 12);
+    var startKey = y * 12 + (mo - 1);
+
+    var keepIdxMonthly = [];
+    agg.monthRows.forEach(function (r, i) { if ((r.year * 12 + (r.month - 1)) >= startKey) keepIdxMonthly.push(i); });
+    var srcMonthRows = keepIdxMonthly.map(function (i) { return agg.monthRows[i]; });
+    var farmSeriesMonthly = agg.farmSeriesMonthly.map(function (fs) {
+      return { id: fs.id, name: fs.name, values: keepIdxMonthly.map(function (i) { return fs.values[i]; }) };
+    });
+
+    // Re-base cumEquity/cumEquityNetOperating to zero at the window's first
+    // row, and re-derive BEP/payback purely within it — same crossing-
+    // detection algorithm computePortfolioAggregate itself uses, just
+    // scoped to this shorter series (see that function's main monthly
+    // loop for the original).
+    var cumM = 0, cumOperNet = 0, wasNegative = false, prevCumM, bep = null, paybackFrac = null;
+    var netMonthlySeries = [];
+    var monthRows = srcMonthRows.map(function (r, idx) {
+      var eqNetM = r.equityFCFNet, eqNetOperM = r.equityFCFNetOperating;
+      netMonthlySeries.push(eqNetM);
+      prevCumM = cumM;
+      cumM += eqNetM;
+      cumOperNet += eqNetOperM;
+      if (cumM < 0) wasNegative = true;
+      if (bep === null && wasNegative && cumM >= 0) bep = { year: r.year, month: r.month, monthName: r.monthName, indexFromStart: idx + 1 };
+      if (paybackFrac === null && prevCumM < 0 && cumM >= 0) {
+        var pfrac = eqNetM !== 0 ? (-prevCumM / eqNetM) : 0;
+        paybackFrac = (idx + pfrac) / 12;
+      }
+      return Object.assign({}, r, { cumEquity: cumM, cumEquityNetOperating: cumOperNet });
+    });
+
+    var keepIdxAnnual = [];
+    agg.yearRows.forEach(function (r, i) { if (r.year >= y) keepIdxAnnual.push(i); });
+    var srcYearRows = keepIdxAnnual.map(function (i) { return agg.yearRows[i]; });
+    var cumY = 0, cumYOper = 0;
+    var yearRows = srcYearRows.map(function (r) {
+      cumY += r.equityFCFNet; cumYOper += r.equityFCFNetOperating;
+      return Object.assign({}, r, { cumEquity: cumY, cumEquityNetOperating: cumYOper, isBep: !!(bep && bep.year === r.year) });
+    });
+    var farmSeries = agg.farmSeries.map(function (fs) {
+      return { id: fs.id, name: fs.name, values: keepIdxAnnual.map(function (i) { return fs.values[i]; }) };
+    });
+
+    // NPV/IRR: same [0].concat(...) convention computeMetrics' own
+    // per-project equityCF and computePortfolioAggregate's own
+    // irrPortfolioMonthly already use (cfs[0] = a synthetic t=0 with no
+    // cash flow, cfs[1] = the window's own first month) — deliberately kept
+    // identical so this recompute reads as "the same engine, just re-based"
+    // rather than a bespoke variant.
+    var eqDiscMonthly = Math.pow(1 + (agg.eqDiscBlend || 0), 1 / 12) - 1;
+    var cfsWithT0 = [0].concat(netMonthlySeries);
+    var npvEquityTotal = npvOf(eqDiscMonthly, cfsWithT0);
+    var irrMonthly = irrOf(cfsWithT0);
+    var irrPortfolio = irrMonthly !== null ? Math.pow(1 + irrMonthly, 12) - 1 : null;
+    var paybackPortfolio = typeof paybackFrac === "number" ? paybackFrac : null;
+
+    // DSCR min/avg purely from the window's own (full-calendar-year) rows.
+    var dscrVals = [];
+    yearRows.forEach(function (r) { if (r.dscr !== null) dscrVals.push(r.dscr); });
+    var dscrMin = dscrVals.length ? Math.min.apply(null, dscrVals) : null;
+    var dscrAvg = dscrVals.length ? (dscrVals.reduce(function (a, b) { return a + b; }, 0) / dscrVals.length) : null;
+
+    // LCOE: forward-looking — costs/production from the window only, same
+    // annual-rows/waccBlend method computePortfolioAggregate's own
+    // (full-history) LCOE uses, just scoped to yearRows above. Any CAPEX
+    // actually disbursed inside the window (e.g. a "koszty jednorazowe"
+    // item timed after the analysis-start month) is included undiscounted,
+    // mirroring how the full-history calc folds totalCapex in at t=0.
+    var windowCapex = monthRows.reduce(function (s, r) { return s + (r.capexOut || 0); }, 0);
+    var discCosts = windowCapex, discProd = 0;
+    yearRows.forEach(function (r, ti) {
+      discCosts += r.opex / Math.pow(1 + (agg.waccBlend || 0), ti + 1);
+      discProd += r.production / Math.pow(1 + (agg.waccBlend || 0), ti + 1);
+    });
+    var lcoe = discProd > 0 ? discCosts / discProd : null;
+
+    return Object.assign({}, agg, {
+      monthRows: monthRows, yearRows: yearRows, farmSeriesMonthly: farmSeriesMonthly, farmSeries: farmSeries,
+      npvEquityTotal: npvEquityTotal, irrPortfolio: irrPortfolio, paybackPortfolio: paybackPortfolio,
+      dscrMin: dscrMin, dscrAvg: dscrAvg, lcoe: lcoe, bep: bep
+    });
   }
 
   var FARM_PALETTE_LIGHT = ["#b8721b", "#1f6f5c", "#6b5b95", "#3d6b8a", "#8a5a2c", "#4f7a3d", "#a34a63", "#556270", "#c98a2c", "#2e6b6e"];
@@ -3371,8 +4832,65 @@
 
     var selectedProjects = rows.filter(function (r) { return selectedSet[r.p.id]; }).map(function (r) { return { p: r.p, qty: getQuantity(r.p.id) }; });
     var fc = getFixedCosts();
+    // One-time auto-migration: "items" is the real, primary source of the
+    // fixed-cost figure (see fixedCostsCurrentFuture) — this guarantees it's
+    // never empty by materializing a placeholder row from the old aggregate
+    // fields the moment it's found empty (old persisted data predating this
+    // feature, or a stored doc whose items array was explicitly emptied).
+    // Persisted directly (not through setFixedCosts, which would re-enter
+    // this very render) and the local "fc" is updated in place so the rest
+    // of this render sees the real, seeded items.
+    if (!Array.isArray(fc.items) || !fc.items.length) {
+      fc = Object.assign({}, fc, { items: [{ label: "Łącznie (koszty ogólnego zarządu)", monthly_current_pln: num(fc.monthly_current_pln), monthly_future_pln: num(fc.monthly_future_pln) }] });
+      state.fixedCosts = fc;
+      if (fixedCostsLayer) fixedCostsLayer.setFixedCosts(fc);
+    }
     var agg = computePortfolioAggregate(selectedProjects, fc);
+    // "Analiza od" (analysis-from) filter — lets the user trim the CF/
+    // bilans/RZiS chart+table and the CSV/Excel exports below to start from
+    // a chosen calendar month (e.g. "today" rather than whichever selected
+    // farm happens to start earliest), AND re-analyzes that window as its
+    // own fresh "period 0" — NPV/IRR/BEP/payback/DSCR/LCOE below are all
+    // recomputed from just the trimmed series, not copied from the
+    // full-history "agg". See filterAggForAnalysisStart's own (long) doc
+    // comment for exactly what does and doesn't get re-based. The KPI tiles
+    // (kpis/bepBanner/bepValue/bepSub below) read from "aggView", not "agg"
+    // directly, for exactly this reason — structural/composition fields
+    // (totalCapex, totalPower, count, ...) come along unchanged either way,
+    // since filterAggForAnalysisStart passes those through untouched. null/
+    // undefined state fields (the default) mean "od początku" — no filter,
+    // aggView === agg unchanged.
+    var compareStartYear = state.compareAnalysisStartYear || null;
+    var compareStartMonth = state.compareAnalysisStartMonth || null;
+    var aggView = filterAggForAnalysisStart(agg, compareStartYear, compareStartMonth);
 
+    var fcMode = fc.mode === "itemized" ? "itemized" : "aggregate";
+    var fcItems = fc.items;
+    var fcCF = fixedCostsCurrentFuture(fc);
+    var fcModeToggle =
+      '<div class="segmented" style="margin-bottom:12px;">' +
+      '<button type="button" data-fcmode="aggregate" class="' + (fcMode === "aggregate" ? "active" : "") + '">Zbiorczo</button>' +
+      '<button type="button" data-fcmode="itemized" class="' + (fcMode === "itemized" ? "active" : "") + '">Rozpisane pozycje</button>' +
+      '</div>';
+    // "Zbiorczo" is a READ-ONLY summary of the itemized rows below, not a
+    // second, independently-editable figure — the itemized breakdown is the
+    // only place the numbers are actually entered (see fixedCostsCurrentFuture).
+    var fcAmountFields = fcMode === "aggregate"
+      ? '<div class="one-time-readout-row"><div class="one-time-readout-label">Koszt bieżący</div><div class="one-time-readout-value">' + fmt(fcCF.current, 0) + ' PLN/mc</div></div>' +
+        '<div class="one-time-readout-row"><div class="one-time-readout-label">Koszt docelowy (za 12 mc)</div><div class="one-time-readout-value">' + fmt(fcCF.future, 0) + ' PLN/mc</div></div>' +
+        '<div class="assumption-note" style="margin-top:6px;">Suma pozycji rozpisanych obok — edytuj je pod „Rozpisane pozycje”.</div>'
+      : '<div class="capex-items-list">' +
+        fcItems.map(function (it, i) {
+          return '<div class="capex-item-row">' +
+            fcFieldText(fc, "items." + i + ".label", "Pozycja") +
+            fcFieldNum(fc, "items." + i + ".monthly_current_pln", "Koszt bieżący", "PLN/mc", "1000") +
+            fcFieldNum(fc, "items." + i + ".monthly_future_pln", "Koszt docelowy", "PLN/mc", "1000") +
+            (fcItems.length > 1 ? '<button type="button" class="btn btn-sm" data-fcitemremove="' + i + '" style="align-self:end;">Usuń</button>' : '<div></div>') +
+            '</div>';
+        }).join("") +
+        '</div>' +
+        '<button type="button" class="btn btn-sm" id="btn-fc-item-add" style="margin:8px 0 4px;">+ Dodaj pozycję</button>' +
+        '<div class="one-time-readout-row"><div class="one-time-readout-label">Razem (bieżący / docelowy)</div><div class="one-time-readout-value">' + fmt(fcCF.current, 0) + ' / ' + fmt(fcCF.future, 0) + ' PLN/mc</div></div>';
     var fcCard =
       '<div class="card section" style="margin-bottom:18px;">' +
       '<div class="section-head"><h3>Koszty stałe spółki (niezwiązane z farmami)</h3></div>' +
@@ -3381,11 +4899,10 @@
       '<div class="field-grid cols-2">' +
       fcFieldSelect(fc, "start_month", "Miesiąc początkowy naliczania", MONTH_OPTIONS) +
       fcFieldNum(fc, "start_year", "Rok początkowy", "rok", "1") +
-      fcFieldNum(fc, "monthly_current_pln", "Koszt bieżący", "PLN/mc", "1000") +
-      fcFieldNum(fc, "monthly_future_pln", "Koszt docelowy (za 12 mc)", "PLN/mc", "1000") +
       fcFieldNum(fc, "escalation_pct", "Indeksacja po roku docelowym", "%/rok", "0.1") +
       '</div>' +
-      '<div class="assumption-note">Koszty ogólnego zarządu spółki — wynagrodzenia zespołu, biuro, księgowość, obsługa giełdowa — nie są przypisane do żadnej farmy z osobna, ale pomniejszają łączny wynik portfela i wpływają na moment osiągnięcia progu rentowności (BEP) oraz IRR portfela. Koszt „bieżący” obowiązuje przez pierwsze 12 miesięcy od miesiąca początkowego, potem przechodzi na wartość „docelową”, indeksowaną co roku. Dane wynagrodzeń są zsumowane do jednej kwoty (bez imion i nazwisk).' +
+      fcModeToggle + fcAmountFields +
+      '<div class="assumption-note" style="margin-top:10px;">Koszty ogólnego zarządu spółki — wynagrodzenia zespołu, biuro, księgowość, obsługa giełdowa — nie są przypisane do żadnej farmy z osobna, ale pomniejszają łączny wynik portfela i wpływają na moment osiągnięcia progu rentowności (BEP) oraz IRR portfela. Koszt „bieżący” obowiązuje przez pierwsze 12 miesięcy od miesiąca początkowego, potem przechodzi na wartość „docelową”, indeksowaną co roku. Pozycje rozpisane pod „Rozpisane pozycje” są jedynym miejscem, gdzie te kwoty się wpisuje — widok „Zbiorczo” tylko pokazuje ich sumę (bez imion i nazwisk).' +
       (agg ? ' W wybranym horyzoncie portfela koszty stałe wynoszą łącznie <b class="money">' + fmt(agg.fixedCostsTotalPln, 0) + ' PLN</b>.' : '') + '</div>' +
       '</div>';
 
@@ -3393,28 +4910,40 @@
     if (!agg) {
       summaryHtml = '<div class="card"><div class="empty-summary">Zaznacz farmy w tabeli poniżej, aby zobaczyć zbiorczy CF i wyniki dla wybranego zestawu inwestycji.</div></div>';
     } else {
-      var irrCls2 = agg.irrPortfolio !== null ? (agg.irrPortfolio >= 0 ? "pos" : "neg") : "";
-      var npvCls2 = agg.npvEquityTotal >= 0 ? "pos" : "neg";
+      // KPI tiles read from "aggView" (not "agg" directly) so NPV/IRR/BEP/
+      // DSCR reflect the "Analiza od" filter when it's active — see the
+      // long comment on filterAggForAnalysisStart. Structural/composition
+      // fields (count, totalPower, totalCapex, totalDebt/Equity,
+      // totalInstances) come along unchanged either way, since that
+      // function passes them through untouched — reading them off aggView
+      // vs agg is equivalent, but doing it uniformly here keeps this block
+      // from having to track which fields are and aren't filter-sensitive.
+      var irrCls2 = aggView.irrPortfolio !== null ? (aggView.irrPortfolio >= 0 ? "pos" : "neg") : "";
+      var npvCls2 = aggView.npvEquityTotal >= 0 ? "pos" : "neg";
       var exportBtn2 = chartRefs.downloadsAvailable ? '<button class="btn btn-sm" id="btn-export-portfolio">Eksport CSV</button>' : "";
-      var bepValue = agg.bep ? (agg.bep.monthName.charAt(0).toUpperCase() + agg.bep.monthName.slice(1) + " " + agg.bep.year) : "–";
-      var bepSub = agg.bep ? (agg.bep.indexFromStart + ". miesiąc od pierwszej inwestycji w portfelu")
-        : (agg.totalEquity <= 0.01 ? "brak zaangażowanego kapitału własnego" : "nie osiągnięto w przyjętym horyzoncie");
-      var qtySub = agg.totalInstances !== agg.count ? (agg.totalInstances + " egzemplarzy z mnożnikami") : null;
+      var bepValue = aggView.bep ? (aggView.bep.monthName.charAt(0).toUpperCase() + aggView.bep.monthName.slice(1) + " " + aggView.bep.year) : "–";
+      // "od pierwszej inwestycji w portfelu" only makes sense un-filtered —
+      // once "Analiza od" re-bases the window to its own period 0, BEP/
+      // payback are counted from that chosen month instead.
+      var bepFromLabel = compareStartYear ? "wybranego miesiąca analizy" : "pierwszej inwestycji w portfelu";
+      var bepSub = aggView.bep ? (aggView.bep.indexFromStart + ". miesiąc od " + bepFromLabel)
+        : (aggView.totalEquity <= 0.01 ? "brak zaangażowanego kapitału własnego" : "nie osiągnięto w przyjętym horyzoncie");
+      var qtySub = aggView.totalInstances !== aggView.count ? (aggView.totalInstances + " egzemplarzy z mnożnikami") : null;
       var kpis =
-        kpiTile("Wybrane farmy", agg.count + " / " + rows.length, qtySub) +
-        kpiTile("Łączna moc PV", fmt(agg.totalPower, 0) + " kWp") +
-        kpiTile("Łączny CAPEX", fmt(agg.totalCapex, 0) + " PLN") +
-        kpiTile("Dług / kapitał własny", fmt(agg.totalDebt, 0) + " / " + fmt(agg.totalEquity, 0) + " PLN") +
-        kpiTile("NPV equity (suma)", fmt(agg.npvEquityTotal, 0) + " PLN", null, npvCls2) +
-        kpiTile("IRR equity portfela", fmtPct(agg.irrPortfolio), null, irrCls2) +
-        kpiTile("Próg rentowności (BEP)", bepValue, bepSub, agg.bep ? "pos" : "") +
-        kpiTile("DSCR min / śr.", (agg.dscrMin !== null ? agg.dscrMin.toFixed(2) : "–") + " / " + (agg.dscrAvg !== null ? agg.dscrAvg.toFixed(2) : "–"));
+        kpiTile("Wybrane farmy", aggView.count + " / " + rows.length, qtySub) +
+        kpiTile("Łączna moc PV", fmt(aggView.totalPower, 0) + " kWp") +
+        kpiTile("Łączny CAPEX", fmt(aggView.totalCapex, 0) + " PLN") +
+        kpiTile("Dług / kapitał własny", fmt(aggView.totalDebt, 0) + " / " + fmt(aggView.totalEquity, 0) + " PLN") +
+        kpiTile("NPV equity" + (compareStartYear ? " (od miesiąca analizy)" : " (suma)"), fmt(aggView.npvEquityTotal, 0) + " PLN", null, npvCls2) +
+        kpiTile("IRR equity portfela", fmtPct(aggView.irrPortfolio), null, irrCls2) +
+        kpiTile("Próg rentowności (BEP)", bepValue, bepSub, aggView.bep ? "pos" : "") +
+        kpiTile("DSCR min / śr.", (aggView.dscrMin !== null ? aggView.dscrMin.toFixed(2) : "–") + " / " + (aggView.dscrAvg !== null ? aggView.dscrAvg.toFixed(2) : "–"));
 
       var fcNote = fc.enabled ? " (łącznie z kosztami stałymi spółki)" : "";
-      var bepBanner = agg.bep
+      var bepBanner = aggView.bep
         ? '<div class="bep-banner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V5M4 19h16M8 15l3-4 3 3 5-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-          '<span>Narastająco pokrywamy koszty inwestycji kapitału własnego' + fcNote + ' w <strong>' + bepValue + '</strong> (' + agg.bep.indexFromStart + '. miesiąc licząc od pierwszej inwestycji w wybranym zestawie farm).</span></div>'
-        : '<div class="bep-banner bep-banner-muted"><span>' + (agg.totalEquity <= 0.01 ? "Wybrany zestaw nie angażuje kapitału własnego, więc próg rentowności equity nie ma tu zastosowania." : "W przyjętym horyzoncie analizy skumulowany CF kapitału własnego" + fcNote + " nie osiąga progu rentowności.") + '</span></div>';
+          '<span>Narastająco pokrywamy koszty inwestycji kapitału własnego' + fcNote + ' w <strong>' + bepValue + '</strong> (' + aggView.bep.indexFromStart + '. miesiąc licząc od ' + bepFromLabel + ').</span></div>'
+        : '<div class="bep-banner bep-banner-muted"><span>' + (aggView.totalEquity <= 0.01 ? "Wybrany zestaw nie angażuje kapitału własnego, więc próg rentowności equity nie ma tu zastosowania." : "W przyjętym horyzoncie analizy skumulowany CF kapitału własnego" + fcNote + " nie osiąga progu rentowności.") + '</span></div>';
 
       var granularity2 = state.compareGranularity || "annual";
       var toggle2 = '<div class="segmented"><button data-cgran="annual" class="' + (granularity2 === "annual" ? "active" : "") + '">Roczny</button>' +
@@ -3422,11 +4951,34 @@
 
       var exportBtnXlsx = chartRefs.downloadsAvailable ? '<button class="btn btn-sm" id="btn-export-portfolio-xlsx">Eksport Excel (.xlsx)</button>' : "";
 
+      // "Analiza od" (analysis-from) filter control — see the
+      // filterAggForAnalysisStart/aggView comment above. Purely a view/
+      // export-range picker: KPI tiles above (kpis/bepBanner) always stay
+      // on the full, true history ("agg"), only what's below this control
+      // (chart, table, RZiS, bilans, CSV/Excel exports) reflects it.
+      var caMonthOptions = MONTH_OPTIONS.map(function (o) {
+        return '<option value="' + o.value + '"' + (compareStartMonth === o.value ? " selected" : "") + '>' + o.label + '</option>';
+      }).join("");
+      var analysisStartActive = !!compareStartYear;
+      var analysisStartRow =
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 10px;">' +
+        '<span style="font-size:12px;color:var(--text-muted);">Analiza od:</span>' +
+        '<select id="ca-start-month" style="padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--surface);color:var(--text);font-size:12.5px;">' +
+        '<option value="">— miesiąc —</option>' + caMonthOptions + '</select>' +
+        '<input type="number" id="ca-start-year" placeholder="rok" value="' + (compareStartYear || "") + '" style="width:74px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--surface);color:var(--text);font-size:12.5px;">' +
+        (analysisStartActive ? '<button type="button" class="btn btn-sm" id="ca-start-clear">Wyczyść (od początku)</button>' : '') +
+        '</div>' +
+        (analysisStartActive
+          ? '<div class="assumption-note" style="margin:-6px 0 12px;">Wykres, tabela CF, RZiS, bilans, eksport CSV/Excel oraz kafelki KPI powyżej (NPV, IRR, BEP, DSCR, LCOE) są liczone od ' + MONTH_NAMES_PL[compareStartMonth - 1] + ' ' + compareStartYear + ' jako nowego punktu odniesienia (widok roczny pokazuje pełne lata kalendarzowe od ' + compareStartYear + ') — skumulowany CF kapitału własnego startuje od zera w tym miesiącu, a NPV/IRR/BEP/payback/DSCR/LCOE są przeliczane od nowa tylko na tym oknie, nie kopiowane z pełnej historii. Bilans (gotówka, wartość netto środków trwałych, saldo zadłużenia) nadal pokazuje prawdziwe, historycznie narosłe wartości — tego nie da się „wyzerować” wyborem daty. Jeśli w tym oknie nie ma już ujemnych przepływów (farma dawno spłaciła inwestycję), IRR/payback/BEP mogą wyjść jako nieosiągalne („–”) — to poprawny wynik, nie błąd.' +
+            (aggView.monthRows.length === 0 ? ' ⚠ Wybrana data jest późniejsza niż cały dostępny horyzont wybranych farm — brak danych do pokazania/eksportu.' : '') + '</div>'
+          : '');
+
       summaryHtml =
         '<div class="card" style="margin-bottom:18px;">' +
         '<div class="kpi-grid" style="margin-bottom:14px;">' + kpis + '</div>' +
         bepBanner +
         '<div class="section-head" style="margin-top:16px;"><h3>Skumulowany CF kapitału własnego — wybrane inwestycje</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' + toggle2 + exportBtn2 + exportBtnXlsx + '</div></div>' +
+        analysisStartRow +
         '<div class="chart-wrap"><canvas id="chart-portfolio"></canvas></div>' +
         '<div id="portfolio-table" style="margin-top:16px;"></div>' +
         '</div>' +
@@ -3437,7 +4989,8 @@
         '<div class="card" style="margin-bottom:18px;">' +
         '<div class="section-head"><h3>Bilans — portfel, pełna forma ustawowa (' + (granularity2 === "monthly" ? "miesięczny" : "roczny") + ', stan na koniec okresu)</h3></div>' +
         '<div id="portfolio-balance"></div>' +
-        '</div>';
+        '</div>' +
+        portfolioMemoValuationCardHtml(agg);
     }
 
     var statsBandHtml =
@@ -3462,6 +5015,10 @@
       (agg ? '<div class="chart-wrap short"><canvas id="chart-cmp-gantt"></canvas></div>' +
       '<div class="assumption-note">Oś pozioma liczy miesiące od obecnego miesiąca do daty uruchomienia (rozpoczęcia produkcji — najwcześniejszej spośród technologii projektu: PV, a jeśli włączony, również magazyn). Projekty już uruchomione są oznaczone osobnym kolorem i krótkim znacznikiem przy „dziś”.</div>'
       : '<div class="empty-summary">Zaznacz farmy w tabeli poniżej, aby zobaczyć harmonogram uruchomień.</div>') + '</div>' +
+      '<div class="card chart-card"><div class="section-head"><h3>Udział sposobów sprzedaży energii w portfelu</h3><span class="hint">tylko wybrane do porównania</span></div>' +
+      (agg ? '<div class="chart-wrap short"><canvas id="chart-cmp-salemethod"></canvas></div>' +
+      '<div class="assumption-note">Liczba projektów wg zadeklarowanego sposobu sprzedaży energii (pole informacyjne, nie wpływa na model cenowy) — dla zdywersyfikowanego portfela ten podział powinien być z grubsza równy między metodami, zamiast koncentrować się w jednej.</div>'
+      : '<div class="empty-summary">Zaznacz farmy w tabeli poniżej, aby zobaczyć udział sposobów sprzedaży energii.</div>') + '</div>' +
       '<div class="card"><div class="toolbar-row"><h3 style="font-size:14.5px;font-weight:700;">Zestawienie projektów</h3>' +
       '<div class="toolbar-actions"><span class="select-count">Wybrano ' + selectedIds.length + ' z ' + rows.length + '</span>' +
       '<button class="btn btn-sm" id="btn-select-all">Zaznacz wszystkie</button>' +
@@ -3498,11 +5055,38 @@
     var btnAll = document.getElementById("btn-select-all"); if (btnAll) btnAll.addEventListener("click", selectAllPortfolio);
     var btnNone = document.getElementById("btn-select-none"); if (btnNone) btnNone.addEventListener("click", selectNonePortfolio);
     var btnExportP = document.getElementById("btn-export-portfolio");
-    if (btnExportP && agg) btnExportP.addEventListener("click", function () { exportPortfolioCsv(agg, state.compareGranularity || "annual"); });
+    if (btnExportP && agg) btnExportP.addEventListener("click", function () { exportPortfolioCsv(aggView, state.compareGranularity || "annual"); });
     var btnExportPXlsx = document.getElementById("btn-export-portfolio-xlsx");
-    if (btnExportPXlsx && agg) btnExportPXlsx.addEventListener("click", function () { exportPortfolioXlsx(agg, state.compareGranularity || "annual"); });
+    if (btnExportPXlsx && agg) btnExportPXlsx.addEventListener("click", function () { exportPortfolioXlsx(aggView, state.compareGranularity || "annual"); });
     main.querySelectorAll("[data-cgran]").forEach(function (btn) {
       btn.addEventListener("click", function () { state.compareGranularity = btn.getAttribute("data-cgran"); renderCompare(); });
+    });
+    // "Analiza od" filter controls — see the aggView/filterAggForAnalysisStart
+    // comment above. "change" (not "input") on the year field so a full
+    // re-render only fires once the user finishes typing/tabs away, not on
+    // every keystroke. Choosing only one of month/year defaults the other
+    // (January / the current year) so the filter takes effect immediately
+    // rather than silently waiting on a second field.
+    var caMonthSel = document.getElementById("ca-start-month");
+    if (caMonthSel) caMonthSel.addEventListener("change", function () {
+      var mv = caMonthSel.value ? parseInt(caMonthSel.value, 10) : null;
+      state.compareAnalysisStartMonth = mv;
+      if (mv && !state.compareAnalysisStartYear) state.compareAnalysisStartYear = new Date().getFullYear();
+      renderCompare();
+    });
+    var caYearInput = document.getElementById("ca-start-year");
+    if (caYearInput) caYearInput.addEventListener("change", function () {
+      var yv = caYearInput.value ? parseInt(caYearInput.value, 10) : null;
+      state.compareAnalysisStartYear = (yv && yv > 0) ? yv : null;
+      if (state.compareAnalysisStartYear && !state.compareAnalysisStartMonth) state.compareAnalysisStartMonth = 1;
+      if (!state.compareAnalysisStartYear) state.compareAnalysisStartMonth = null;
+      renderCompare();
+    });
+    var caClearBtn = document.getElementById("ca-start-clear");
+    if (caClearBtn) caClearBtn.addEventListener("click", function () {
+      state.compareAnalysisStartYear = null;
+      state.compareAnalysisStartMonth = null;
+      renderCompare();
     });
     // "change" (commit on blur/Enter), not "input": these numbers ripple through
     // KPI tiles, the banner, the chart and the table below — too much to soft-
@@ -3517,8 +5101,44 @@
       }
       input.addEventListener("change", function () {
         var key = input.getAttribute("data-fcpath");
-        var value = input.type === "checkbox" ? input.checked : num(unformatNumericInputValue(input.value), 0);
+        var value = input.type === "checkbox" ? input.checked
+          : input.hasAttribute("data-fctext") ? input.value
+          : num(unformatNumericInputValue(input.value), 0);
         setFixedCostsField(key, value);
+      });
+    });
+
+    main.querySelectorAll("[data-fcmode]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        // Purely a view toggle now (see fixedCostsCurrentFuture) — "items" is
+        // always kept non-empty by renderCompare's own auto-seed, so there is
+        // nothing to seed here anymore.
+        var fc2 = getFixedCosts();
+        fc2.mode = btn.getAttribute("data-fcmode");
+        setFixedCosts(fc2);
+      });
+    });
+    var btnFcItemAdd = document.getElementById("btn-fc-item-add");
+    if (btnFcItemAdd) btnFcItemAdd.addEventListener("click", function () {
+      var fc2 = getFixedCosts();
+      var items2 = Array.isArray(fc2.items) ? fc2.items.slice() : [];
+      items2.push({ label: "Nowa pozycja", monthly_current_pln: 0, monthly_future_pln: 0 });
+      fc2.items = items2;
+      setFixedCosts(fc2);
+    });
+    main.querySelectorAll("[data-fcitemremove]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var idx = parseInt(btn.getAttribute("data-fcitemremove"), 10);
+        var fc2 = getFixedCosts();
+        var items2 = Array.isArray(fc2.items) ? fc2.items.slice() : [];
+        // "items" is the primary source of the fixed-cost figure (see
+        // fixedCostsCurrentFuture) — it must never become empty, so the last
+        // remaining row can't be removed (the UI already hides this button
+        // when only one row is left; this is just the defensive backstop).
+        if (items2.length <= 1) return;
+        items2.splice(idx, 1);
+        fc2.items = items2;
+        setFixedCosts(fc2);
       });
     });
 
@@ -3534,11 +5154,13 @@
         showChartUnavailable("chart-cmp-irr");
         showChartUnavailable("chart-cmp-npv");
         showChartUnavailable("chart-cmp-gantt");
+        showChartUnavailable("chart-cmp-salemethod");
       });
-      whenChartReady(function () { buildPortfolioChart(agg, state.compareGranularity || "annual"); }, function () { showChartUnavailable("chart-portfolio"); });
-      renderPortfolioTable(agg, state.compareGranularity || "annual");
-      renderPortfolioPnL(agg, state.compareGranularity || "annual");
-      renderPortfolioBalance(agg, state.compareGranularity || "annual");
+      whenChartReady(function () { buildPortfolioChart(aggView, state.compareGranularity || "annual"); }, function () { showChartUnavailable("chart-portfolio"); });
+      renderPortfolioTable(aggView, state.compareGranularity || "annual");
+      renderPortfolioPnL(aggView, state.compareGranularity || "annual");
+      renderPortfolioBalance(aggView, state.compareGranularity || "annual");
+      whenChartReady(function () { buildPortfolioMemoValuationChart(agg); }, function () { showChartUnavailable("chart-portfolio-memo-valuation"); });
     }
   }
 
@@ -3664,6 +5286,41 @@
         });
       } catch (eGantt) { /* leave this one canvas blank rather than breaking the rest of the view */ }
     }
+
+    // Portfolio distribution of "Sposób sprzedaży energii" (informational
+    // field only, see ENERGY_SALE_METHOD_OPTIONS) — a donut counting how
+    // many of the SELECTED projects use each method, one slice per option in
+    // its fixed order (never re-cycled/reassigned — see
+    // ENERGY_SALE_METHOD_COLORS, validated with the dataviz skill's
+    // validate_palette.js for CVD-safety in both light and dark mode). A
+    // diversified portfolio should read as close to evenly sliced.
+    var canvasSale = document.getElementById("chart-cmp-salemethod");
+    if (chartRefs.cmpSaleMethod) { try { chartRefs.cmpSaleMethod.destroy(); } catch (eDestroy4) {} }
+    if (canvasSale) {
+      try {
+        var counts = {};
+        ENERGY_SALE_METHOD_OPTIONS.forEach(function (o) { counts[o.value] = 0; });
+        rows.forEach(function (r) {
+          var v = r.p.energy_sale_method;
+          if (counts[v] === undefined) v = "inne";
+          counts[v]++;
+        });
+        var saleLabels = ENERGY_SALE_METHOD_OPTIONS.map(function (o) { return o.label; });
+        var saleData = ENERGY_SALE_METHOD_OPTIONS.map(function (o) { return counts[o.value]; });
+        var saleColors = ENERGY_SALE_METHOD_OPTIONS.map(function (o) { return ENERGY_SALE_METHOD_COLORS[o.value]; });
+        chartRefs.cmpSaleMethod = new Chart(canvasSale.getContext("2d"), {
+          type: "doughnut",
+          data: { labels: saleLabels, datasets: [{ data: saleData, backgroundColor: saleColors, borderColor: getCSSVar("--surface"), borderWidth: 2 }] },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { display: true, position: "bottom", labels: { color: text, boxWidth: 12, padding: 12 } },
+              tooltip: { callbacks: { label: function (ctx) { var total = saleData.reduce(function (a, b) { return a + b; }, 0); var pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0; return ctx.label + ": " + ctx.parsed + " (" + pct + "%)"; } } }
+            }
+          }
+        });
+      } catch (eSale) { /* leave this one canvas blank rather than breaking the rest of the view */ }
+    }
   }
 
   /** The monthly/annual data table under the portfolio chart: the actual
@@ -3682,8 +5339,8 @@
     }
     if (granularity === "monthly") {
       var rows = agg.monthRows.slice(0, 60);
-      var body = rows.map(function (r, idx) {
-        var isBep = agg.bep && (idx + 1) === agg.bep.indexFromStart;
+      var body = rows.map(function (r) {
+        var isBep = monthRowIsBep(r, agg.bep);
         return '<tr class="' + (isBep ? "bep-row" : "") + '"><td>' + r.year + " " + r.monthName + (isBep ? ' <span class="bep-flag">BEP</span>' : "") + '</td>' +
           prodTd(r) +
           '<td class="num">' + fmt(r.revenue, 0) + '</td>' +
@@ -3701,7 +5358,7 @@
         '<th>Miesiąc</th>' + prodTh + '<th>Przychód (PLN)</th><th>OPEX (PLN)</th><th>EBITDA (PLN)</th>' +
         '<th>Rata długu (PLN)</th><th>CF equity — farmy (PLN)</th><th>Koszty stałe spółki (PLN)</th><th>CF equity netto (PLN)</th><th>CF equity netto skumulowane (bez wkładu własnego)</th><th>CF equity skumulowany</th><th>Wkład własny (PLN)</th>' +
         '</tr></thead><tbody>' + body + '</tbody></table></div>' +
-        '<div class="assumption-note">Kolumna „Wkład własny” pokazuje łączną wpłatę kapitału własnego (wszystkich wybranych farm, z uwzględnieniem mnożników) w danym okresie osobno — kolumny „CF equity — farmy” / „CF equity netto” pokazują operacyjny cash flow equity (BEZ wkładu własnego). „CF equity netto skumulowane (bez wkładu własnego)” to narastająca suma tej samej operacyjnej kolumny — ile gotówki wróciło z samej działalności, bez uznania wpłaconego kapitału — podczas gdy „CF equity skumulowany” uwzględnia pełny wkład własny (na jego podstawie liczone są IRR/NPV/payback kapitału własnego oraz próg rentowności BEP), więc te dwie skumulowane kolumny nie są sobie równe. Pokazano pierwsze 5 lat (60 miesięcy) licząc od pierwszej inwestycji w portfelu. Pełne dane dla całego horyzontu dostępne są w eksporcie CSV/Excel.</div>';
+        '<div class="assumption-note">Kolumna „Wkład własny” pokazuje łączną wpłatę kapitału własnego (wszystkich wybranych farm, z uwzględnieniem mnożników) w danym okresie osobno — kolumny „CF equity — farmy” / „CF equity netto” pokazują operacyjny cash flow equity (BEZ wkładu własnego). „CF equity netto skumulowane (bez wkładu własnego)” to narastająca suma tej samej operacyjnej kolumny — ile gotówki wróciło z samej działalności, bez uznania wpłaconego kapitału — podczas gdy „CF equity skumulowany” uwzględnia pełny wkład własny (na jego podstawie liczone są IRR/NPV/payback kapitału własnego oraz próg rentowności BEP), więc te dwie skumulowane kolumny nie są sobie równe. Pokazano pierwsze 5 lat (60 miesięcy) tego zestawienia (licząc od pierwszej inwestycji w portfelu, albo od miesiąca wybranego w polu „Analiza od” powyżej, jeśli jest ustawiony). Pełne dane dla całego horyzontu dostępne są w eksporcie CSV/Excel.</div>';
     } else {
       var body2 = agg.yearRows.map(function (r) {
         return '<tr class="' + (r.isBep ? "bep-row" : "") + '"><td>' + r.year + (r.isBep ? ' <span class="bep-flag">BEP</span>' : "") + '</td>' +
@@ -3891,7 +5548,7 @@
     var cum = source.map(function (r) { return Math.round(r.cumEquity); });
 
     var bepIdx = -1;
-    if (isMonthly && agg.bep) bepIdx = agg.bep.indexFromStart - 1;
+    if (isMonthly && agg.bep) bepIdx = source.findIndex(function (r) { return monthRowIsBep(r, agg.bep); });
     else if (!isMonthly) bepIdx = source.findIndex(function (r) { return r.isBep; });
 
     var datasets = series.map(function (fs, idx) {
@@ -3940,8 +5597,8 @@
     if (granularity === "monthly") {
       var header1 = ["Rok", "Miesiac"].concat(prodHeader, ["Przychod_PLN", "OPEX_PLN", "EBITDA_PLN", "Rata_dluzna_PLN", "CF_equity_farmy_PLN", "Koszty_stale_spolki_PLN", "CF_equity_po_kosztach_stalych_PLN", "CF_equity_skumulowany_bez_wkladu_PLN", "CF_equity_skumulowany_PLN", "Wklad_wlasny_PLN", "BEP"]);
       lines = [header1.join(";")];
-      agg.monthRows.forEach(function (r, idx) {
-        var isBep = agg.bep && (idx + 1) === agg.bep.indexFromStart ? "TAK" : "";
+      agg.monthRows.forEach(function (r) {
+        var isBep = monthRowIsBep(r, agg.bep) ? "TAK" : "";
         lines.push([r.year, r.monthName].concat(prodVals(r), [Math.round(r.revenue), Math.round(r.opex), Math.round(r.ebitda),
         Math.round(r.debtPayment), Math.round(r.equityFCFOperating), Math.round(r.fixedCost), Math.round(r.equityFCFNetOperating), Math.round(r.cumEquityNetOperating), Math.round(r.cumEquity), Math.round(r.equityOut), isBep]).join(";"));
       });
@@ -3981,8 +5638,8 @@
               "Koszty stałe spółki (PLN)", "CF equity netto (PLN)", "CF equity netto skumulowane bez wkładu własnego (PLN)", "CF equity skumulowany (PLN)", "Wkład własny (PLN)"],
             isMonthly ? [] : ["DSCR"], ["BEP"]);
           var aoa = [header];
-          rows.forEach(function (r, idx) {
-            var isBep = isMonthly ? !!(agg.bep && (idx + 1) === agg.bep.indexFromStart) : !!r.isBep;
+          rows.forEach(function (r) {
+            var isBep = isMonthly ? monthRowIsBep(r, agg.bep) : !!r.isBep;
             var lead = isMonthly ? [r.year, r.monthName] : [r.year];
             aoa.push(lead.concat(prodVals(r),
               [Math.round(r.revenue), Math.round(r.opex), Math.round(r.ebitda), Math.round(r.debtPayment), Math.round(r.equityFCFOperating),

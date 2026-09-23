@@ -226,3 +226,25 @@ test("kalendarz terminów: zdarzenia z rejestru, projektów, finansowań i umów
   const ev2 = vm.runInContext(`calendarEvents('${addDays(-10)}','${addMonths(5, 28)}')`, ctx);
   assert.ok(!ev2.some((e: any) => e.kind === "uruchomienie"), "filtr wyłącza zdarzenia projektów");
 });
+
+test("model Grzegorza w przeglądarce: przychód z profilu w projekcji, raty z transzami i karencją", () => {
+  const st = baseState();
+  st.farmModels = { version: "2026-09-23", farms: { p1: { label: "MP", mwPower: 2, commissioningISO: addMonths(-3), annualRevenue: 720000, monthlyProfilePct: [3.1,4.8,8.5,11.3,12.5,12.9,12.7,12,9.9,6.8,3.1,2.4], priceEscalationPct: 0, degradationPct: 0, stages: [], devMode: "own_operating" } },
+    financings: { f1: { projectId: "p2", principal: 1200000, ratePct: 6, termYears: 10, graceMonths: 2, type: "malejaca", startISO: addMonths(-1), tranches: [{ month: 1, pct: 50 }, { month: 2, pct: 100 }] } } };
+  const ctx = loadFront(st);
+  // profil: styczeń 3.1% z 720 000 = 22 320; lipiec 12.7% = 91 440
+  const y = String(today.getFullYear() + 1);
+  assert.equal(Math.round(vm.runInContext(`projectRevenueInMonth(STATE.projects[0], '${y}-01')`, ctx)), 22320);
+  assert.equal(Math.round(vm.runInContext(`projectRevenueInMonth(STATE.projects[0], '${y}-07')`, ctx)), 91440);
+  assert.equal(vm.runInContext("projectRevenueInMonth(STATE.projects[1], '2027-01')", ctx), 30000, "bez modelu — płasko");
+  // raty: miesiąc 1 (start = poprzedni miesiąc): karencja, odsetki od 50% = 600 000 × 0.5% = 3 000
+  const m1 = vm.runInContext(`finInstallmentInMonth(STATE.financings[0], '${addMonths(-1).slice(0, 7)}')`, ctx);
+  assert.equal(Math.round(m1.interest), 3000); assert.equal(Math.round(m1.capital), 0);
+  // miesiąc 2: karencja, 100% wykorzystane: 6 000 odsetek
+  const m2 = vm.runInContext(`finInstallmentInMonth(STATE.financings[0], '${addMonths(0).slice(0, 7)}')`, ctx);
+  assert.equal(Math.round(m2.interest), 6000);
+  // miesiąc 3: pierwsza rata kapitałowa 10 000 + 6 000
+  const m3 = vm.runInContext(`finInstallmentInMonth(STATE.financings[0], '${addMonths(1).slice(0, 7)}')`, ctx);
+  assert.equal(Math.round(m3.total), 16000);
+  assert.equal(Math.round(m3.balance), 1190000);
+});

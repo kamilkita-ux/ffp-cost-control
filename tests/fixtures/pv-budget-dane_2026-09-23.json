@@ -1,0 +1,2903 @@
+{
+  "app": "pv-budget",
+  "exportVersion": 1,
+  "exportedAt": "2026-09-23T07:15:54.256Z",
+  "projects": [
+    {
+      "id": "icvo0sc85uw",
+      "name": "1 ETAP PV Dębowiec 1 MW",
+      "location": "Dębowiec woj. Podkarpackie",
+      "horizon_years": 26,
+      "pv": {
+        "power_kwp": 1000,
+        "commissioning_year": 2026,
+        "commissioning_month": 12,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "panele": 1200000,
+          "inwertery": 300000,
+          "konstrukcja": 300000,
+          "kable_ac_dc": 0,
+          "przylacze": 40000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 300000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 19000,
+          "obsluga_techniczna_pln_mw_mc": 3000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 3,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 390,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 90,
+          "wibor_pct": 0,
+          "marza_pct": 1,
+          "loan_term_years": 10,
+          "grace_months": 9,
+          "type": "malejaca",
+          "start_year": 2026,
+          "start_month": 6,
+          "tranching_enabled": true,
+          "tranches": [
+            {
+              "month": 1,
+              "pct": 100
+            }
+          ],
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": false,
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2026,
+          "start_month": 9,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 0
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 0
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Budowa",
+              "months": 2
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 1
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2026,
+            "month": 12
+          },
+          "projekt_dokumentacja": {
+            "year": 2026,
+            "month": 12
+          },
+          "inne_jednorazowe": {
+            "year": 2026,
+            "month": 12
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 4,
+        "throughput_mwh_mw": 1500,
+        "commissioning_year": 2027,
+        "commissioning_month": 3,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "baterie": 5233334,
+          "pcs_inwerter": 2077778,
+          "instalacja_integracja": 1088889,
+          "inne": 0
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 500,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 6,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 400,
+          "price_escalation_pct": 3
+        },
+        "financing": {
+          "debt_share_pct": 100,
+          "wibor_pct": 0,
+          "marza_pct": 0,
+          "loan_term_years": 10,
+          "grace_months": 7,
+          "type": "malejaca",
+          "start_year": 2026,
+          "start_month": 11,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 6,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.312Z",
+      "updatedAt": "2026-09-22T13:15:48.856Z",
+      "energy_sale_method": "aukcja_oze"
+    },
+    {
+      "id": "x1b43si85va",
+      "name": "1 ETAP PV Podkarpackie 5x1 MW",
+      "location": "Podkarpackie ",
+      "horizon_years": 25,
+      "pv": {
+        "power_kwp": 5000,
+        "commissioning_year": 2027,
+        "commissioning_month": 6,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "panele": 4800000,
+          "inwertery": 1200000,
+          "konstrukcja": 1200000,
+          "kable_ac_dc": 0,
+          "przylacze": 200000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 500000,
+          "grunt": 0,
+          "budowa_montaz": 1200000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 2500,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 6,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 350,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 95,
+          "wibor_pct": 0,
+          "marza_pct": 1,
+          "loan_term_years": 10,
+          "grace_months": 9,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 1,
+          "outstanding_debt_pln": 0,
+          "tranching_enabled": true,
+          "tranches": [
+            {
+              "month": 1,
+              "pct": 50
+            },
+            {
+              "month": 4,
+              "pct": 100
+            }
+          ]
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": false,
+        "development": {
+          "mode": "in_progress",
+          "start_year": 2026,
+          "start_month": 11,
+          "first_pending_stage": 4,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 0
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 0
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2027,
+            "month": 6
+          },
+          "projekt_dokumentacja": {
+            "year": 2026,
+            "month": 11
+          },
+          "inne_jednorazowe": {
+            "year": 2027,
+            "month": 6
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 4,
+        "throughput_mwh_mw": 1500,
+        "commissioning_year": 2027,
+        "commissioning_month": 3,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "baterie": 5233334,
+          "pcs_inwerter": 2077778,
+          "instalacja_integracja": 1088889,
+          "inne": 0
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 500,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 6,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 400,
+          "price_escalation_pct": 3
+        },
+        "financing": {
+          "debt_share_pct": 100,
+          "wibor_pct": 0,
+          "marza_pct": 0,
+          "loan_term_years": 10,
+          "grace_months": 7,
+          "type": "malejaca",
+          "start_year": 2026,
+          "start_month": 11,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 6,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.326Z",
+      "updatedAt": "2026-09-22T20:08:45.912Z",
+      "energy_sale_method": "rynek_dnia_nastepnego"
+    },
+    {
+      "id": "d9vh3pk85vh",
+      "name": "1 ETAP PV Łubno 1MW",
+      "location": "Łubno woj. Podkarpackie",
+      "horizon_years": 25,
+      "pv": {
+        "power_kwp": 1000,
+        "commissioning_year": 2027,
+        "commissioning_month": 7,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "panele": 1200000,
+          "inwertery": 300000,
+          "konstrukcja": 300000,
+          "kable_ac_dc": 0,
+          "przylacze": 40000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 300000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 3000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 2,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 390,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 90,
+          "wibor_pct": 0,
+          "marza_pct": 1,
+          "loan_term_years": 10,
+          "grace_months": 9,
+          "type": "malejaca",
+          "start_year": 2026,
+          "start_month": 10,
+          "outstanding_debt_pln": 0,
+          "tranching_enabled": true,
+          "tranches": [
+            {
+              "month": 1,
+              "pct": 50
+            },
+            {
+              "month": 4,
+              "pct": 100
+            }
+          ]
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": true,
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2026,
+          "start_month": 9,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 0
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 0
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 3
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2027,
+            "month": 7
+          },
+          "projekt_dokumentacja": {
+            "year": 2027,
+            "month": 7
+          },
+          "inne_jednorazowe": {
+            "year": 2027,
+            "month": 7
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 4,
+        "throughput_mwh_mw": 1500,
+        "commissioning_year": 2027,
+        "commissioning_month": 3,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "baterie": 5233334,
+          "pcs_inwerter": 2077778,
+          "instalacja_integracja": 1088889,
+          "inne": 0
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 500,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 6,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 400,
+          "price_escalation_pct": 3
+        },
+        "financing": {
+          "debt_share_pct": 100,
+          "wibor_pct": 0,
+          "marza_pct": 0,
+          "loan_term_years": 10,
+          "grace_months": 7,
+          "type": "malejaca",
+          "start_year": 2026,
+          "start_month": 11,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 6,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.333Z",
+      "updatedAt": "2026-09-22T13:15:58.745Z",
+      "energy_sale_method": "aukcja_oze"
+    },
+    {
+      "id": "wheh2e785vm",
+      "name": "1 ETAP PV Miejsce Piastowe 2MW",
+      "location": "Miejsce Piastowe woj. Podkarpackie",
+      "horizon_years": 26,
+      "pv": {
+        "power_kwp": 2000,
+        "commissioning_year": 2025,
+        "commissioning_month": 10,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2052076,
+        "capex": {
+          "panele": 2007625,
+          "inwertery": 0,
+          "konstrukcja": 1048264,
+          "kable_ac_dc": 0,
+          "przylacze": 0,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 1048264,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 13000,
+          "obsluga_techniczna_pln_mw_mc": 2500,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 2,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 390,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 100,
+          "wibor_pct": 3.84,
+          "marza_pct": 2.884,
+          "loan_term_years": 10,
+          "grace_months": 0,
+          "type": "stala",
+          "start_year": 2026,
+          "start_month": 5,
+          "outstanding_debt_pln": 4211559.98
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": true,
+        "development": {
+          "mode": "own_operating",
+          "start_year": 2025,
+          "start_month": 10,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 4211560,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2025,
+            "month": 10
+          },
+          "projekt_dokumentacja": {
+            "year": 2025,
+            "month": 10
+          },
+          "inne_jednorazowe": {
+            "year": 2025,
+            "month": 10
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 1,
+        "throughput_mwh_mw": 1400,
+        "commissioning_year": 2027,
+        "commissioning_month": 9,
+        "capex_mode": "detailed",
+        "capex_total_per_mw_pln": 2500000,
+        "capex": {
+          "baterie": 1500000,
+          "pcs_inwerter": 500000,
+          "instalacja_integracja": 375000,
+          "inne": 125000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 1000,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 9,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 1.5
+        },
+        "financing": {
+          "debt_share_pct": 70,
+          "wibor_pct": 3.81,
+          "marza_pct": 2.5,
+          "loan_term_years": 8,
+          "grace_months": 6,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 3,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 12,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.338Z",
+      "updatedAt": "2026-09-22T14:05:58.002Z",
+      "energy_sale_method": "aukcja_oze"
+    },
+    {
+      "id": "2inf3c885vz",
+      "name": "1 ETAP Opole 4x1 MW",
+      "location": "woj. Opolskie",
+      "horizon_years": 25,
+      "pv": {
+        "power_kwp": 4000,
+        "commissioning_year": 2026,
+        "commissioning_month": 11,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2000000,
+        "capex": {
+          "panele": 4000000,
+          "inwertery": 2000000,
+          "konstrukcja": 2000000,
+          "kable_ac_dc": 0,
+          "przylacze": 0,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 2000000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 2000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2026,
+          "dzierzawa_payment_month": 11,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 400,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 80,
+          "wibor_pct": 3.81,
+          "marza_pct": 1.2,
+          "loan_term_years": 10,
+          "grace_months": 0,
+          "type": "malejaca",
+          "start_year": 2026,
+          "start_month": 11,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": true,
+        "development": {
+          "mode": "operating",
+          "start_year": 2026,
+          "start_month": 11,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2026,
+            "month": 11
+          },
+          "projekt_dokumentacja": {
+            "year": 2026,
+            "month": 11
+          },
+          "inne_jednorazowe": {
+            "year": 2026,
+            "month": 11
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 1,
+        "throughput_mwh_mw": 1400,
+        "commissioning_year": 2027,
+        "commissioning_month": 9,
+        "capex_mode": "detailed",
+        "capex_total_per_mw_pln": 2500000,
+        "capex": {
+          "baterie": 1500000,
+          "pcs_inwerter": 500000,
+          "instalacja_integracja": 375000,
+          "inne": 125000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 1000,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 9,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 1.5
+        },
+        "financing": {
+          "debt_share_pct": 70,
+          "wibor_pct": 3.81,
+          "marza_pct": 2.5,
+          "loan_term_years": 8,
+          "grace_months": 6,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 3,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 12,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.351Z",
+      "updatedAt": "2026-09-22T13:14:06.620Z",
+      "energy_sale_method": "ppa"
+    },
+    {
+      "id": "jgv9b6h85wc",
+      "name": "2 ETAP Poręba 6.5 MW",
+      "location": "Poręba woj. Śląskie",
+      "horizon_years": 25,
+      "pv": {
+        "power_kwp": 6500,
+        "commissioning_year": 2028,
+        "commissioning_month": 6,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2200000,
+        "capex": {
+          "panele": 6528500,
+          "inwertery": 1554300,
+          "konstrukcja": 2487100,
+          "kable_ac_dc": 932800,
+          "przylacze": 40000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 2175800,
+          "inne": 621500,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 18500,
+          "obsluga_techniczna_pln_mw_mc": 1230,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 6,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.5
+        },
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 80,
+          "wibor_pct": 3.81,
+          "marza_pct": 3,
+          "loan_term_years": 15,
+          "grace_months": 7,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 3,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": true,
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2026,
+          "start_month": 9,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2028,
+            "month": 6
+          },
+          "projekt_dokumentacja": {
+            "year": 2028,
+            "month": 6
+          },
+          "inne_jednorazowe": {
+            "year": 2028,
+            "month": 6
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 1,
+        "throughput_mwh_mw": 1400,
+        "commissioning_year": 2027,
+        "commissioning_month": 9,
+        "capex_mode": "detailed",
+        "capex_total_per_mw_pln": 2500000,
+        "capex": {
+          "baterie": 1500000,
+          "pcs_inwerter": 500000,
+          "instalacja_integracja": 375000,
+          "inne": 125000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 1000,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 9,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 1.5
+        },
+        "financing": {
+          "debt_share_pct": 70,
+          "wibor_pct": 3.81,
+          "marza_pct": 2.5,
+          "loan_term_years": 8,
+          "grace_months": 6,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 3,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 12,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.364Z",
+      "updatedAt": "2026-09-22T13:16:33.353Z",
+      "energy_sale_method": "ppa"
+    },
+    {
+      "id": "spuiual85ww",
+      "name": "1 ETAP PV Wylewa 15 MW ",
+      "location": "Wylewa woj. Podkarpackie",
+      "horizon_years": 25,
+      "pv": {
+        "power_kwp": 15000,
+        "commissioning_year": 2027,
+        "commissioning_month": 10,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 1600000,
+        "capex": {
+          "panele": 9936364,
+          "inwertery": 2809091,
+          "konstrukcja": 4218182,
+          "kable_ac_dc": 1409091,
+          "przylacze": 40000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 4218182,
+          "inne": 1409091,
+          "inne_jednorazowe": 950000
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 18000,
+          "obsluga_techniczna_pln_mw_mc": 500,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 3,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 390,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 83,
+          "wibor_pct": 3.81,
+          "marza_pct": 1.2,
+          "loan_term_years": 10,
+          "grace_months": 9,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 3,
+          "outstanding_debt_pln": 0,
+          "tranching_enabled": true,
+          "tranches": [
+            {
+              "month": 1,
+              "pct": 25
+            },
+            {
+              "month": 4,
+              "pct": 50
+            },
+            {
+              "month": 7,
+              "pct": 75
+            },
+            {
+              "month": 10,
+              "pct": 100
+            }
+          ]
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "capex_amortize_inne_jednorazowe": true,
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2026,
+          "start_month": 10,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 0
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 0
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 4
+            },
+            {
+              "label": "Budowa",
+              "months": 6
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2027,
+            "month": 10
+          },
+          "projekt_dokumentacja": {
+            "year": 2027,
+            "month": 10
+          },
+          "inne_jednorazowe": {
+            "year": 2026,
+            "month": 10
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 6.5,
+        "throughput_mwh_mw": 1500,
+        "commissioning_year": 2027,
+        "commissioning_month": 10,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "baterie": 7770000,
+          "pcs_inwerter": 2890000,
+          "instalacja_integracja": 1990000,
+          "inne": 1000000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 150,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 10,
+          "inne_pozostale_pln_rok": 0
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 3
+        },
+        "financing": {
+          "debt_share_pct": 80,
+          "wibor_pct": 3.81,
+          "marza_pct": 1.2,
+          "loan_term_years": 15,
+          "grace_months": 7,
+          "type": "malejaca",
+          "start_year": 2027,
+          "start_month": 3,
+          "outstanding_debt_pln": 0
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2026,
+          "start_month": 1,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "price_base_year": 2026,
+      "createdAt": "2026-09-17T15:43:02.384Z",
+      "updatedAt": "2026-09-22T20:13:26.301Z",
+      "energy_sale_method": "aukcja_oze"
+    },
+    {
+      "id": "1izi55e6z4q",
+      "name": "1 ETAP PV Zaleszany 1MW ",
+      "location": "Zaleszany woj. Podkarpackie",
+      "horizon_years": 25,
+      "price_base_year": 2026,
+      "energy_sale_method": "rynek_dnia_nastepnego",
+      "pv": {
+        "power_kwp": 1000,
+        "commissioning_year": 2027,
+        "commissioning_month": 5,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "panele": 1200000,
+          "inwertery": 300000,
+          "konstrukcja": 300000,
+          "kable_ac_dc": 0,
+          "przylacze": 40000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 100000,
+          "grunt": 0,
+          "budowa_montaz": 300000,
+          "inne": 0,
+          "inne_jednorazowe": 3250
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "capex_amortize_inne_jednorazowe": false,
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 3000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 1
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 350,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 90,
+          "wibor_pct": 0,
+          "marza_pct": 1,
+          "loan_term_years": 10,
+          "grace_months": 9,
+          "type": "malejaca",
+          "tranching_enabled": true,
+          "tranches": [
+            {
+              "month": 1,
+              "pct": 50
+            },
+            {
+              "month": 4,
+              "pct": 100
+            }
+          ],
+          "outstanding_debt_pln": 0,
+          "start_year": 2026,
+          "start_month": 10
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "development": {
+          "mode": "in_progress",
+          "start_year": 2026,
+          "start_month": 10,
+          "first_pending_stage": 4,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 0
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 0
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2027,
+            "month": 5
+          },
+          "projekt_dokumentacja": {
+            "year": 2026,
+            "month": 10
+          },
+          "inne_jednorazowe": {
+            "year": 2026,
+            "month": 11
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 4,
+        "throughput_mwh_mw": 1500,
+        "commissioning_year": 2027,
+        "commissioning_month": 3,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "baterie": 5233334,
+          "pcs_inwerter": 2077778,
+          "instalacja_integracja": 1088889,
+          "inne": 0
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 500,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 6
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 400,
+          "price_escalation_pct": 3
+        },
+        "financing": {
+          "debt_share_pct": 100,
+          "wibor_pct": 0,
+          "marza_pct": 0,
+          "loan_term_years": 10,
+          "grace_months": 7,
+          "type": "malejaca",
+          "tranching_enabled": false,
+          "tranches": [],
+          "outstanding_debt_pln": 0,
+          "start_year": 2026,
+          "start_month": 11
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 6,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "createdAt": "2026-09-22T11:52:31.322Z",
+      "updatedAt": "2026-09-22T20:12:28.312Z",
+      "comments": {
+        "pv_onetime": "Projekt koszt 40 kEUR /180 kPLN za MW. Zmniejszone do 100 kPLN - 80 kPLN jest w CAPEX'ie \nInne koszty 3 250 - jest to koszt dzierżawy za IV kw 2026"
+      }
+    },
+    {
+      "id": "io978ro2sy2",
+      "name": "1 ETAP Opole 1 MW ",
+      "location": "woj. Opolskie",
+      "horizon_years": 25,
+      "price_base_year": 2026,
+      "energy_sale_method": "aukcja_oze",
+      "pv": {
+        "power_kwp": 1000,
+        "commissioning_year": 2026,
+        "commissioning_month": 11,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2000000,
+        "capex": {
+          "panele": 4000000,
+          "inwertery": 2000000,
+          "konstrukcja": 2000000,
+          "kable_ac_dc": 0,
+          "przylacze": 0,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 2000000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "capex_amortize_inne_jednorazowe": true,
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 2000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2026,
+          "dzierzawa_payment_month": 11
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 500,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 80,
+          "wibor_pct": 3.81,
+          "marza_pct": 1.2,
+          "loan_term_years": 10,
+          "grace_months": 0,
+          "type": "malejaca",
+          "tranching_enabled": false,
+          "tranches": [],
+          "outstanding_debt_pln": 0,
+          "start_year": 2026,
+          "start_month": 11
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "development": {
+          "mode": "operating",
+          "start_year": 2026,
+          "start_month": 11,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2026,
+            "month": 11
+          },
+          "projekt_dokumentacja": {
+            "year": 2026,
+            "month": 11
+          },
+          "inne_jednorazowe": {
+            "year": 2026,
+            "month": 11
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 1,
+        "throughput_mwh_mw": 1400,
+        "commissioning_year": 2027,
+        "commissioning_month": 9,
+        "capex_mode": "detailed",
+        "capex_total_per_mw_pln": 2500000,
+        "capex": {
+          "baterie": 1500000,
+          "pcs_inwerter": 500000,
+          "instalacja_integracja": 375000,
+          "inne": 125000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 1000,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 9
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 1.5
+        },
+        "financing": {
+          "debt_share_pct": 70,
+          "wibor_pct": 3.81,
+          "marza_pct": 2.5,
+          "loan_term_years": 8,
+          "grace_months": 6,
+          "type": "malejaca",
+          "tranching_enabled": false,
+          "tranches": [],
+          "outstanding_debt_pln": 0,
+          "start_year": 2027,
+          "start_month": 3
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 12,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "createdAt": "2026-09-22T13:13:15.530Z",
+      "updatedAt": "2026-09-22T13:14:49.321Z"
+    },
+    {
+      "id": "udgu1cz5i1p",
+      "name": "2 ETAP Szkrzypaczowice 3 MW  (kopia)",
+      "location": "woj. Świętokrzyskie",
+      "horizon_years": 25,
+      "price_base_year": 2026,
+      "energy_sale_method": "rynek_dnia_nastepnego",
+      "pv": {
+        "power_kwp": 3000,
+        "commissioning_year": 2027,
+        "commissioning_month": 11,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2100000,
+        "capex": {
+          "panele": 2460000,
+          "inwertery": 1280000,
+          "konstrukcja": 1280000,
+          "kable_ac_dc": 0,
+          "przylacze": 40000,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 1280000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "capex_amortize_inne_jednorazowe": true,
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 2000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 2
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 350,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 100,
+          "wibor_pct": 0,
+          "marza_pct": 0.1,
+          "loan_term_years": 7,
+          "grace_months": 9,
+          "type": "malejaca",
+          "tranching_enabled": true,
+          "tranches": [
+            {
+              "month": 1,
+              "pct": 50
+            },
+            {
+              "month": 4,
+              "pct": 100
+            }
+          ],
+          "outstanding_debt_pln": 0,
+          "start_year": 2027,
+          "start_month": 5
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2026,
+          "start_month": 10,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 0
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 0
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2027,
+            "month": 11
+          },
+          "projekt_dokumentacja": {
+            "year": 2027,
+            "month": 11
+          },
+          "inne_jednorazowe": {
+            "year": 2027,
+            "month": 11
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 1,
+        "throughput_mwh_mw": 1400,
+        "commissioning_year": 2027,
+        "commissioning_month": 9,
+        "capex_mode": "detailed",
+        "capex_total_per_mw_pln": 2500000,
+        "capex": {
+          "baterie": 1500000,
+          "pcs_inwerter": 500000,
+          "instalacja_integracja": 375000,
+          "inne": 125000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 1000,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 9
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 1.5
+        },
+        "financing": {
+          "debt_share_pct": 70,
+          "wibor_pct": 3.81,
+          "marza_pct": 2.5,
+          "loan_term_years": 8,
+          "grace_months": 6,
+          "type": "malejaca",
+          "tranching_enabled": false,
+          "tranches": [],
+          "outstanding_debt_pln": 0,
+          "start_year": 2027,
+          "start_month": 3
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 12,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "createdAt": "2026-09-22T14:11:20.605Z",
+      "updatedAt": "2026-09-22T14:35:25.255Z"
+    },
+    {
+      "id": "4robel64ked",
+      "name": "1 ETAP Opole 15x1 MW ",
+      "location": "woj. Opolskie",
+      "horizon_years": 25,
+      "price_base_year": 2026,
+      "energy_sale_method": "rynek_dnia_nastepnego",
+      "pv": {
+        "power_kwp": 15000,
+        "commissioning_year": 2026,
+        "commissioning_month": 11,
+        "capex_mode": "total",
+        "capex_total_per_mw_pln": 2000000,
+        "capex": {
+          "panele": 4000000,
+          "inwertery": 2000000,
+          "konstrukcja": 2000000,
+          "kable_ac_dc": 0,
+          "przylacze": 0,
+          "stacja_transformatorowa": 0,
+          "projekt_dokumentacja": 0,
+          "grunt": 0,
+          "budowa_montaz": 2000000,
+          "inne": 0,
+          "inne_jednorazowe": 0
+        },
+        "capex_depreciation_years": {
+          "panele": 10,
+          "inwertery": 10,
+          "konstrukcja": 10,
+          "kable_ac_dc": 10,
+          "przylacze": 20,
+          "stacja_transformatorowa": 20,
+          "projekt_dokumentacja": 10,
+          "budowa_montaz": 10,
+          "inne": 10,
+          "inne_jednorazowe": 10
+        },
+        "capex_amortize_inne_jednorazowe": true,
+        "opex": {
+          "dzierzawa_pln_mw": 15000,
+          "obsluga_techniczna_pln_mw_mc": 2000,
+          "podatek_nieruchomosci_pln_mw": 10000,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 600000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2026,
+          "dzierzawa_payment_month": 11
+        },
+        "opex_escalation_pct": 3,
+        "production": {
+          "specific_yield_kwh_kwp": 1050,
+          "degradation_pct": 0.99
+        },
+        "revenue": {
+          "price_pln_mwh": 400,
+          "price_escalation_pct": 3,
+          "price_go_pln_mwh": 2.5,
+          "price_go_escalation_pct": 0,
+          "inne_przychody_pln_rok": 0
+        },
+        "financing": {
+          "debt_share_pct": 80,
+          "wibor_pct": 3.81,
+          "marza_pct": 1.2,
+          "loan_term_years": 10,
+          "grace_months": 0,
+          "type": "malejaca",
+          "tranching_enabled": false,
+          "tranches": [],
+          "outstanding_debt_pln": 0,
+          "start_year": 2026,
+          "start_month": 11
+        },
+        "monthly_profile_pct": [
+          3.1,
+          4.8,
+          8.5,
+          11.3,
+          12.5,
+          12.9,
+          12.7,
+          12,
+          9.9,
+          6.8,
+          3.1,
+          2.4
+        ],
+        "development": {
+          "mode": "operating",
+          "start_year": 2026,
+          "start_month": 11,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        },
+        "capex_onetime_timing": {
+          "przylacze": {
+            "year": 2026,
+            "month": 11
+          },
+          "projekt_dokumentacja": {
+            "year": 2026,
+            "month": 11
+          },
+          "inne_jednorazowe": {
+            "year": 2026,
+            "month": 11
+          }
+        }
+      },
+      "storage": {
+        "enabled": false,
+        "power_mw": 1,
+        "throughput_mwh_mw": 1400,
+        "commissioning_year": 2027,
+        "commissioning_month": 9,
+        "capex_mode": "detailed",
+        "capex_total_per_mw_pln": 2500000,
+        "capex": {
+          "baterie": 1500000,
+          "pcs_inwerter": 500000,
+          "instalacja_integracja": 375000,
+          "inne": 125000
+        },
+        "capex_depreciation_years": {
+          "baterie": 10,
+          "pcs_inwerter": 10,
+          "instalacja_integracja": 10,
+          "inne": 10
+        },
+        "opex": {
+          "dzierzawa_pln_mw": 2000,
+          "obsluga_techniczna_pln_mw_mc": 1000,
+          "podatek_nieruchomosci_pln_mw": 0,
+          "podatek_budowli_stawka_pct": 2,
+          "podatek_budowli_podstawa_pln_mw": 300000,
+          "ubezpieczenie_majatkowe_pln_mw": 3750,
+          "ubezpieczenie_oc_pln": 2500,
+          "inne_pozostale_pln_rok": 0,
+          "dzierzawa_okres_lat": 25,
+          "dzierzawa_start_year": 2027,
+          "dzierzawa_payment_month": 9
+        },
+        "opex_escalation_pct": 3,
+        "degradation_pct": 2,
+        "revenue": {
+          "price_pln_mwh": 450,
+          "price_escalation_pct": 1.5
+        },
+        "financing": {
+          "debt_share_pct": 70,
+          "wibor_pct": 3.81,
+          "marza_pct": 2.5,
+          "loan_term_years": 8,
+          "grace_months": 6,
+          "type": "malejaca",
+          "tranching_enabled": false,
+          "tranches": [],
+          "outstanding_debt_pln": 0,
+          "start_year": 2027,
+          "start_month": 3
+        },
+        "monthly_profile_pct": [
+          10.67,
+          9.67,
+          9,
+          7.67,
+          7,
+          6,
+          6,
+          6.67,
+          7,
+          7.67,
+          9.33,
+          13.32
+        ],
+        "development": {
+          "mode": "greenfield",
+          "start_year": 2025,
+          "start_month": 12,
+          "first_pending_stage": 0,
+          "stages": [
+            {
+              "label": "Warunki przyłączenia",
+              "months": 6
+            },
+            {
+              "label": "Dokumentacja, mapy, uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Pozwolenie na budowę",
+              "months": 4
+            },
+            {
+              "label": "Projekt techniczny i budowlany + uzgodnienia",
+              "months": 2
+            },
+            {
+              "label": "Budowa",
+              "months": 5
+            },
+            {
+              "label": "Odbiór przez zakład energetyczny / Uruchomienie",
+              "months": 2
+            }
+          ],
+          "remaining_book_value_pln": 0,
+          "remaining_depreciation_years": 10
+        }
+      },
+      "tax": {
+        "apply_cit": false,
+        "cit_rate_pct": 19,
+        "depreciation_years": 10
+      },
+      "discount": {
+        "wacc_pct": 6.5,
+        "equity_discount_pct": 10
+      },
+      "createdAt": "2026-09-22T14:38:36.613Z",
+      "updatedAt": "2026-09-22T14:38:53.871Z"
+    }
+  ],
+  "selection": {
+    "ids": [
+      "d9vh3pk85vh",
+      "1izi55e6z4q",
+      "x1b43si85va",
+      "io978ro2sy2",
+      "2inf3c885vz",
+      "wheh2e785vm",
+      "icvo0sc85uw",
+      "4robel64ked"
+    ],
+    "quantities": {
+      "9qwtetb2is5": 2,
+      "06dkddstjis": 1,
+      "2inf3c885vz": 1,
+      "x1b43si85va": 1
+    }
+  },
+  "fixedCosts": {
+    "enabled": true,
+    "start_year": 2026,
+    "start_month": 9,
+    "monthly_current_pln": 138638,
+    "monthly_future_pln": 214638,
+    "escalation_pct": 3,
+    "mode": "aggregate",
+    "items": [
+      {
+        "label": "Koszty pracownicze 10 osób Rzeszów",
+        "monthly_current_pln": 50000,
+        "monthly_future_pln": 100000
+      },
+      {
+        "label": "Koszty Pracownicze Katowice",
+        "monthly_current_pln": 27000,
+        "monthly_future_pln": 27000
+      },
+      {
+        "label": "Katowice Księgowość B2B",
+        "monthly_current_pln": 8000,
+        "monthly_future_pln": 8000
+      },
+      {
+        "label": "Handlowiec Gdańsk / Natalia B2B",
+        "monthly_current_pln": 5000,
+        "monthly_future_pln": 5000
+      },
+      {
+        "label": "Kierownik budowy - Rzeszów B2B",
+        "monthly_current_pln": 0,
+        "monthly_future_pln": 10000
+      },
+      {
+        "label": "IT - Marek - B2B",
+        "monthly_current_pln": 10000,
+        "monthly_future_pln": 15000
+      },
+      {
+        "label": "Prawnik Rzeszów B2B",
+        "monthly_current_pln": 0,
+        "monthly_future_pln": 5000
+      },
+      {
+        "label": "Koszty Giełdowe/Biura itp.",
+        "monthly_current_pln": 10000,
+        "monthly_future_pln": 10000
+      },
+      {
+        "label": "Najem Lokalu",
+        "monthly_current_pln": 4000,
+        "monthly_future_pln": 10000
+      },
+      {
+        "label": "GW B2B",
+        "monthly_current_pln": 24638,
+        "monthly_future_pln": 24638
+      }
+    ]
+  }
+}

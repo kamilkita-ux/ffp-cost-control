@@ -38,7 +38,10 @@ const MUST_GUARD_WITH_ADMIN = [
   "app/api/admin/reset-farm-portfolio/route.ts",
   "app/api/admin/apply-data-adjustments/route.ts",
   // AUDYT 2026-09-19: kasowanie danych demo też musi być admin-only.
-  "app/api/demo/route.ts"
+  "app/api/demo/route.ts",
+  // 2026-09-23: import modelu Grzegorza (podgląd i zastosowanie)
+  "app/api/admin/pv-model/preview/route.ts",
+  "app/api/admin/pv-model/apply/route.ts"
 ];
 
 for (const relPath of MUST_GUARD_WITH_ADMIN) {

@@ -849,7 +849,8 @@ function periodMetrics(key,customFrom,customTo){
     var daysInMonth = Math.round((monthEnd-monthStart)/86400000)+1;
     var overlapDays = Math.max(0, Math.round((overlapEnd-overlapStart)/86400000)+1);
     var frac = daysInMonth>0? overlapDays/daysInMonth : 0;
-    var rev = realProjects.filter(function(p){return projectActiveInMonth(p,monthEndISO);}).reduce(function(s,p){return s+(Number(p.revenueMonthly)||0);},0);
+    var ymCur = monthEndISO.slice(0,7);
+    var rev = realProjects.filter(function(p){return projectActiveInMonth(p,monthEndISO);}).reduce(function(s,p){return s+projectRevenueInMonth(p, ymCur);},0);
     var rec = realCosts.filter(function(c){return recurringCostActive(c,monthEndISO);}).reduce(function(s,c){return s+monthlyEquivalent(c);},0);
     var fin = STATE.financings.filter(function(f){return financingActive(f,monthEndISO);}).reduce(function(s,f){return s+(Number(f.monthlyPayment)||0);},0);
     var cost = m.monthlyPayroll + rec + fin;
@@ -988,7 +989,7 @@ var NAV = [
   {key:'settings',label:'Ustawienia / słowniki',icon:'⚙️'},
   {key:'help',label:'Pomoc / instrukcja',icon:'📘'}
 ];
-var APP_BUILD_TAG = 'build 2026-09-23-30 (kalendarz i os czasu projektow w terminach, nawigacja strzalkami przegladarki)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
+var APP_BUILD_TAG = 'build 2026-09-23-31 (import modelu Grzegorza z pliku, profil produkcji w projekcji, etapy, transze)'; // znacznik wersji do weryfikacji, który plik jest wdrożony — widoczny na dole menu
 function renderNav(){
   var html = NAV.filter(function(n){return tabAllowed(n.key);}).map(function(n){
     return '<div class="nav-item'+(currentTab===n.key?' active':'')+'" onclick="goTab(\''+n.key+'\')"><span class="nav-icon">'+n.icon+'</span>'+n.label+'</div>';
@@ -1492,7 +1493,7 @@ function consistencyChecks(){
       var key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
       if(!revMap.hasOwnProperty(key)) continue;
       var monthEndISO = localISO(new Date(d.getFullYear(), d.getMonth()+1, 0));
-      var fromCards = real.filter(function(p){return p.status==='operacyjny' || (p.endDate && p.endDate<=monthEndISO && ['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0);}).reduce(function(s,p){return s+(Number(p.revenueMonthly)||0);},0);
+      var fromCards = real.filter(function(p){return p.status==='operacyjny' || (p.endDate && p.endDate<=monthEndISO && ['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0);}).reduce(function(s,p){return s+projectRevenueInMonth(p, monthEndISO.slice(0,7));},0);
       var sched = revMap[key];
       var diff = Math.abs(sched-fromCards);
       if(diff > Math.max(sched,fromCards)*0.10) drift.push(key+': harmonogram Założeń '+fmtMoney0(sched)+' vs karty projektów '+fmtMoney0(fromCards));
@@ -1519,6 +1520,16 @@ function consistencyChecks(){
   if(overdueDl.length) add('err',overdueDl.length+' terminów w rejestrze PO TERMINIE — oznacz jako zrobione albo przesuń datę', overdueDl.map(function(d){return fmtDate(d.date)+' — '+d.title;}));
   if(soonDl.length) add('warn',soonDl.length+' terminów w rejestrze w ciągu 30 dni', soonDl.map(function(d){return fmtDate(d.date)+' — '+d.title+(d.owner?' ('+d.owner+')':'');}));
   if(!overdueDl.length && !soonDl.length) add('ok','Rejestr terminów: nic po terminie ani w najbliższych 30 dniach');
+  // 2026-09-23: model Grzegorza — wersja i koszty stałe spółki vs aplikacja
+  if(STATE.farmModels && STATE.farmModels.version){
+    var fmv = STATE.farmModels; var fc = fmv.fixedCosts;
+    var withModel = real.filter(function(p){return !!farmModel(p.id);}).length;
+    add('info','Model Grzegorza z '+fmv.version+' wczytany ('+withModel+' farm z pełnymi parametrami: profil produkcji, eskalacje, etapy, transze). Projekcje miesięczne liczą przychód farm z profilu produkcji.', real.filter(function(p){return !farmModel(p.id) && ['sprzedany','zamknięty','zawieszony'].indexOf(p.status)<0;}).map(function(p){return p.name+' — bez modelu (płaski przychód 1/12)';}));
+    if(fc && fc.monthlyCurrent>0){
+      var diffFc = (m.totalBurn - fc.monthlyCurrent)/fc.monthlyCurrent*100;
+      add(Math.abs(diffFc)>15?'warn':'info','Koszty stałe spółki: model Grzegorza '+fmtMoney0(fc.monthlyCurrent)+'/mies. (docelowo '+fmtMoney0(fc.monthlyFuture)+') vs „Koszt dziś” w aplikacji '+fmtMoney0(m.totalBurn)+'/mies. ('+(diffFc>0?'+':'')+diffFc.toFixed(0)+'%). Różnice mogą wynikać z rat farm i OPEX liczonych w aplikacji, których model kosztów stałych nie zawiera.', (fc.items||[]).map(function(i){return i.label+': '+fmtMoney0(i.monthlyCurrent)+' → '+fmtMoney0(i.monthlyFuture);}));
+    }
+  }
   var actualsLow = STATE.projects.filter(function(p){return !p.isDemo && p.status==='operacyjny';}).map(function(p){ return {p:p, s:actualsSummary(p, lastMonths(3))}; }).filter(function(x){ return x.s.diffPct!==null && x.s.diffPct<-10; });
   if(actualsLow.length) add('warn','Przychód rzeczywisty (ostatnie 3 mies. z danymi) niższy od modelu o >10%', actualsLow.map(function(x){ return x.p.name+': '+fmtMoney0(x.s.avgRev)+' vs model '+fmtMoney0(x.s.model)+' ('+x.s.diffPct.toFixed(1)+'%)'; }));
 
@@ -2189,6 +2200,7 @@ function projectDetail(p){
     '</div>'+
   '</div>'+
   '<div class="panel"><h3>Opis</h3><div>'+esc(p.description||'—')+'</div></div>'+
+  farmModelPanel(p)+
   projectFinancePanel(p)+
   '<div class="grid2">'+projectDeadlinesPanel(p)+projectActualsPanel(p)+'</div>'+
   '<div class="panel"><div class="toolbar"><h3 style="margin:0">Koszty projektu</h3><button class="btn btn-sm btn-primary" onclick="openForm(\'costs\',null,{projectId:\''+p.id+'\'})">+ dodaj koszt</button></div>'+costsTable(costs)+'</div>'+
@@ -2942,6 +2954,8 @@ function finScheduleBase(f){
 function finComputedNextInstallment(f){
   var b = finScheduleBase(f);
   if(!b || !finHasRate(f)) return null;
+  var fm = finModel(f.id);
+  if(fm && fm.type==='stala'){ var r=(Number(f.interestRate)||0)/100/12; return r>0? b.P*r/(1-Math.pow(1+r,-b.n)) : b.P/b.n; }
   var sch = finDecliningSchedule(b.P, f.interestRate, b.n);
   var k = b.paid+1; if(k>sch.length) return 0;
   return sch[k-1].total;
@@ -2950,6 +2964,8 @@ function finComputedNextInstallment(f){
 // (gdy są dane), inaczej płaska rata wpisana; 0 przed pierwszą ratą i po końcu.
 // Saldo przed startem = kwota pomniejszona o już spłacone raty (spójne z harmonogramem).
 function finInstallmentInMonth(f, ym){
+  var fm = finModel(f.id);
+  if(fm && fm.startISO && fm.termYears>0){ var r = finModelInstallment(fm, f, ym); if(r) return r; }
   var first = f.nextPaymentDate? f.nextPaymentDate.slice(0,7) : null;
   var b = finScheduleBase(f), useSch = !!(b && finHasRate(f));
   var sch = useSch? finDecliningSchedule(b.P, f.interestRate, b.n) : null;
@@ -3706,7 +3722,7 @@ function viewHelp(){
   helpSection('Kto za co odpowiada (przestrzenie zespołu)',
     p('<b>Kamil Kita</b> — Prezes; Dashboard, Portfel, Raport, decyzje o danych (reset, poprawki).')+
     p('<b>Maciej Zapart</b> — kredyty, leasingi, dane finansowe: przestrzeń '+tabLink('maciej','Finansowanie')+' (karty finansowań, harmonogram, braki, zadania, notatki, terminy finansowe).')+
-    p('<b>Grzegorz</b> — model budżetowy farm: '+tabLink('grzegorz','Budżet Farm PV')+'; dane z modelu trafiły do Projektów resetem portfela (2026-09-19).')+
+    p('<b>Grzegorz</b> — model budżetowy farm: '+tabLink('grzegorz','Budżet Farm PV')+'. Nowy plik od Grzegorza (pv-budget-dane_*.json) wgrywa admin w '+tabLink('settings','Ustawieniach')+' → „Model Grzegorza” — podgląd zmian, potem zastosowanie; parametry modelu zasilają projekcje (profil produkcji, eskalacje), karty farm, kalendarz etapów i harmonogram rat (transze, karencja).')+
     p('Konta zakłada admin w '+tabLink('settings','Ustawieniach')+' → „Konta i widoczność modułów” (hasło tymczasowe generuje serwer; konta działają po przełączeniu AUTH_MODE=accounts w Railway). Tam też ustawia się, które moduły widzi dana osoba — np. Maciej tylko Finansowanie, Płatności, Terminy. Konto „ograniczone” nie widzi wynagrodzeń ani kosztów małych grup (1–2 osoby) i nie może zmieniać Założeń, Akcjonariatu ani Struktury grupy.'))+
   helpSection('Uzupełnianie danych — co daje największy efekt',
     p('1. Każda farma: moc, CAPEX, przychód/mies., data uruchomienia, koszt OPEX (koszt cykliczny przypięty do farmy), finansowanie, spółka celowa. Bez tego Portfel i DSCR są niepełne.')+
@@ -3912,6 +3928,7 @@ function calendarEvents(fromISO, toISO){
   if(CAL_SHOW.projects) STATE.projects.filter(projectCountsAsFuture).forEach(function(p){
     if(inRange(p.startDate)) ev.push({date:p.startDate, kind:'start prac', title:'Start prac — '+p.name, projectId:p.id, action:"openDetail('projects','"+p.id+"')", icon:'🚧'});
     if(inRange(p.endDate)) ev.push({date:p.endDate, kind:(p.status==='operacyjny'?'uruchomiono':'uruchomienie'), title:'Uruchomienie — '+p.name, projectId:p.id, action:"openDetail('projects','"+p.id+"')", icon:'⚡'});
+    stageEventsFor(p).forEach(function(e){ if(inRange(e.date) && e.date!==p.endDate) ev.push(e); });
   });
   if(CAL_SHOW.financing) STATE.financings.forEach(function(f){
     if(inRange(f.nextPaymentDate) && finPaidCount(f)===0) ev.push({date:f.nextPaymentDate, kind:'pierwsza rata', title:'Pierwsza rata — '+f.lender, projectId:f.projectId||null, action:"openForm('financing','"+f.id+"')", icon:'🏦'});
@@ -3978,6 +3995,147 @@ function timelineView(){
   return '<div class="panel"><div class="toolbar" style="margin-bottom:6px"><h3 style="margin:0">Oś czasu — '+monthsN+' miesięcy od dziś</h3><div class="muted" style="font-size:12px">pasek = start prac → uruchomienie • ikony = zdarzenia (najedź, kliknij)</div></div>'+calFiltersHtml()+'<div class="tl-wrap">'+headRow+rows+generalRow+'</div>'+(projects.length?'':'<div class="empty">Brak projektów</div>')+'</div>';
 }
 
+/* ============================= MODEL GRZEGORZA — SILNIK PROJEKCJI ============================= */
+// 2026-09-23: pełne parametry modelu „Budżet Farm PV" per farma (AppSetting
+// farmModels, zapis tylko przez import w Ustawieniach). Używane do:
+//  - przychodu miesiąc po miesiącu z PROFILEM produkcji (lato/zima), eskalacją
+//    ceny i degradacją — zamiast płaskiej 1/12 rocznego przychodu;
+//  - karty farmy (parametry, etapy rozwoju z datami, warunki kredytu);
+//  - kalendarza i osi czasu (etapy rozwoju jako zdarzenia);
+//  - harmonogramu rat z transzami i karencją (przestrzeń Macieja).
+// „Przychód dziś" i „Przychód docelowy" pozostają średnią miesięczną
+// (rok 1 / 12) — profil dotyczy projekcji miesięcznych.
+function farmModelsAll(){ return (STATE.farmModels && STATE.farmModels.farms) || {}; }
+function farmModel(pid){ return farmModelsAll()[pid] || null; }
+function finModel(fid){ return (STATE.farmModels && STATE.farmModels.financings && STATE.farmModels.financings[fid]) || null; }
+// Przychód farmy w miesiącu ym (RRRR-MM): profil × roczny przychód × eskalacja/degradacja wg lat od uruchomienia.
+function projectRevenueInMonth(p, ym){
+  var flat = Number(p.revenueMonthly)||0;
+  var m = farmModel(p.id); if(!m || !m.monthlyProfilePct || m.monthlyProfilePct.length!==12 || !(m.annualRevenue>0)) return flat;
+  var comm = m.commissioningISO ? m.commissioningISO.slice(0,7) : null;
+  var years = comm ? Math.max(0, Math.floor(ymDiff(comm, ym)/12)) : 0;
+  var factor = Math.pow(1+(Number(m.priceEscalationPct)||0)/100, years) * Math.pow(1-(Number(m.degradationPct)||0)/100, years);
+  var mi = Number(ym.slice(5,7))-1;
+  return m.annualRevenue * factor * (Number(m.monthlyProfilePct[mi])||0)/100;
+}
+function stageEventsFor(p){
+  var m = farmModel(p.id); if(!m || !m.stages || !m.stages.length) return [];
+  if(m.devMode==='operating' || m.devMode==='own_operating') return [];
+  var out=[];
+  m.stages.forEach(function(s){ if(!(s.months>0)) return; if(s.done) return; out.push({date:s.endISO, title:'Koniec etapu: '+s.label+' — '+p.name, kind:'etap rozwoju', projectId:p.id, action:"openDetail('projects','"+p.id+"')", icon:'🧭', stage:s}); });
+  return out;
+}
+function farmModelPanel(p){
+  var m = farmModel(p.id);
+  if(!m) return '';
+  var fmtN = function(x){ return (Number(x)||0).toLocaleString('pl-PL'); };
+  var stages = (m.stages||[]).filter(function(s){return s.months>0;});
+  var stagesHtml = (m.devMode==='operating'||m.devMode==='own_operating')? '<div class="muted">Farma operacyjna wg modelu — etapy rozwoju zakończone.</div>' :
+    (stages.length? '<div class="table-wrap"><table><thead><tr><th>Etap</th><th>Od</th><th>Do</th><th class="right">Mies.</th><th>Status</th></tr></thead><tbody>'+stages.map(function(s){ var n=daysUntil(s.endISO); return '<tr'+(s.done?' style="opacity:.55"':'')+'><td>'+esc(s.label)+'</td><td>'+fmtDate(s.startISO)+'</td><td>'+fmtDate(s.endISO)+'</td><td class="right">'+s.months+'</td><td>'+(s.done?'<span class="pill pill-ok">zakończony</span>':(n!==null&&n<0?'<span class="pill pill-danger">po terminie</span>':'<span class="pill pill-warn">za '+n+' dni</span>'))+'</td></tr>'; }).join('')+'</tbody></table></div>' : '<div class="muted">Brak etapów w modelu.</div>');
+  var fin = m.financing||{};
+  var prof = (m.monthlyProfilePct||[]); var maxP = Math.max.apply(null, prof.concat([1]));
+  var profHtml = prof.length===12? '<div style="display:flex;align-items:flex-end;gap:3px;height:48px;margin-top:4px">'+prof.map(function(v,i){ return '<div title="'+(i+1)+': '+v+'%" style="flex:1;height:'+Math.max(2,Math.round(v/maxP*44))+'px;background:var(--chart-4);border-radius:2px 2px 0 0"></div>'; }).join('')+'</div><div class="muted" style="font-size:11px">profil produkcji I–XII (% rocznej)</div>' : '';
+  return '<div class="panel"><div class="toolbar"><h3 style="margin:0">Model Grzegorza (Budżet Farm PV, '+esc((STATE.farmModels&&STATE.farmModels.version)||'')+')</h3><span class="muted" style="font-size:12px">'+esc(m.label)+'</span></div>'+
+    '<div class="grid2">'+
+      '<div><div class="section-title" style="margin-top:0">Przychód i produkcja</div>'+
+        '<div>Uzysk: <b>'+fmtN(m.yieldKwhPerKwp)+' kWh/kWp</b> • cena: <b>'+fmtN(m.pricePlnMwh)+' zł/MWh</b> + GO '+fmtN(m.priceGoPlnMwh)+' • eskalacja ceny '+m.priceEscalationPct+'%/rok • degradacja '+m.degradationPct+'%/rok</div>'+
+        '<div>Sprzedaż: <b>'+esc(m.saleMethodLabel||m.saleMethod||'—')+'</b> • horyzont '+m.horizonYears+' lat • WACC '+m.waccPct+'%</div>'+
+        '<div>Przychód rok 1: <b>'+fmtMoney0(m.annualRevenue)+'</b> = '+m.mwPower+' MW × '+fmtN(m.yieldKwhPerKwp)+' × ('+fmtN(m.pricePlnMwh)+' + '+fmtN(m.priceGoPlnMwh)+')</div>'+profHtml+
+      '</div>'+
+      '<div><div class="section-title" style="margin-top:0">Finansowanie wg modelu</div>'+
+        '<div>Udział długu: <b>'+fin.debtSharePct+'%</b> • oprocentowanie <b>'+fin.ratePct+'%</b> (WIBOR '+fin.wiborPct+'% + marża '+fin.marginPct+'%)</div>'+
+        '<div>Okres: <b>'+fin.termYears+' lat</b> • karencja '+fin.graceMonths+' mc • rata '+(fin.type==='stala'?'stała (annuitetowa)':'malejąca')+' • uruchomienie kredytu '+(fin.startYear? fin.startMonth+'/'+fin.startYear : '—')+'</div>'+
+        (fin.tranches&&fin.tranches.length? '<div>Transze: '+fin.tranches.map(function(t){return 'm'+t.month+' → '+t.pct+'%';}).join(', ')+'</div>' : '')+
+        (fin.outstandingDebt>0? '<div>Istniejący dług: <b>'+fmtMoney0(fin.outstandingDebt)+'</b></div>' : '')+
+        '<div class="section-title">CAPEX '+fmtMoney0(m.capexTotal)+'</div><div class="muted" style="font-size:12px">'+Object.keys(m.capexBreakdown||{}).filter(function(k){return m.capexBreakdown[k]>0;}).map(function(k){return k.replace(/_/g,' ')+': '+fmtMoney0(m.capexBreakdown[k]);}).join(' • ')+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="section-title">Etapy rozwoju (z modelu, od '+(m.devStartISO?fmtDate(m.devStartISO):'—')+', tryb: '+esc(m.devMode||'—')+')</div>'+stagesHtml+
+    '<div class="muted" style="font-size:11px;margin-top:6px">Parametry wczytane z pliku Grzegorza ('+esc(m.updatedAt?String(m.updatedAt).slice(0,10):'')+'). Zmiany robi się w narzędziu Budżet Farm PV i wgrywa nowy plik w Ustawieniach → Model Grzegorza.</div>'+
+  '</div>';
+}
+
+/* ---- Import modelu (Ustawienia) ---- */
+var PVM_PREVIEW = null; // wynik /preview + decyzje
+function pvModelPanel(){
+  if(!STATE.isAdmin) return '';
+  var cur = STATE.farmModels;
+  var status = cur? 'wczytany model z '+esc(cur.version||'?')+' (eksport '+esc((cur.exportedAt||'').slice(0,16).replace('T',' '))+', wgrany '+esc((cur.importedAt||'').slice(0,16).replace('T',' '))+'), '+Object.keys(cur.farms||{}).length+' farm' : 'brak wczytanego modelu — portfel z resetu 17.09';
+  var previewHtml = '';
+  if(PVM_PREVIEW){
+    var pv = PVM_PREVIEW;
+    previewHtml = '<div class="section-title">Podgląd: plik z '+esc((pv.exportedAt||'').slice(0,16).replace('T',' '))+' — '+pv.farms.length+' farm w modelu</div>'+
+      '<div class="table-wrap"><table><thead><tr><th></th><th>Farma w modelu</th><th>→ projekt w aplikacji</th><th class="right">MW</th><th>Uruchomienie</th><th class="right">CAPEX</th><th class="right">Przychód/mies.</th><th>Sprzedaż</th><th>Kredyt</th><th>Różnice / uwagi</th></tr></thead><tbody>'+
+      pv.farms.map(function(f,i){
+        var dec = pv.decisions[i];
+        var opts = '<option value="">— nowy projekt: „'+esc(f.newName)+'” —</option>'+pv.projects.map(function(p){ return '<option value="'+esc(p.id)+'"'+(dec.projectId===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+        var flags = []; if(f.variant) flags.push('<span class="pill pill-warn">'+esc(f.variant)+'</span>'); if(!f.selected) flags.push('<span class="pill pill-muted" title="Nie jest w zaznaczeniu Grzegorza w jego narzędziu">poza zaznaczeniem Grzegorza</span>'); if(f.isNew && !dec.projectId) flags.push('<span class="pill pill-ok">nowa farma</span>');
+        var diffs = f.diffs.length? f.diffs.map(function(d){ return '<div style="font-size:11.5px"><span class="muted">'+esc(d.field)+':</span> '+esc(d.current)+' → <b>'+esc(d.next)+'</b></div>'; }).join('') : (dec.projectId?'<span class="muted" style="font-size:11.5px">bez zmian</span>':'');
+        var keep = f.keepEndDateDefault? '<label style="font-weight:400;font-size:11.5px;display:block;margin-top:4px"><input type="checkbox" style="width:auto" '+(dec.keepEndDate?'checked':'')+' onchange="PVM_PREVIEW.decisions['+i+'].keepEndDate=this.checked"> zachowaj datę uruchomienia z aplikacji (ręczna korekta Kamila)</label>' : '';
+        return '<tr'+(dec.include?'':' style="opacity:.5"')+'><td><input type="checkbox" style="width:auto" '+(dec.include?'checked':'')+' onchange="PVM_PREVIEW.decisions['+i+'].include=this.checked;render()"></td><td><b>'+esc(f.label)+'</b><div class="muted" style="font-size:11px">'+esc(f.location||'')+' • '+esc(f.devMode||'')+'</div>'+flags.join(' ')+'</td><td><select onchange="PVM_PREVIEW.decisions['+i+'].projectId=this.value||null;render()">'+opts+'</select></td><td class="right">'+f.mwPower+'</td><td>'+fmtDate(f.commissioning)+'</td><td class="right">'+fmtMoney0(f.capexTotal)+'</td><td class="right">'+fmtMoney0(f.monthlyRevenue)+'</td><td style="font-size:12px">'+esc(f.saleMethod||'—')+'</td><td style="font-size:11.5px">'+f.financing.map(function(s){ return fmtMoney0(s.principal)+' @'+s.ratePct+'% '+s.termYears+'l, kar. '+s.graceMonths+' mc, '+(s.type==='stala'?'stała':'malejąca')+', od '+fmtDate(s.start)+(s.tranches?' (transze '+s.tranches.length+')':'')+(s.outstanding?' — istniejący dług':''); }).join('<br>')+'</td><td>'+diffs+keep+'</td></tr>';
+      }).join('')+'</tbody></table></div>'+
+      (pv.fixedCosts? '<div class="muted" style="font-size:12px;margin-top:8px">Koszty stałe spółki w modelu Grzegorza: '+fmtMoney0(pv.fixedCosts.monthlyCurrent)+'/mies. dziś → '+fmtMoney0(pv.fixedCosts.monthlyFuture)+'/mies. docelowo ('+pv.fixedCosts.items.length+' pozycji) — zapisane jako porównanie w Kontroli spójności; Pracowników i Kosztów stałych NIE zmienia.</div>' : '')+
+      '<div style="margin-top:10px"><button class="btn btn-primary" onclick="pvModelApply()">Zastosuj zaznaczone ('+pv.decisions.filter(function(d){return d.include;}).length+')</button> <button class="btn" onclick="PVM_PREVIEW=null;render()">Anuluj</button></div>'+
+      '<div class="muted" style="font-size:11.5px;margin-top:6px">Zastosowanie nadpisuje w wybranych farmach: moc, CAPEX, przychód/mies., daty, opis; zastępuje kredyty i OPEX pochodzące z modelu (inne koszty i finansowania zostają); farmy BESS z wyłączonym magazynem zostają zawieszone. Wszystko w jednej transakcji, można powtórzyć bez duplikatów.</div>';
+  }
+  return '<details class="panel" data-key="pvmodel" '+settingsOpenAttr('pvmodel')+' ontoggle="onSettingsToggle(this)"><summary><h3>Model Grzegorza (Budżet Farm PV) — wgraj nowy plik</h3><span class="muted">'+status+'</span></summary><div class="panel-body">'+
+    '<div class="muted" style="font-size:12.5px;margin-bottom:8px">Grzegorz eksportuje z narzędzia plik <code>pv-budget-dane_RRRR-MM-DD.json</code>. Wybierz go tutaj — aplikacja pokaże, co się zmieni w każdej farmie, i dopiero po zatwierdzeniu zapisze. Parametry modelu (profil produkcji, eskalacje, etapy, transze) zasilają projekcje, karty farm, kalendarz i harmonogram rat.</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="file" id="pvm-file" accept="application/json,.json" style="max-width:360px"><button class="btn btn-sm btn-primary" onclick="pvModelPreview()">Pokaż podgląd zmian</button></div>'+
+    previewHtml+
+  '</div></details>';
+}
+function pvModelPreview(){
+  var inp = document.getElementById('pvm-file'); var file = inp && inp.files && inp.files[0];
+  if(!file){ alert('Wybierz plik JSON od Grzegorza.'); return; }
+  var reader = new FileReader();
+  reader.onload = function(){
+    var json; try{ json = JSON.parse(String(reader.result)); }catch(e){ alert('To nie jest poprawny plik JSON.'); return; }
+    apiCall('POST','/api/admin/pv-model/preview', json).then(function(res){
+      PVM_PREVIEW = res; PVM_PREVIEW.model = json;
+      PVM_PREVIEW.decisions = res.farms.map(function(f){ return {modelId:f.modelId, include:!!f.includeDefault, projectId:f.match?f.match.projectId:null, keepEndDate:!!f.keepEndDateDefault}; });
+      try{ localStorage.setItem('ffp_settings_open_pvmodel','1'); }catch(e){}
+      render();
+    }).catch(function(e){ alert('Nie udało się odczytać modelu: '+e.message); });
+  };
+  reader.readAsText(file);
+}
+function pvModelApply(){
+  if(!PVM_PREVIEW) return;
+  var n = PVM_PREVIEW.decisions.filter(function(d){return d.include;}).length;
+  if(!confirm('Zastosować model Grzegorza dla '+n+' farm? Zmiany są zapisywane w bazie (kopia zapasowa robi się automatycznie co kilka godzin; możesz też kliknąć „Utwórz kopię teraz” w Ustawieniach).')) return;
+  var payload = {model: PVM_PREVIEW.model, decisions: PVM_PREVIEW.decisions};
+  apiCall('POST','/api/admin/pv-model/apply', payload).then(function(res){
+    PVM_PREVIEW = null;
+    alert('Zastosowano: '+res.updated+' farm zaktualizowanych, '+res.created+' nowych; kredyty '+res.finCreated+' (usunięto '+res.finDeleted+'), OPEX '+res.opexCreated+' (usunięto '+res.opexDeleted+'), BESS zawieszone '+res.bessSuspended+'.');
+    return refreshState().then(render);
+  }).catch(function(e){ alert('Nie udało się zastosować modelu: '+e.message); });
+}
+
+
+// Harmonogram wg parametrów modelu Grzegorza: transze (uruchamiane w kolejnych
+// miesiącach od startu kredytu), karencja (tylko odsetki od wykorzystanej
+// kwoty), potem raty malejące (kapitał/n + odsetki od salda) albo stałe
+// (annuitetowe). Miesiąc 1 = miesiąc uruchomienia kredytu.
+function finModelInstallment(fm, f, ym){
+  var startYm = fm.startISO.slice(0,7); var k = ymDiff(startYm, ym)+1; // numer miesiąca od startu (1 = start)
+  var P = Number(fm.principal)||0, n = (Number(fm.termYears)||0)*12, r = (Number(fm.ratePct)||0)/100/12, g = Number(fm.graceMonths)||0;
+  if(!P || !n) return null;
+  if(f.endDate && f.endDate.slice(0,7) < ym) return {total:0, capital:0, interest:0, balance:0};
+  function drawnAt(kk){ if(!fm.tranches || !fm.tranches.length) return kk>=1? P : 0; var pct=0; fm.tranches.forEach(function(t){ if(kk>=t.month) pct=Math.max(pct,t.pct); }); return P*pct/100; }
+  if(k<1) return {total:0, capital:0, interest:0, balance:0};
+  var i = k-g; // numer raty kapitałowej (1..n), <=0 = karencja
+  if(i<=0){ var drawn = drawnAt(k); var it = drawn*r; return {total:it, capital:0, interest:it, balance:drawn}; }
+  if(i>n) return {total:0, capital:0, interest:0, balance:0};
+  if(fm.type==='stala'){
+    var pay = r>0? P*r/(1-Math.pow(1+r,-n)) : P/n;
+    var bal = P; for(var j=1;j<i;j++){ bal = bal - (pay - bal*r); }
+    var interest = bal*r; var cap = pay-interest;
+    return {total:pay, capital:cap, interest:interest, balance:Math.max(0,bal-cap)};
+  }
+  var cap2 = P/n, balBefore = P - cap2*(i-1), it2 = balBefore*r;
+  return {total:cap2+it2, capital:cap2, interest:it2, balance:Math.max(0, balBefore-cap2)};
+}
+
 /* ============================= DOCUMENTS ============================= */
 function viewDocuments(){
   return '<h2 class="page-title">Dokumenty</h2><div class="page-sub">'+STATE.documents.length+' dokumentów (linki)</div>'+
@@ -4033,6 +4191,7 @@ function viewSettings(){
   '<div style="margin:10px 0"><button class="btn btn-sm" onclick="createManualBackupNow()">Utwórz kopię teraz</button></div>'+
   '<div id="auto-backups-list">'+renderBackupsList()+'</div>'+
   '</div></details>'+
+  pvModelPanel()+
   (STATE.isAdmin? '<details class="panel" style="border-color:var(--danger)" data-key="reset" '+settingsOpenAttr('reset')+' ontoggle="onSettingsToggle(this)"><summary><h3>Reset i odbudowa portfela farm (dane Grzegorza jako źródło prawdy)</h3><span class="muted">kasuje portfel — ostrożnie</span></summary><div class="panel-body">'+
   '<div class="muted">Decyzja z 18.09: KASUJE wszystkie Projekty i ich Finansowania (oraz wcześniej wygenerowany OPEX farm), po czym buduje od zera: 7 farm z modelu Grzegorza (moc, CAPEX, data uruchomienia, przychód mies. = moc × uzysk × cena, finansowanie z ratą od pierwszej raty, 4 linie OPEX od daty uruchomienia; magazyny energii jako osobne projekty BESS) + 6 farm z CF Farmy.xlsx oznaczonych „do uzupełnienia”. NIE rusza: Pracowników, Kosztów spółki (koszty przypięte do farm są przepinane po nazwie, nie kasowane), Umów, Dostawców, Akcjonariatu, kopii, użytkowników, danych DEMO. Jedna transakcja — albo wszystko, albo nic. Bezpieczne do ponownego kliknięcia (ten sam stan końcowy). <b>Najpierw „Utwórz kopię teraz”.</b></div>'+
   '<div style="margin:10px 0"><button class="btn btn-danger btn-sm" onclick="resetFarmPortfolioNow()">Wyzeruj i odbuduj portfel farm</button></div>'+

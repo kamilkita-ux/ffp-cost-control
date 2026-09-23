@@ -15,7 +15,8 @@ export const OBJECT_SETTING_KEYS = [
   "farmActuals",          // produkcja/przychód rzeczywisty per farma i miesiąc (vs model)
   "paymentLedger",        // rejestr opłaconych miesięcy kosztów cyklicznych i rat ("cost:<id>"/"fin:<id>" -> {RRRR-MM: {...}})
   "scenarios",            // scenariusze Symulatora oszczędności (lista zestawów id pozycji do redukcji)
-  "moduleVisibility"      // {login: [klucze zakładek]} — które moduły widzi dana osoba (admin)
+  "moduleVisibility",     // {login: [klucze zakładek]} — które moduły widzi dana osoba (admin)
+  "farmModels"            // pełne parametry modelu Grzegorza per farma (profil, eskalacje, etapy, transze) — zapis tylko przez /api/admin/pv-model/apply
 ] as const;
 
 // Klucze proste (lista nazw / waluta).
@@ -28,6 +29,6 @@ export const ALL_SETTING_KEYS = [...SIMPLE_SETTING_KEYS, ...OBJECT_SETTING_KEYS]
 // groupStructure dodane w audycie 2026-09-19). financeWorkspace / deadlines /
 // farmActuals CELOWO dozwolone — to narzędzia pracy Macieja (finansowanie)
 // i osób prowadzących farmy, bez danych o wynagrodzeniach.
-export const RESTRICTED_FORBIDDEN_SETTING_KEYS = ["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure", "moduleVisibility"] as const;
+export const RESTRICTED_FORBIDDEN_SETTING_KEYS = ["assumptions", "fixedCostSchedule", "shareholderStructure", "groupStructure", "moduleVisibility", "farmModels"] as const;
 
 export type SettingKey = (typeof ALL_SETTING_KEYS)[number];
